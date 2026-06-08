@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="OpenWorldTerrainData" inherits="Resource" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>
+		Height field resource for [OpenWorldTerrain3D].
+	</brief_description>
+	<description>
+		[OpenWorldTerrainData] stores normalized height values for the experimental open-world terrain renderer. Unlike [SimpleTerrainData], this resource is designed around GPU displacement: height values are converted to a single-channel float image and sampled by [OpenWorldTerrain3D]'s vertex shader.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="create_height_image" qualifiers="const">
+			<return type="Image" />
+			<description>
+				Returns a [constant Image.FORMAT_RF] image containing the normalized height data.
+			</description>
+		</method>
+		<method name="fill_flat">
+			<return type="void" />
+			<param index="0" name="normalized_height" type="float" default="0.0" />
+			<description>
+				Fills the full height field with one normalized value in the [code]0.0[/code] to [code]1.0[/code] range.
+			</description>
+		</method>
+		<method name="get_height" qualifiers="const">
+			<return type="float" />
+			<param index="0" name="x" type="int" />
+			<param index="1" name="y" type="int" />
+			<description>
+				Returns the normalized height at heightmap texel coordinate [param x], [param y].
+			</description>
+		</method>
+		<method name="get_height_index" qualifiers="const">
+			<return type="int" />
+			<param index="0" name="x" type="int" />
+			<param index="1" name="y" type="int" />
+			<description>
+				Returns the row-major array index for heightmap texel coordinate [param x], [param y].
+			</description>
+		</method>
+		<method name="resize">
+			<return type="void" />
+			<param index="0" name="resolution" type="int" />
+			<param index="1" name="world_size" type="float" />
+			<param index="2" name="clear_existing" type="bool" default="false" />
+			<description>
+				Updates the heightmap resolution and terrain world size. Existing values are preserved by array prefix unless [param clear_existing] is [code]true[/code].
+			</description>
+		</method>
+		<method name="set_height">
+			<return type="void" />
+			<param index="0" name="x" type="int" />
+			<param index="1" name="y" type="int" />
+			<param index="2" name="height" type="float" />
+			<description>
+				Sets the normalized height at heightmap texel coordinate [param x], [param y].
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="height_data" type="PackedFloat32Array" setter="set_height_data" getter="get_height_data">
+			Normalized height values stored in row-major order.
+		</member>
+		<member name="height_scale" type="float" setter="set_height_scale" getter="get_height_scale" default="128.0">
+			World-space vertical scale applied by [OpenWorldTerrain3D]'s displacement shader.
+		</member>
+		<member name="heightmap_resolution" type="int" setter="set_heightmap_resolution" getter="get_heightmap_resolution" default="256">
+			Width and height of the square heightmap texture.
+		</member>
+		<member name="world_size" type="float" setter="set_world_size" getter="get_world_size" default="1024.0">
+			Horizontal terrain size in world units.
+		</member>
+	</members>
+</class>

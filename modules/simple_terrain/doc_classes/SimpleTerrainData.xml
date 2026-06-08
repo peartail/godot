@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="SimpleTerrainData" inherits="Resource" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>
+		Height field resource used by [SimpleTerrain3D].
+	</brief_description>
+	<description>
+		[SimpleTerrainData] stores a square terrain height field. The terrain contains [member grid_size] quads per axis and therefore stores [code](grid_size + 1) * (grid_size + 1)[/code] height values.
+		New resources initialize as a flat height field. Random terrain generation is an explicit [SimpleTerrain3D] editor/runtime action instead of the default state.
+		This resource is registered through ClassDB and can be created or modified from scripts. Assign it to [member SimpleTerrain3D.simple_terrain_data] to render and edit the stored heights.
+		[codeblock]
+		var data := SimpleTerrainData.new()
+		data.resize(128, 1.0, true)
+		data.set_height(64, 64, 4.0)
+
+		var terrain := SimpleTerrain3D.new()
+		terrain.simple_terrain_data = data
+		terrain.rebuild_mesh()
+		add_child(terrain)
+		[/codeblock]
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="ensure_height_data_size">
+			<return type="void" />
+			<param index="0" name="clear_existing" type="bool" default="false" />
+			<description>
+				Resizes [member height_data] to match [member grid_size]. If [param clear_existing] is [code]true[/code], all heights are reset to [code]0.0[/code]; otherwise existing values are preserved up to the new array size. This is useful after script-side edits to [member grid_size].
+			</description>
+		</method>
+		<method name="fill_flat">
+			<return type="void" />
+			<param index="0" name="height" type="float" default="0.0" />
+			<description>
+				Fills the whole height field with [param height] and emits a resource change notification.
+			</description>
+		</method>
+		<method name="get_height" qualifiers="const">
+			<return type="float" />
+			<param index="0" name="x" type="int" />
+			<param index="1" name="z" type="int" />
+			<description>
+				Returns the height at vertex coordinate [param x], [param z]. Coordinates are vertex indices, not world-space positions.
+			</description>
+		</method>
+		<method name="get_height_index" qualifiers="const">
+			<return type="int" />
+			<param index="0" name="x" type="int" />
+			<param index="1" name="z" type="int" />
+			<description>
+				Returns the flat array index in [member height_data] for vertex coordinate [param x], [param z]. The index is calculated as [code]z * get_vertex_count() + x[/code].
+			</description>
+		</method>
+		<method name="get_vertex_count" qualifiers="const">
+			<return type="int" />
+			<description>
+				Returns the number of vertices per terrain axis. This is always [member grid_size] + [code]1[/code].
+			</description>
+		</method>
+		<method name="resize">
+			<return type="void" />
+			<param index="0" name="grid_size" type="int" />
+			<param index="1" name="cell_size" type="float" />
+			<param index="2" name="clear_existing" type="bool" default="false" />
+			<description>
+				Updates [member grid_size] and [member cell_size], then resizes [member height_data]. If this resource is assigned to a [SimpleTerrain3D], the terrain will rebuild when the resource emits its change notification.
+			</description>
+		</method>
+		<method name="set_height">
+			<return type="void" />
+			<param index="0" name="x" type="int" />
+			<param index="1" name="z" type="int" />
+			<param index="2" name="height" type="float" />
+			<description>
+				Sets the height at vertex coordinate [param x], [param z] and emits a resource change notification. For many edits, modifying [member height_data] in bulk and then assigning it back through [SimpleTerrain3D.height_data] can be more efficient.
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="cell_size" type="float" setter="set_cell_size" getter="get_cell_size" default="1.0">
+			World-space distance between neighboring terrain vertices.
+		</member>
+		<member name="grid_size" type="int" setter="set_grid_size" getter="get_grid_size" default="64">
+			Number of terrain quads per axis. A value of [code]64[/code] means [code]65 * 65[/code] height values.
+		</member>
+		<member name="height_data" type="PackedFloat32Array" setter="set_height_data" getter="get_height_data" default="PackedFloat32Array()">
+			Flat array of height values. The expected size is [code](grid_size + 1) * (grid_size + 1)[/code]. Set this through the property or [method set_height_data] so the resource can normalize the size and notify listeners.
+		</member>
+	</members>
+</class>

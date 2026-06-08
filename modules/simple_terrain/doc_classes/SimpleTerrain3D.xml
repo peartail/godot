@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="SimpleTerrain3D" inherits="MeshInstance3D" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>
+		Editable chunked terrain node.
+	</brief_description>
+	<description>
+		[SimpleTerrain3D] renders and edits a [SimpleTerrainData] height field. The node splits terrain geometry into chunks so renderer culling and brush mesh rebuilds can operate on smaller regions.
+		The inherited [member MeshInstance3D.mesh] is kept empty; terrain chunks are submitted as internal [RenderingServer] instances.
+		All methods and properties listed in this class are registered through ClassDB, so they can be used from GDScript, C#, editor tools, and the Inspector. A typical runtime setup creates a [SimpleTerrain3D], adjusts [member grid_size], [member cell_size], and [member chunk_size], then calls [method reset_flat_terrain] or [method generate_random_terrain].
+		[codeblock]
+		var terrain := SimpleTerrain3D.new()
+		terrain.grid_size = 128
+		terrain.cell_size = 1.0
+		terrain.chunk_size = 32
+		terrain.use_builtin_triplanar_material = true
+		terrain.reset_flat_terrain()
+		add_child(terrain)
+		[/codeblock]
+		For saved or shared terrain data, assign [member simple_terrain_data] to a [SimpleTerrainData] resource. For visual debugging in the editor, enable [member show_chunk_gizmos].
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="apply_brush">
+			<return type="void" />
+			<param index="0" name="world_position" type="Vector3" />
+			<param index="1" name="radius" type="float" />
+			<param index="2" name="strength" type="float" />
+			<param index="3" name="operation" type="int" enum="SimpleTerrain3D.BrushOperation" />
+			<description>
+				Applies a terrain brush at [param world_position]. The brush affects vertices inside [param radius] and rebuilds only touched chunks. This method is available at runtime, so gameplay code can modify terrain without using the editor toolbar.
+			</description>
+		</method>
+		<method name="apply_brush_with_delta">
+			<return type="Dictionary" />
+			<param index="0" name="world_position" type="Vector3" />
+			<param index="1" name="radius" type="float" />
+			<param index="2" name="strength" type="float" />
+			<param index="3" name="operation" type="int" enum="SimpleTerrain3D.BrushOperation" />
+			<description>
+				Applies a terrain brush like [method apply_brush] and returns compact undo data. The returned dictionary contains [code]indices[/code], [code]before[/code], and [code]after[/code] arrays for vertices that changed.
+			</description>
+		</method>
+		<method name="apply_height_patch">
+			<return type="void" />
+			<param index="0" name="indices" type="PackedInt32Array" />
+			<param index="1" name="heights" type="PackedFloat32Array" />
+			<description>
+				Applies explicit height values to the vertices listed in [param indices] and rebuilds only the affected chunks. This is primarily used by editor undo/redo to avoid storing or restoring the full height field after each brush stroke.
+			</description>
+		</method>
+		<method name="generate_random_terrain">
+			<return type="void" />
+			<description>
+				Generates a deterministic random height field using [member random_seed], [member random_frequency], [member random_octaves], and [member random_height_scale]. Use [method randomize_seed] when a new seed is desired.
+			</description>
+		</method>
+		<method name="get_brush_hit" qualifiers="const">
+			<return type="Dictionary" />
+			<param index="0" name="ray_origin" type="Vector3" />
+			<param index="1" name="ray_direction" type="Vector3" />
+			<description>
+				Intersects a ray against the terrain surface. The returned dictionary contains [code]position[/code] and [code]distance[/code] when a hit is found. The ray is tested with a grid traversal algorithm instead of checking every terrain triangle.
+			</description>
+		</method>
+		<method name="get_chunk_debug_lines" qualifiers="const">
+			<return type="PackedVector3Array" />
+			<description>
+				Returns line segments that outline terrain chunk boundaries in local space. This is primarily used by the editor gizmo, but can also be consumed by custom debug drawing tools.
+			</description>
+		</method>
+		<method name="randomize_seed">
+			<return type="void" />
+			<description>
+				Chooses a new random seed and calls [method generate_random_terrain].
+			</description>
+		</method>
+		<method name="rebuild_mesh">
+			<return type="void" />
+			<description>
+				Rebuilds all terrain chunk meshes from [member simple_terrain_data]. Call this after making many direct changes to [member SimpleTerrainData.height_data] if those changes did not go through [SimpleTerrain3D]'s setters.
+			</description>
+		</method>
+		<method name="reset_flat_terrain">
+			<return type="void" />
+			<description>
+				Fills [member simple_terrain_data] using [member flat_height] and rebuilds the terrain. This is the default recommended initialization path for a blank editable terrain.
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="cell_size" type="float" setter="set_cell_size" getter="get_cell_size" default="1.0">
+			World-space distance between neighboring terrain vertices. Increasing this makes the terrain cover more space without increasing vertex count.
+		</member>
+		<member name="chunk_size" type="int" setter="set_chunk_size" getter="get_chunk_size" default="32">
+			Number of terrain quads per render chunk. Smaller values create more chunks, which can improve culling granularity but increase chunk management overhead.
+		</member>
+		<member name="flat_height" type="float" setter="set_flat_height" getter="get_flat_height" default="0.0">
+			Height used by [method reset_flat_terrain].
+		</member>
+		<member name="grid_size" type="int" setter="set_grid_size" getter="get_grid_size" default="64">
+			Number of terrain quads per axis. The terrain stores [member grid_size] + [code]1[/code] vertices per axis.
+		</member>
+		<member name="height_data" type="PackedFloat32Array" setter="set_height_data" getter="get_height_data" default="PackedFloat32Array()">
+			Convenience proxy to [member SimpleTerrainData.height_data]. Setting this property normalizes the array size and rebuilds terrain chunks.
+		</member>
+		<member name="terrain_material" type="Material" setter="set_terrain_material" getter="get_terrain_material">
+			Material applied to internal terrain chunks. If this is assigned, it takes precedence over [member use_builtin_triplanar_material] and [member GeometryInstance3D.material_override].
+		</member>
+		<member name="triplanar_blend_sharpness" type="float" setter="set_triplanar_blend_sharpness" getter="get_triplanar_blend_sharpness" default="4.0">
+			Normal-based blend sharpness used by the built-in triplanar material.
+		</member>
+		<member name="triplanar_blend_width" type="float" setter="set_triplanar_blend_width" getter="get_triplanar_blend_width" default="2.0">
+			Height range used to blend between built-in triplanar material layers.
+		</member>
+		<member name="triplanar_high_color" type="Color" setter="set_triplanar_high_color" getter="get_triplanar_high_color" default="Color(0.55, 0.55, 0.52, 1)">
+			Color multiplier for the high height layer.
+		</member>
+		<member name="triplanar_high_height" type="float" setter="set_triplanar_high_height" getter="get_triplanar_high_height" default="8.0">
+			Height where the high layer starts to blend in.
+		</member>
+		<member name="triplanar_high_texture" type="Texture2D" setter="set_triplanar_high_texture" getter="get_triplanar_high_texture">
+			Albedo texture for the high height layer.
+		</member>
+		<member name="triplanar_low_color" type="Color" setter="set_triplanar_low_color" getter="get_triplanar_low_color" default="Color(0.45, 0.34, 0.22, 1)">
+			Color multiplier for the low height layer.
+		</member>
+		<member name="triplanar_low_height" type="float" setter="set_triplanar_low_height" getter="get_triplanar_low_height" default="1.5">
+			Height where the low layer starts to blend into the middle layer.
+		</member>
+		<member name="triplanar_low_texture" type="Texture2D" setter="set_triplanar_low_texture" getter="get_triplanar_low_texture">
+			Albedo texture for the low height layer.
+		</member>
+		<member name="triplanar_mid_color" type="Color" setter="set_triplanar_mid_color" getter="get_triplanar_mid_color" default="Color(0.26, 0.45, 0.18, 1)">
+			Color multiplier for the middle height layer.
+		</member>
+		<member name="triplanar_mid_texture" type="Texture2D" setter="set_triplanar_mid_texture" getter="get_triplanar_mid_texture">
+			Albedo texture for the middle height layer.
+		</member>
+		<member name="triplanar_texture_scale" type="float" setter="set_triplanar_texture_scale" getter="get_triplanar_texture_scale" default="0.08">
+			World-space texture scale used by the built-in triplanar material. Higher values repeat textures more frequently.
+		</member>
+		<member name="use_builtin_triplanar_material" type="bool" setter="set_use_builtin_triplanar_material" getter="is_using_builtin_triplanar_material" default="false">
+			If [code]true[/code], internal chunks use a generated height-based triplanar shader material unless [member terrain_material] is assigned.
+		</member>
+		<member name="random_frequency" type="float" setter="set_random_frequency" getter="get_random_frequency" default="0.04">
+			Base frequency used by [method generate_random_terrain].
+		</member>
+		<member name="random_height_scale" type="float" setter="set_random_height_scale" getter="get_random_height_scale" default="6.0">
+			Height multiplier used by [method generate_random_terrain].
+		</member>
+		<member name="random_octaves" type="int" setter="set_random_octaves" getter="get_random_octaves" default="4">
+			Number of noise octaves used by [method generate_random_terrain].
+		</member>
+		<member name="random_seed" type="int" setter="set_random_seed" getter="get_random_seed" default="1">
+			Seed used by [method generate_random_terrain].
+		</member>
+		<member name="show_chunk_gizmos" type="bool" setter="set_show_chunk_gizmos" getter="is_showing_chunk_gizmos" default="false">
+			If [code]true[/code], the editor gizmo draws chunk boundaries in the 3D viewport.
+		</member>
+		<member name="simple_terrain_data" type="SimpleTerrainData" setter="set_simple_terrain_data" getter="get_simple_terrain_data">
+			Resource containing the editable height field. Assign a saved [SimpleTerrainData] resource to reuse terrain across scenes or keep height data independent from the node.
+		</member>
+	</members>
+	<constants>
+		<constant name="BRUSH_RAISE" value="0" enum="BrushOperation">
+			Raises terrain under the brush.
+		</constant>
+		<constant name="BRUSH_LOWER" value="1" enum="BrushOperation">
+			Lowers terrain under the brush.
+		</constant>
+		<constant name="BRUSH_SMOOTH" value="2" enum="BrushOperation">
+			Smooths terrain under the brush using neighboring heights.
+		</constant>
+		<constant name="BRUSH_FLATTEN" value="3" enum="BrushOperation">
+			Moves terrain under the brush toward the sampled center height.
+		</constant>
+	</constants>
+</class>

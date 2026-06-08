@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="OpenWorldTerrain3D" inherits="MeshInstance3D" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>
+		Experimental GPU-displaced terrain node.
+	</brief_description>
+	<description>
+		[OpenWorldTerrain3D] renders a regular patch mesh and displaces it in the vertex shader using height data from [OpenWorldTerrainData]. This module is intentionally separate from [SimpleTerrain3D] so large-world rendering experiments can continue without changing the CPU chunk terrain workflow.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="apply_brush">
+			<return type="void" />
+			<param index="0" name="world_position" type="Vector3" />
+			<param index="1" name="radius" type="float" />
+			<param index="2" name="strength" type="float" />
+			<param index="3" name="operation" type="int" enum="OpenWorldTerrain3D.BrushOperation" />
+			<description>
+				Applies a brush edit to the CPU height data and refreshes the generated height texture.
+			</description>
+		</method>
+		<method name="apply_brush_with_delta">
+			<return type="Dictionary" />
+			<param index="0" name="world_position" type="Vector3" />
+			<param index="1" name="radius" type="float" />
+			<param index="2" name="strength" type="float" />
+			<param index="3" name="operation" type="int" enum="OpenWorldTerrain3D.BrushOperation" />
+			<description>
+				Applies a brush edit and returns changed [code]indices[/code], [code]before[/code], and [code]after[/code] arrays for undo/redo.
+			</description>
+		</method>
+		<method name="apply_height_patch">
+			<return type="void" />
+			<param index="0" name="indices" type="PackedInt32Array" />
+			<param index="1" name="heights" type="PackedFloat32Array" />
+			<description>
+				Applies normalized height values to the given height data indices.
+			</description>
+		</method>
+		<method name="generate_random_terrain">
+			<return type="void" />
+			<param index="0" name="seed" type="int" default="1" />
+			<param index="1" name="amplitude" type="float" default="1.0" />
+			<param index="2" name="frequency" type="float" default="0.025" />
+			<param index="3" name="octaves" type="int" default="4" />
+			<description>
+				Fills [member terrain_data] with deterministic value-noise heights and refreshes rendering.
+			</description>
+		</method>
+		<method name="get_brush_hit" qualifiers="const">
+			<return type="Dictionary" />
+			<param index="0" name="ray_origin" type="Vector3" />
+			<param index="1" name="ray_direction" type="Vector3" />
+			<description>
+				Intersects a world-space ray against the CPU height field and returns hit information for editor tools.
+			</description>
+		</method>
+		<method name="get_debug_lines" qualifiers="const">
+			<return type="PackedVector3Array" />
+			<description>
+				Returns local-space debug lines used by the editor gizmo.
+			</description>
+		</method>
+		<method name="get_height_texture" qualifiers="const">
+			<return type="Texture2D" />
+			<description>
+				Returns the generated height texture used by the built-in displacement material.
+			</description>
+		</method>
+		<method name="rebuild">
+			<return type="void" />
+			<description>
+				Rebuilds the patch mesh, refreshes the height texture, and reapplies the active material.
+			</description>
+		</method>
+		<method name="reset_flat_terrain">
+			<return type="void" />
+			<param index="0" name="normalized_height" type="float" default="0.0" />
+			<description>
+				Fills the terrain with a flat normalized height and refreshes rendering.
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="flatten_height" type="float" setter="set_flatten_height" getter="get_flatten_height" default="0.5">
+			Target normalized height used by flatten brush operations.
+		</member>
+		<member name="height_scale" type="float" setter="set_height_scale" getter="get_height_scale">
+			Convenience proxy to [member OpenWorldTerrainData.height_scale].
+		</member>
+		<member name="high_color" type="Color" setter="set_high_color" getter="get_high_color" default="Color(0.78, 0.78, 0.72, 1)">
+			High elevation color used by the built-in material.
+		</member>
+		<member name="low_color" type="Color" setter="set_low_color" getter="get_low_color" default="Color(0.22, 0.38, 0.18, 1)">
+			Low elevation color used by the built-in material.
+		</member>
+		<member name="mid_color" type="Color" setter="set_mid_color" getter="get_mid_color" default="Color(0.42, 0.34, 0.22, 1)">
+			Mid elevation color used by the built-in material.
+		</member>
+		<member name="patch_resolution" type="int" setter="set_patch_resolution" getter="get_patch_resolution" default="128">
+			Number of quads per axis in the rendered patch mesh. Height detail comes from the texture; this controls geometric tessellation density.
+		</member>
+		<member name="show_debug_gizmo" type="bool" setter="set_show_debug_gizmo" getter="is_showing_debug_gizmo" default="true">
+			If enabled, the editor displays the terrain bounds gizmo while the node is selected.
+		</member>
+		<member name="terrain_data" type="OpenWorldTerrainData" setter="set_terrain_data" getter="get_terrain_data">
+			Height field resource uploaded as a float height texture.
+		</member>
+		<member name="terrain_material" type="Material" setter="set_terrain_material" getter="get_terrain_material">
+			Optional custom material. Used when [member use_builtin_displacement_material] is [code]false[/code].
+		</member>
+		<member name="use_builtin_displacement_material" type="bool" setter="set_use_builtin_displacement_material" getter="is_using_builtin_displacement_material" default="true">
+			If enabled, the node creates a basic shader material that displaces vertices from the generated height texture.
+		</member>
+		<member name="world_size" type="float" setter="set_world_size" getter="get_world_size">
+			Convenience proxy to [member OpenWorldTerrainData.world_size].
+		</member>
+	</members>
+	<constants>
+		<constant name="BRUSH_RAISE" value="0" enum="BrushOperation">
+			Raises normalized height values.
+		</constant>
+		<constant name="BRUSH_LOWER" value="1" enum="BrushOperation">
+			Lowers normalized height values.
+		</constant>
+		<constant name="BRUSH_SMOOTH" value="2" enum="BrushOperation">
+			Blends normalized height values toward neighboring averages.
+		</constant>
+		<constant name="BRUSH_FLATTEN" value="3" enum="BrushOperation">
+			Blends normalized height values toward [member flatten_height].
+		</constant>
+	</constants>
+</class>
