@@ -4,7 +4,7 @@
 		Experimental GPU-displaced terrain node.
 	</brief_description>
 	<description>
-		[OpenWorldTerrain3D] renders a regular patch mesh and displaces it in the vertex shader using height data from [OpenWorldTerrainData]. This module is intentionally separate from [SimpleTerrain3D] so large-world rendering experiments can continue without changing the CPU chunk terrain workflow.
+		[OpenWorldTerrain3D] renders tiled patch meshes and displaces them in the vertex shader using height data from [OpenWorldTerrainData]. Each tile owns a smaller height texture, and brush edits upload only the changed texel region inside affected tiles instead of refreshing the full heightmap.
 	</description>
 	<tutorials>
 	</tutorials>
@@ -64,7 +64,7 @@
 		<method name="get_height_texture" qualifiers="const">
 			<return type="Texture2D" />
 			<description>
-				Returns the generated height texture used by the built-in displacement material.
+				Returns the first generated tile height texture used by the built-in displacement material. The terrain internally uses one height texture per tile.
 			</description>
 		</method>
 		<method name="rebuild">
@@ -88,26 +88,74 @@
 		<member name="height_scale" type="float" setter="set_height_scale" getter="get_height_scale">
 			Convenience proxy to [member OpenWorldTerrainData.height_scale].
 		</member>
+		<member name="blend_width" type="float" setter="set_blend_width" getter="get_blend_width" default="0.15">
+			Normalized height blend width used between low, mid, and high texture layers.
+		</member>
 		<member name="high_color" type="Color" setter="set_high_color" getter="get_high_color" default="Color(0.78, 0.78, 0.72, 1)">
-			High elevation color used by the built-in material.
+			Multiplier color for the high elevation layer.
+		</member>
+		<member name="high_height" type="float" setter="set_high_height" getter="get_high_height" default="0.7">
+			Normalized height where the high elevation layer starts to dominate.
+		</member>
+		<member name="high_texture" type="Texture2D" setter="set_high_texture" getter="get_high_texture">
+			Triplanar albedo texture used for high elevations and steep slopes.
+		</member>
+		<member name="high_texture_scale" type="float" setter="set_high_texture_scale" getter="get_high_texture_scale" default="0.08">
+			World-space triplanar texture scale for the high elevation layer.
 		</member>
 		<member name="low_color" type="Color" setter="set_low_color" getter="get_low_color" default="Color(0.22, 0.38, 0.18, 1)">
-			Low elevation color used by the built-in material.
+			Multiplier color for the low elevation layer.
+		</member>
+		<member name="low_height" type="float" setter="set_low_height" getter="get_low_height" default="0.25">
+			Normalized height where the terrain blends from the low layer toward the mid layer.
+		</member>
+		<member name="low_texture" type="Texture2D" setter="set_low_texture" getter="get_low_texture">
+			Triplanar albedo texture used for low elevations.
+		</member>
+		<member name="low_texture_scale" type="float" setter="set_low_texture_scale" getter="get_low_texture_scale" default="0.08">
+			World-space triplanar texture scale for the low elevation layer.
 		</member>
 		<member name="mid_color" type="Color" setter="set_mid_color" getter="get_mid_color" default="Color(0.42, 0.34, 0.22, 1)">
-			Mid elevation color used by the built-in material.
+			Multiplier color for the mid elevation layer.
+		</member>
+		<member name="mid_texture" type="Texture2D" setter="set_mid_texture" getter="get_mid_texture">
+			Triplanar albedo texture used for mid elevations.
+		</member>
+		<member name="mid_texture_scale" type="float" setter="set_mid_texture_scale" getter="get_mid_texture_scale" default="0.08">
+			World-space triplanar texture scale for the mid elevation layer.
 		</member>
 		<member name="patch_resolution" type="int" setter="set_patch_resolution" getter="get_patch_resolution" default="128">
-			Number of quads per axis in the rendered patch mesh. Height detail comes from the texture; this controls geometric tessellation density.
+			Legacy patch resolution setting retained for compatibility. Tiled rendering uses [member tile_size] for the active patch subdivision.
 		</member>
 		<member name="show_debug_gizmo" type="bool" setter="set_show_debug_gizmo" getter="is_showing_debug_gizmo" default="true">
 			If enabled, the editor displays the terrain bounds gizmo while the node is selected.
+		</member>
+		<member name="slope_end" type="float" setter="set_slope_end" getter="get_slope_end" default="0.75">
+			Slope value where the high layer fully takes over steep surfaces.
+		</member>
+		<member name="slope_high_strength" type="float" setter="set_slope_high_strength" getter="get_slope_high_strength" default="1.0">
+			Strength of the slope-based high layer contribution. Set to [code]0.0[/code] to use height blending only.
+		</member>
+		<member name="slope_start" type="float" setter="set_slope_start" getter="get_slope_start" default="0.35">
+			Slope value where the high layer starts blending onto steep surfaces.
+		</member>
+		<member name="splat_debug_mode" type="int" setter="set_splat_debug_mode" getter="get_splat_debug_mode" enum="OpenWorldTerrain3D.SplatDebugMode" default="0">
+			Debug view for inspecting height, slope, or layer weights instead of final albedo.
 		</member>
 		<member name="terrain_data" type="OpenWorldTerrainData" setter="set_terrain_data" getter="get_terrain_data">
 			Height field resource uploaded as a float height texture.
 		</member>
 		<member name="terrain_material" type="Material" setter="set_terrain_material" getter="get_terrain_material">
 			Optional custom material. Used when [member use_builtin_displacement_material] is [code]false[/code].
+		</member>
+		<member name="tile_size" type="int" setter="set_tile_size" getter="get_tile_size" default="256">
+			Number of heightmap quads per terrain tile. Smaller values reduce tile count per upload area; brush edits further use region uploads inside each affected tile.
+		</member>
+		<member name="texture_scale" type="float" setter="set_texture_scale" getter="get_texture_scale" default="0.08">
+			Compatibility world-space triplanar texture scale. Setting this value updates all layer-specific texture scales.
+		</member>
+		<member name="triplanar_sharpness" type="float" setter="set_triplanar_sharpness" getter="get_triplanar_sharpness" default="4.0">
+			Controls how sharply triplanar projections blend by surface normal.
 		</member>
 		<member name="use_builtin_displacement_material" type="bool" setter="set_use_builtin_displacement_material" getter="is_using_builtin_displacement_material" default="true">
 			If enabled, the node creates a basic shader material that displaces vertices from the generated height texture.
@@ -128,6 +176,18 @@
 		</constant>
 		<constant name="BRUSH_FLATTEN" value="3" enum="BrushOperation">
 			Blends normalized height values toward [member flatten_height].
+		</constant>
+		<constant name="SPLAT_DEBUG_NONE" value="0" enum="SplatDebugMode">
+			Renders the final splatted albedo.
+		</constant>
+		<constant name="SPLAT_DEBUG_HEIGHT" value="1" enum="SplatDebugMode">
+			Renders normalized terrain height as grayscale.
+		</constant>
+		<constant name="SPLAT_DEBUG_SLOPE" value="2" enum="SplatDebugMode">
+			Renders terrain slope as grayscale.
+		</constant>
+		<constant name="SPLAT_DEBUG_WEIGHTS" value="3" enum="SplatDebugMode">
+			Renders low, mid, and high layer weights as red, green, and blue.
 		</constant>
 	</constants>
 </class>

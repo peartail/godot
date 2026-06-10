@@ -1292,6 +1292,42 @@ void TextureStorage::texture_2d_update(RID p_texture, const Ref<Image> &p_image,
 #endif
 }
 
+void TextureStorage::texture_2d_update_region(RID p_texture, const Ref<Image> &p_image, const Point2i &p_dst_pos, int p_layer) {
+	Texture *tex = texture_owner.get_or_null(p_texture);
+	ERR_FAIL_NULL(tex);
+	ERR_FAIL_COND(!tex->active);
+	ERR_FAIL_COND(tex->is_render_target);
+	ERR_FAIL_COND_MSG(tex->type != Texture::TYPE_2D, "Texture region updates only support 2D textures.");
+	ERR_FAIL_COND_MSG(tex->mipmaps > 1, "Texture region updates only support textures without mipmaps.");
+	ERR_FAIL_COND_MSG(p_image.is_null() || p_image->is_empty(), "Invalid region image.");
+	ERR_FAIL_COND_MSG(p_image->is_compressed(), "Compressed image regions are not supported.");
+	ERR_FAIL_COND_MSG(p_image->has_mipmaps(), "Texture region updates only support images without mipmaps.");
+	ERR_FAIL_COND(p_image->get_format() != tex->format);
+	ERR_FAIL_COND(p_dst_pos.x < 0 || p_dst_pos.y < 0);
+	ERR_FAIL_COND(p_dst_pos.x + p_image->get_width() > tex->width || p_dst_pos.y + p_image->get_height() > tex->height);
+
+	GLenum type;
+	GLenum format;
+	GLenum internal_format;
+	bool compressed = false;
+	Image::Format real_format;
+	Ref<Image> img = _get_gl_image_and_format(p_image, p_image->get_format(), real_format, format, internal_format, type, compressed, false);
+	ERR_FAIL_COND(img.is_null());
+	ERR_FAIL_COND_MSG(compressed, "Compressed image regions are not supported.");
+
+	Vector<uint8_t> read = img->get_data();
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, tex->tex_id);
+	_texture_set_swizzle(tex, real_format);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, p_dst_pos.x, p_dst_pos.y, img->get_width(), img->get_height(), format, type, read.ptr());
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+#ifdef TOOLS_ENABLED
+	tex->image_cache_2d.unref();
+#endif
+}
+
 void TextureStorage::texture_3d_update(RID p_texture, const Vector<Ref<Image>> &p_data) {
 	Texture *tex = texture_owner.get_or_null(p_texture);
 	ERR_FAIL_NULL(tex);

@@ -2390,6 +2390,99 @@ Error RenderingDevice::texture_update(RID p_texture, uint32_t p_layer, const Vec
 	return OK;
 }
 
+Error RenderingDevice::texture_update_region(RID p_texture, uint32_t p_layer, const Vector<uint8_t> &p_data, const Vector3i &p_dst_pos, const Vector3i &p_region_size) {
+	ERR_RENDER_THREAD_GUARD_V(ERR_UNAVAILABLE);
+
+	ERR_FAIL_COND_V_MSG(draw_list.active, ERR_INVALID_PARAMETER, "Updating textures is forbidden during creation of a draw list.");
+	ERR_FAIL_COND_V_MSG(compute_list.active, ERR_INVALID_PARAMETER, "Updating textures is forbidden during creation of a compute list.");
+	ERR_FAIL_COND_V_MSG(raytracing_list.active, ERR_INVALID_PARAMETER, "Updating textures is forbidden during creation of a raytracing list.");
+
+	Texture *texture = texture_owner.get_or_null(p_texture);
+	ERR_FAIL_NULL_V(texture, ERR_INVALID_PARAMETER);
+
+	if (texture->owner != RID()) {
+		p_texture = texture->owner;
+		texture = texture_owner.get_or_null(texture->owner);
+		ERR_FAIL_NULL_V(texture, ERR_BUG);
+	}
+
+	ERR_FAIL_COND_V_MSG(texture->bound, ERR_CANT_ACQUIRE_RESOURCE,
+			"Texture can't be updated while a draw list that uses it as part of a framebuffer is being created. Ensure the draw list is finalized (and that the color/depth texture using it is not set to `RenderingDevice.FINAL_ACTION_CONTINUE`) to update this texture.");
+	ERR_FAIL_COND_V_MSG(!(texture->usage_flags & TEXTURE_USAGE_CAN_UPDATE_BIT), ERR_INVALID_PARAMETER, "Texture requires the `RenderingDevice.TEXTURE_USAGE_CAN_UPDATE_BIT` to be set to be updatable.");
+	ERR_FAIL_COND_V_MSG(texture->mipmaps != 1, ERR_INVALID_PARAMETER, "Texture region updates only support textures without mipmaps.");
+	ERR_FAIL_COND_V_MSG(texture->type != TEXTURE_TYPE_2D, ERR_INVALID_PARAMETER, "Texture region updates only support 2D textures.");
+
+	const uint32_t layer_count = _texture_layer_count(texture);
+	ERR_FAIL_COND_V(p_layer >= layer_count, ERR_INVALID_PARAMETER);
+	ERR_FAIL_COND_V_MSG(p_dst_pos.x < 0 || p_dst_pos.y < 0 || p_dst_pos.z < 0, ERR_INVALID_PARAMETER, "Texture region destination must be non-negative.");
+	ERR_FAIL_COND_V_MSG(p_region_size.x <= 0 || p_region_size.y <= 0 || p_region_size.z <= 0, ERR_INVALID_PARAMETER, "Texture region size must be positive.");
+	ERR_FAIL_COND_V_MSG(p_dst_pos.x + p_region_size.x > (int32_t)texture->width || p_dst_pos.y + p_region_size.y > (int32_t)texture->height || p_dst_pos.z + p_region_size.z > (int32_t)texture->depth, ERR_INVALID_PARAMETER, "Texture region must fit inside the texture.");
+
+	uint32_t block_w, block_h;
+	get_compressed_image_format_block_dimensions(texture->format, block_w, block_h);
+	ERR_FAIL_COND_V_MSG(block_w != 1 || block_h != 1, ERR_INVALID_PARAMETER, "Texture region updates do not support compressed block formats.");
+
+	const uint32_t pixel_size = get_image_format_pixel_size(texture->format);
+	const uint32_t tight_row_size = (uint32_t)p_region_size.x * pixel_size;
+	const uint32_t required_size = tight_row_size * (uint32_t)p_region_size.y * (uint32_t)p_region_size.z;
+	ERR_FAIL_COND_V_MSG(required_size != (uint32_t)p_data.size(), ERR_INVALID_PARAMETER,
+			"Required size for texture region update (" + itos(required_size) + ") does not match data supplied size (" + itos(p_data.size()) + ").");
+
+	_texture_check_pending_clear(p_texture, texture);
+	_check_transfer_worker_texture(texture);
+
+	const uint32_t pitch_step = driver->api_trait_get(RDD::API_TRAIT_TEXTURE_DATA_ROW_PITCH_STEP);
+	const uint32_t region_pitch = STEPIFY(tight_row_size, pitch_step);
+	const uint32_t to_allocate = region_pitch * (uint32_t)p_region_size.y * (uint32_t)p_region_size.z;
+	const uint32_t required_align = _texture_alignment(texture);
+
+	uint32_t alloc_offset = 0;
+	uint32_t alloc_size = 0;
+	StagingRequiredAction required_action;
+	Error err = _staging_buffer_allocate(upload_staging_buffers, to_allocate, required_align, alloc_offset, alloc_size, required_action, false);
+	ERR_FAIL_COND_V(err, ERR_CANT_CREATE);
+	_staging_buffer_execute_required_action(upload_staging_buffers, required_action);
+
+	uint8_t *write_ptr = upload_staging_buffers.blocks[upload_staging_buffers.current].data_ptr + alloc_offset;
+	const uint8_t *read_ptr = p_data.ptr();
+	for (int32_t z = 0; z < p_region_size.z; z++) {
+		for (int32_t y = 0; y < p_region_size.y; y++) {
+			const uint32_t src_offset = (z * p_region_size.y + y) * tight_row_size;
+			const uint32_t dst_offset = (z * p_region_size.y + y) * region_pitch;
+			memcpy(write_ptr + dst_offset, read_ptr + src_offset, tight_row_size);
+		}
+	}
+
+	thread_local LocalVector<RDG::RecordedBufferToTextureCopy> command_buffer_to_texture_copies_vector;
+	command_buffer_to_texture_copies_vector.clear();
+
+	RDD::BufferTextureCopyRegion copy_region;
+	copy_region.buffer_offset = alloc_offset;
+	copy_region.row_pitch = region_pitch;
+	copy_region.texture_subresource.aspect = texture->read_aspect_flags.has_flag(RDD::TEXTURE_ASPECT_DEPTH_BIT) ? RDD::TEXTURE_ASPECT_DEPTH : RDD::TEXTURE_ASPECT_COLOR;
+	copy_region.texture_subresource.mipmap = 0;
+	copy_region.texture_subresource.layer = p_layer;
+	copy_region.texture_offset = p_dst_pos;
+	copy_region.texture_region_size = p_region_size;
+
+	RDG::RecordedBufferToTextureCopy buffer_to_texture_copy;
+	buffer_to_texture_copy.from_buffer = upload_staging_buffers.blocks[upload_staging_buffers.current].driver_id;
+	buffer_to_texture_copy.region = copy_region;
+	command_buffer_to_texture_copies_vector.push_back(buffer_to_texture_copy);
+
+	upload_staging_buffers.blocks.write[upload_staging_buffers.current].fill_amount = alloc_offset + alloc_size;
+
+	_texture_update_shared_fallback(p_texture, texture, true);
+
+	if (_texture_make_mutable(texture, p_texture)) {
+		draw_graph.add_synchronization();
+	}
+
+	draw_graph.add_texture_update(texture->driver_id, texture->draw_tracker, command_buffer_to_texture_copies_vector);
+
+	return OK;
+}
+
 void RenderingDevice::_texture_check_shared_fallback(Texture *p_texture) {
 	if (p_texture->shared_fallback == nullptr) {
 		p_texture->shared_fallback = memnew(Texture::SharedFallback);

@@ -3870,6 +3870,17 @@
 				[b]Note:[/b] The [param image] must have the same width, height and format as the current [param texture] data. Otherwise, an error will be printed and the original texture won't be modified. If you need to use different width, height or format, use [method texture_replace] instead.
 			</description>
 		</method>
+		<method name="texture_2d_update_region">
+			<return type="void" />
+			<param index="0" name="texture" type="RID" />
+			<param index="1" name="image" type="Image" />
+			<param index="2" name="dst_pos" type="Vector2i" />
+			<param index="3" name="layer" type="int" default="0" />
+			<description>
+				Updates a rectangular region of the texture specified by [param texture] using [param image], placing the region at [param dst_pos]. A [param layer] must also be specified, which should be [code]0[/code] when updating a single-layer texture.
+				[b]Note:[/b] Region updates currently support uncompressed 2D textures without mipmaps. The [param image] format must match the texture format and the region must fit inside the texture.
+			</description>
+		</method>
 		<method name="texture_3d_create">
 			<return type="RID" />
 			<param index="0" name="format" type="int" enum="Image.Format" />

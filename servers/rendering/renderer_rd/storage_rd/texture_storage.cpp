@@ -1613,6 +1613,35 @@ void TextureStorage::texture_2d_update(RID p_texture, const Ref<Image> &p_image,
 	_texture_2d_update(p_texture, p_image, p_layer, false);
 }
 
+void TextureStorage::_texture_2d_update_region(RID p_texture, const Ref<Image> &p_image, const Point2i &p_dst_pos, int p_layer, bool p_immediate) {
+	ERR_FAIL_COND(p_image.is_null() || p_image->is_empty());
+	ERR_FAIL_COND_MSG(p_image->is_compressed(), "Compressed image regions are not supported.");
+	ERR_FAIL_COND_MSG(p_image->has_mipmaps(), "Texture region updates only support images without mipmaps.");
+
+	Texture *tex = texture_owner.get_or_null(p_texture);
+	ERR_FAIL_NULL(tex);
+	ERR_FAIL_COND(tex->is_render_target);
+	ERR_FAIL_COND_MSG(tex->type != TextureStorage::TYPE_2D, "Texture region updates only support 2D textures.");
+	ERR_FAIL_COND_MSG(tex->mipmaps > 1, "Texture region updates only support textures without mipmaps.");
+	ERR_FAIL_COND(p_image->get_format() != tex->format);
+	ERR_FAIL_COND(p_dst_pos.x < 0 || p_dst_pos.y < 0);
+	ERR_FAIL_COND(p_dst_pos.x + p_image->get_width() > tex->width || p_dst_pos.y + p_image->get_height() > tex->height);
+
+#ifdef TOOLS_ENABLED
+	tex->image_cache_2d.unref();
+#endif
+
+	TextureToRDFormat f;
+	Ref<Image> validated = _validate_texture_format(p_image, f);
+
+	Error err = RD::get_singleton()->texture_update_region(tex->rd_texture, p_layer, validated->get_data(), Vector3i(p_dst_pos.x, p_dst_pos.y, 0), Vector3i(validated->get_width(), validated->get_height(), 1));
+	ERR_FAIL_COND_MSG(err != OK, "Failed to update texture region.");
+}
+
+void TextureStorage::texture_2d_update_region(RID p_texture, const Ref<Image> &p_image, const Point2i &p_dst_pos, int p_layer) {
+	_texture_2d_update_region(p_texture, p_image, p_dst_pos, p_layer, false);
+}
+
 void TextureStorage::texture_3d_update(RID p_texture, const Vector<Ref<Image>> &p_data) {
 	Texture *tex = texture_owner.get_or_null(p_texture);
 	ERR_FAIL_NULL(tex);
@@ -1854,8 +1883,15 @@ void TextureStorage::texture_3d_placeholder_initialize(RID p_texture) {
 }
 
 Ref<Image> TextureStorage::texture_2d_get(RID p_texture) const {
+	if (p_texture.is_null()) {
+		return Ref<Image>();
+	}
+
 	Texture *tex = texture_owner.get_or_null(p_texture);
 	ERR_FAIL_NULL_V(tex, Ref<Image>());
+	if (tex->rd_texture.is_null()) {
+		return Ref<Image>();
+	}
 
 #ifdef TOOLS_ENABLED
 	if (tex->image_cache_2d.is_valid() && !tex->is_render_target) {

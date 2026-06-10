@@ -2270,6 +2270,7 @@ void RenderingServer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("texture_drawable_create", "width", "height", "format", "color", "with_mipmaps"), &RenderingServer::texture_drawable_create, DEFVAL(Color(1, 1, 1, 1)), DEFVAL(false));
 
 	ClassDB::bind_method(D_METHOD("texture_2d_update", "texture", "image", "layer"), &RenderingServer::texture_2d_update);
+	ClassDB::bind_method(D_METHOD("texture_2d_update_region", "texture", "image", "dst_pos", "layer"), &RenderingServer::texture_2d_update_region, DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("texture_3d_update", "texture", "data"), &RenderingServer::_texture_3d_update);
 	ClassDB::bind_method(D_METHOD("texture_proxy_update", "texture", "proxy_to"), &RenderingServer::texture_proxy_update);
 

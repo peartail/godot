@@ -60,6 +60,16 @@
 				Use this method over [method set_image] if you need to update the texture frequently, which is faster than allocating additional memory for a new texture each time.
 			</description>
 		</method>
+		<method name="update_region">
+			<return type="void" />
+			<param index="0" name="image" type="Image" />
+			<param index="1" name="dst_pos" type="Vector2i" />
+			<param index="2" name="layer" type="int" default="0" />
+			<description>
+				Updates a rectangular region of the texture using the data from [param image], placing it at [param dst_pos] in the existing texture.
+				[b]Note:[/b] The texture must already be initialized, [param image] must have the same format as the texture, the region must fit inside the texture, and neither the texture nor [param image] may use mipmaps. Compressed region images are not supported.
+			</description>
+		</method>
 	</methods>
 	<members>
 		<member name="resource_local_to_scene" type="bool" setter="set_local_to_scene" getter="is_local_to_scene" overrides="Resource" default="false" />

@@ -58,6 +58,7 @@ public:
 	virtual Image::Format get_format() const override;
 
 	void update(const Ref<Image> &p_image);
+	void update_region(const Ref<Image> &p_image, const Point2i &p_dst_pos, int p_layer = 0);
 	Ref<Image> get_image() const override;
 
 	int get_width() const override;

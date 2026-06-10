@@ -35,6 +35,7 @@ public:
 
 	void set_height_data(const PackedFloat32Array &p_height_data);
 	PackedFloat32Array get_height_data() const { return height_data; }
+	const PackedFloat32Array &get_height_data_ref() const { return height_data; }
 	PackedFloat32Array &get_mutable_height_data() { return height_data; }
 	void notify_height_data_changed();
 

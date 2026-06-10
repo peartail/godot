@@ -113,6 +113,28 @@ void ImageTexture::update(const Ref<Image> &p_image) {
 	image_stored = true;
 }
 
+void ImageTexture::update_region(const Ref<Image> &p_image, const Point2i &p_dst_pos, int p_layer) {
+	ERR_FAIL_COND_MSG(p_image.is_null(), "Invalid image.");
+	ERR_FAIL_COND_MSG(p_image->is_empty(), "Invalid image: image is empty.");
+	ERR_FAIL_COND_MSG(texture.is_null(), "Texture is not initialized.");
+	ERR_FAIL_COND_MSG(p_image->is_compressed(), "Compressed images are not supported by ImageTexture.update_region().");
+	ERR_FAIL_COND_MSG(mipmaps || p_image->has_mipmaps(), "ImageTexture.update_region() only supports textures without mipmaps.");
+	ERR_FAIL_COND_MSG(p_image->get_format() != format,
+			"The region image format must match the texture's image format.");
+	ERR_FAIL_COND_MSG(p_dst_pos.x < 0 || p_dst_pos.y < 0,
+			"The destination position must be inside the texture.");
+	ERR_FAIL_COND_MSG(p_dst_pos.x + p_image->get_width() > w || p_dst_pos.y + p_image->get_height() > h,
+			"The region image must fit inside the texture.");
+
+	RS::get_singleton()->texture_2d_update_region(texture, p_image, p_dst_pos, p_layer);
+
+	notify_property_list_changed();
+	emit_changed();
+
+	alpha_cache.unref();
+	image_stored = true;
+}
+
 Ref<Image> ImageTexture::get_image() const {
 	if (image_stored) {
 		return RenderingServer::get_singleton()->texture_2d_get(texture);
@@ -233,6 +255,7 @@ void ImageTexture::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("set_image", "image"), &ImageTexture::set_image);
 	ClassDB::bind_method(D_METHOD("update", "image"), &ImageTexture::update);
+	ClassDB::bind_method(D_METHOD("update_region", "image", "dst_pos", "layer"), &ImageTexture::update_region, DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("set_size_override", "size"), &ImageTexture::set_size_override);
 
 	ClassDB::bind_method(D_METHOD("_set_image", "image"), &ImageTexture::set_image);
