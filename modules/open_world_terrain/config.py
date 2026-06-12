@@ -7,7 +7,7 @@ def configure(env):
 
 
 def get_doc_classes():
-    return ["OpenWorldTerrain3D", "OpenWorldTerrainData"]
+    return ["OpenWorldTerrain3D", "OpenWorldTerrainData", "OpenWorldTerrainLayer"]
 
 
 def get_doc_path():

@@ -8860,7 +8860,7 @@ EditorNode::EditorNode() {
 	distraction_free->connect(SceneStringName(pressed), callable_mp(this, &EditorNode::_toggle_distraction_free_mode));
 
 	editor_main_screen = memnew(EditorMainScreen);
-	editor_main_screen->set_custom_minimum_size(Size2(0, 80) * EDSCALE);
+	editor_main_screen->set_custom_minimum_size(Size2(0, 48) * EDSCALE);
 	editor_main_screen->set_draw_behind_parent(true);
 	srt->add_child(editor_main_screen);
 	editor_main_screen->set_v_size_flags(Control::SIZE_EXPAND_FILL);

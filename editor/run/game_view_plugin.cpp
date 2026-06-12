@@ -1658,7 +1658,7 @@ GameView::GameView(Ref<GameViewDebugger> p_debugger, EmbeddedProcessBase *p_embe
 	embedded_process->connect("embedding_failed", callable_mp(this, &GameView::_embedding_failed));
 	embedded_process->connect("embedding_completed", callable_mp(this, &GameView::_embedding_completed));
 	embedded_process->connect("embedded_process_focused", callable_mp(this, &GameView::_embedded_process_focused));
-	embedded_process->set_custom_minimum_size(Size2i(100, 100));
+	embedded_process->set_custom_minimum_size(Size2i(64, 64));
 
 	MarginContainer *state_container = memnew(MarginContainer);
 	state_container->add_theme_constant_override("margin_left", 8 * EDSCALE);

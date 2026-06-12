@@ -8,6 +8,7 @@
 
 #include "modules/open_world_terrain/open_world_terrain_3d.h"
 #include "modules/open_world_terrain/open_world_terrain_data.h"
+#include "modules/open_world_terrain/open_world_terrain_layer.h"
 
 #ifdef TOOLS_ENABLED
 #include "modules/open_world_terrain/editor/open_world_terrain_editor_plugin.h"
@@ -21,6 +22,7 @@ void initialize_open_world_terrain_module(ModuleInitializationLevel p_level) {
 		// OpenWorldTerrain is intentionally separate from SimpleTerrain. These
 		// classes form the experimental height-texture/GPU-displacement path and
 		// can evolve without changing saved SimpleTerrain scenes or resources.
+		GDREGISTER_CLASS(OpenWorldTerrainLayer);
 		GDREGISTER_CLASS(OpenWorldTerrainData);
 		GDREGISTER_CLASS(OpenWorldTerrain3D);
 	}

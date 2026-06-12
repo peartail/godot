@@ -842,6 +842,7 @@ private:
 
 	void _selection_changed();
 	void _refresh_menu_icons();
+	bool _is_open_world_terrain_selection() const;
 
 	bool do_snap_selected_nodes_to_floor = false;
 	void _snap_selected_nodes_to_floor();

@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="OpenWorldTerrainLayer" inherits="Resource" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>
+		Material and generation metadata for an OpenWorldTerrain layer.
+	</brief_description>
+	<description>
+		[OpenWorldTerrainLayer] groups the textures and metadata for one terrain surface layer. [member generation_role] separates natural height-generated layers, such as mountains, plains, and cliffs, from surface-only layers, such as roads and dirt paths, so future terrain generation can ignore layers that should not modify height.
+	</description>
+	<tutorials>
+	</tutorials>
+	<members>
+		<member name="albedo_texture" type="Texture2D" setter="set_albedo_texture" getter="get_albedo_texture">
+			Triplanar albedo texture used by this layer.
+		</member>
+		<member name="ao_texture" type="Texture2D" setter="set_ao_texture" getter="get_ao_texture">
+			Ambient occlusion texture. The red channel is used by the built-in OpenWorldTerrain material.
+		</member>
+		<member name="generation_role" type="int" setter="set_generation_role" getter="get_generation_role" enum="OpenWorldTerrainLayer.GenerationRole" default="0">
+			Controls how future terrain generation should treat this layer.
+		</member>
+		<member name="layer_name" type="String" setter="set_layer_name" getter="get_layer_name" default="&quot;Terrain Layer&quot;">
+			Display name shown by editor layer painting controls.
+		</member>
+		<member name="material_enabled" type="bool" setter="set_material_enabled" getter="is_material_enabled" default="true">
+			If enabled, this layer can be mapped to the current material slots. In the current renderer, the first three enabled layers are mapped to low, mid, and high.
+		</member>
+		<member name="normal_texture" type="Texture2D" setter="set_normal_texture" getter="get_normal_texture">
+			Triplanar normal texture used by this layer.
+		</member>
+		<member name="parallax_texture" type="Texture2D" setter="set_parallax_texture" getter="get_parallax_texture">
+			Parallax height texture used for material detail only. It does not modify terrain height data.
+		</member>
+		<member name="roughness" type="float" setter="set_roughness" getter="get_roughness" default="0.92">
+			Fallback roughness used when [member roughness_texture] is unset.
+		</member>
+		<member name="roughness_texture" type="Texture2D" setter="set_roughness_texture" getter="get_roughness_texture">
+			Roughness texture. The red channel is used by the built-in OpenWorldTerrain material.
+		</member>
+		<member name="terrain_feature" type="int" setter="set_terrain_feature" getter="get_terrain_feature" enum="OpenWorldTerrainLayer.TerrainFeature" default="0">
+			Semantic feature tag used by generation and editor tooling, such as mountain, plain, cliff, road, or dirt path.
+		</member>
+		<member name="texture_scale" type="float" setter="set_texture_scale" getter="get_texture_scale" default="0.08">
+			World-space triplanar texture scale.
+		</member>
+		<member name="tint_color" type="Color" setter="set_tint_color" getter="get_tint_color" default="Color(1, 1, 1, 1)">
+			Multiplier color applied to the albedo texture.
+		</member>
+	</members>
+	<constants>
+		<constant name="GENERATION_ROLE_HEIGHT" value="0" enum="GenerationRole">
+			Natural terrain layer that can participate in height or biome generation, such as mountain, plain, or cliff.
+		</constant>
+		<constant name="GENERATION_ROLE_SURFACE" value="1" enum="GenerationRole">
+			Surface-only layer, such as road or dirt path, that should be excluded from height generation.
+		</constant>
+		<constant name="GENERATION_ROLE_EXCLUDED" value="2" enum="GenerationRole">
+			Manual or reserved layer ignored by automatic terrain generation.
+		</constant>
+		<constant name="FEATURE_GENERIC" value="0" enum="TerrainFeature">
+			Generic layer without a specific terrain feature role.
+		</constant>
+		<constant name="FEATURE_MOUNTAIN" value="1" enum="TerrainFeature">
+			Mountain layer.
+		</constant>
+		<constant name="FEATURE_PLAIN" value="2" enum="TerrainFeature">
+			Plain or flatland layer.
+		</constant>
+		<constant name="FEATURE_CLIFF" value="3" enum="TerrainFeature">
+			Cliff or steep slope layer.
+		</constant>
+		<constant name="FEATURE_ROAD" value="4" enum="TerrainFeature">
+			Road surface layer.
+		</constant>
+		<constant name="FEATURE_DIRT_PATH" value="5" enum="TerrainFeature">
+			Dirt path surface layer.
+		</constant>
+		<constant name="FEATURE_GRASS" value="6" enum="TerrainFeature">
+			Grass surface layer.
+		</constant>
+		<constant name="FEATURE_ROCK" value="7" enum="TerrainFeature">
+			Rock surface layer.
+		</constant>
+	</constants>
+</class>

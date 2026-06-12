@@ -9319,6 +9319,16 @@ void Node3DEditor::_selection_changed() {
 	update_transform_gizmo();
 }
 
+bool Node3DEditor::_is_open_world_terrain_selection() const {
+	const List<Node *> &selection = editor_selection->get_top_selected_node_list();
+	if (selection.size() != 1) {
+		return false;
+	}
+
+	Node *node = selection.back()->get();
+	return node != nullptr && node->is_class("OpenWorldTerrain3D");
+}
+
 void Node3DEditor::refresh_dirty_gizmos() {
 	if (!gizmos_dirty) {
 		return;
@@ -9338,6 +9348,11 @@ void Node3DEditor::_refresh_menu_icons() {
 	bool all_locked = true;
 	bool all_grouped = true;
 	bool has_node3d_item = false;
+	const bool open_world_terrain_selected = _is_open_world_terrain_selection();
+
+	if (open_world_terrain_selected && tool_mode != TOOL_MODE_SELECT) {
+		_menu_item_pressed(MENU_TOOL_SELECT);
+	}
 
 	const List<Node *> &selection = editor_selection->get_top_selected_node_list();
 
@@ -9374,6 +9389,18 @@ void Node3DEditor::_refresh_menu_icons() {
 	tool_button[TOOL_GROUP_SELECTED]->set_disabled(!has_node3d_item);
 	tool_button[TOOL_UNGROUP_SELECTED]->set_visible(all_grouped);
 	tool_button[TOOL_UNGROUP_SELECTED]->set_disabled(!has_node3d_item);
+
+	tool_button[TOOL_MODE_TRANSFORM]->set_visible(!open_world_terrain_selected);
+	tool_button[TOOL_MODE_MOVE]->set_visible(!open_world_terrain_selected);
+	tool_button[TOOL_MODE_ROTATE]->set_visible(!open_world_terrain_selected);
+	tool_button[TOOL_MODE_SCALE]->set_visible(!open_world_terrain_selected);
+	tool_button[TOOL_MODE_SELECT]->set_visible(true);
+	tool_button[TOOL_MODE_LIST_SELECT]->set_visible(!open_world_terrain_selected);
+	tool_button[TOOL_LOCK_SELECTED]->set_visible(!open_world_terrain_selected && !all_locked);
+	tool_button[TOOL_UNLOCK_SELECTED]->set_visible(!open_world_terrain_selected && all_locked);
+	tool_button[TOOL_GROUP_SELECTED]->set_visible(!open_world_terrain_selected && !all_grouped);
+	tool_button[TOOL_UNGROUP_SELECTED]->set_visible(!open_world_terrain_selected && all_grouped);
+	tool_button[TOOL_RULER]->set_visible(!open_world_terrain_selected);
 }
 
 template <typename T>

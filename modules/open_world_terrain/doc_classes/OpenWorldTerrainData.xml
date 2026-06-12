@@ -4,7 +4,7 @@
 		Height field resource for [OpenWorldTerrain3D].
 	</brief_description>
 	<description>
-		[OpenWorldTerrainData] stores normalized height values for the experimental open-world terrain renderer. Unlike [SimpleTerrainData], this resource is designed around GPU displacement: height values are converted to a single-channel float image and sampled by [OpenWorldTerrain3D]'s vertex shader.
+		[OpenWorldTerrainData] stores sparse terrain tiles for the experimental open-world terrain renderer. Each created tile owns normalized height values and manual layer paint values that are uploaded by [OpenWorldTerrain3D] as per-tile GPU textures.
 	</description>
 	<tutorials>
 	</tutorials>
@@ -13,6 +13,19 @@
 			<return type="Image" />
 			<description>
 				Returns a [constant Image.FORMAT_RF] image containing the normalized height data.
+			</description>
+		</method>
+		<method name="create_layer_image" qualifiers="const">
+			<return type="Image" />
+			<description>
+				Returns a [constant Image.FORMAT_RGBA8] image containing manual layer paint data. RGB stores low, mid, and high layer weights; alpha stores how strongly painted weights override automatic splatting.
+			</description>
+		</method>
+		<method name="create_tile">
+			<return type="void" />
+			<param index="0" name="cell" type="Vector2i" />
+			<description>
+				Creates a flat terrain tile at integer grid coordinate [param cell] if it does not already exist.
 			</description>
 		</method>
 		<method name="fill_flat">
@@ -38,6 +51,42 @@
 				Returns the row-major array index for heightmap texel coordinate [param x], [param y].
 			</description>
 		</method>
+		<method name="get_layer" qualifiers="const">
+			<return type="Color" />
+			<param index="0" name="x" type="int" />
+			<param index="1" name="y" type="int" />
+			<description>
+				Returns the manual layer paint value at heightmap texel coordinate [param x], [param y].
+			</description>
+		</method>
+		<method name="get_tile_height_data" qualifiers="const">
+			<return type="PackedFloat32Array" />
+			<param index="0" name="cell" type="Vector2i" />
+			<description>
+				Returns the normalized height data for the created tile at [param cell].
+			</description>
+		</method>
+		<method name="get_tile_layer_data" qualifiers="const">
+			<return type="PackedColorArray" />
+			<param index="0" name="cell" type="Vector2i" />
+			<description>
+				Returns the manual layer paint data for the created tile at [param cell].
+			</description>
+		</method>
+		<method name="has_tile" qualifiers="const">
+			<return type="bool" />
+			<param index="0" name="cell" type="Vector2i" />
+			<description>
+				Returns whether a terrain tile exists at integer grid coordinate [param cell].
+			</description>
+		</method>
+		<method name="remove_tile">
+			<return type="void" />
+			<param index="0" name="cell" type="Vector2i" />
+			<description>
+				Removes the terrain tile at integer grid coordinate [param cell] if it exists.
+			</description>
+		</method>
 		<method name="resize">
 			<return type="void" />
 			<param index="0" name="resolution" type="int" />
@@ -56,8 +105,20 @@
 				Sets the normalized height at heightmap texel coordinate [param x], [param y].
 			</description>
 		</method>
+		<method name="set_layer">
+			<return type="void" />
+			<param index="0" name="x" type="int" />
+			<param index="1" name="y" type="int" />
+			<param index="2" name="layer" type="Color" />
+			<description>
+				Sets the manual layer paint value at heightmap texel coordinate [param x], [param y].
+			</description>
+		</method>
 	</methods>
 	<members>
+		<member name="created_tile_cells" type="PackedVector2Array" setter="set_created_tile_cells" getter="get_created_tile_cells">
+			Integer grid coordinates for tiles that exist in this sparse terrain resource.
+		</member>
 		<member name="height_data" type="PackedFloat32Array" setter="set_height_data" getter="get_height_data">
 			Normalized height values stored in row-major order.
 		</member>
@@ -65,10 +126,19 @@
 			World-space vertical scale applied by [OpenWorldTerrain3D]'s displacement shader.
 		</member>
 		<member name="heightmap_resolution" type="int" setter="set_heightmap_resolution" getter="get_heightmap_resolution" default="256">
-			Width and height of the square heightmap texture.
+			Legacy compatibility alias for [member tile_resolution].
+		</member>
+		<member name="layer_data" type="PackedColorArray" setter="set_layer_data" getter="get_layer_data">
+			Manual layer paint values stored in row-major order. RGB represents low, mid, and high weights. Alpha controls how much the painted weights override automatic height/slope splatting.
+		</member>
+		<member name="tile_resolution" type="int" setter="set_tile_resolution" getter="get_tile_resolution" default="257">
+			Width and height, in vertices/texels, of each created tile heightmap. A value of [code]257[/code] creates [code]256[/code] quads per tile edge.
+		</member>
+		<member name="tile_world_size" type="float" setter="set_tile_world_size" getter="get_tile_world_size" default="256.0">
+			World-space size of one terrain tile edge. Cell [code](0, 0)[/code] covers local X/Z [code]0.0[/code] to [member tile_world_size].
 		</member>
 		<member name="world_size" type="float" setter="set_world_size" getter="get_world_size" default="1024.0">
-			Horizontal terrain size in world units.
+			Legacy compatibility alias for [member tile_world_size].
 		</member>
 	</members>
 </class>

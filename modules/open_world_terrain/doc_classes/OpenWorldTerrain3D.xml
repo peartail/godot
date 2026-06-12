@@ -4,7 +4,7 @@
 		Experimental GPU-displaced terrain node.
 	</brief_description>
 	<description>
-		[OpenWorldTerrain3D] renders tiled patch meshes and displaces them in the vertex shader using height data from [OpenWorldTerrainData]. Each tile owns a smaller height texture, and brush edits upload only the changed texel region inside affected tiles instead of refreshing the full heightmap.
+		[OpenWorldTerrain3D] renders sparse terrain tiles and displaces them in the vertex shader using tile height data from [OpenWorldTerrainData]. Empty grid cells are not rendered until a tile is created for that cell.
 	</description>
 	<tutorials>
 	</tutorials>
@@ -37,6 +37,38 @@
 				Applies normalized height values to the given height data indices.
 			</description>
 		</method>
+		<method name="apply_layer_brush">
+			<return type="void" />
+			<param index="0" name="world_position" type="Vector3" />
+			<param index="1" name="radius" type="float" />
+			<param index="2" name="strength" type="float" />
+			<param index="3" name="target" type="int" enum="OpenWorldTerrain3D.LayerPaintTarget" />
+			<param index="4" name="alpha" type="float" default="1.0" />
+			<param index="5" name="blend_mode" type="int" enum="OpenWorldTerrain3D.LayerBlendMode" default="0" />
+			<description>
+				Paints manual low, mid, or high layer weights into [member OpenWorldTerrainData.layer_data]. [param alpha] controls the painted override alpha. [param blend_mode] controls how the selected layer weight is blended with existing painted weights.
+			</description>
+		</method>
+		<method name="apply_layer_brush_with_delta">
+			<return type="Dictionary" />
+			<param index="0" name="world_position" type="Vector3" />
+			<param index="1" name="radius" type="float" />
+			<param index="2" name="strength" type="float" />
+			<param index="3" name="target" type="int" enum="OpenWorldTerrain3D.LayerPaintTarget" />
+			<param index="4" name="alpha" type="float" default="1.0" />
+			<param index="5" name="blend_mode" type="int" enum="OpenWorldTerrain3D.LayerBlendMode" default="0" />
+			<description>
+				Paints manual layer weights and returns changed [code]indices[/code], [code]before[/code], and [code]after[/code] arrays for undo/redo.
+			</description>
+		</method>
+		<method name="apply_layer_patch">
+			<return type="void" />
+			<param index="0" name="indices" type="PackedInt32Array" />
+			<param index="1" name="layers" type="PackedColorArray" />
+			<description>
+				Applies manual layer paint values to the given layer data indices.
+			</description>
+		</method>
 		<method name="generate_random_terrain">
 			<return type="void" />
 			<param index="0" name="seed" type="int" default="1" />
@@ -47,12 +79,33 @@
 				Fills [member terrain_data] with deterministic value-noise heights and refreshes rendering.
 			</description>
 		</method>
+		<method name="create_grid_cell">
+			<return type="void" />
+			<param index="0" name="cell" type="Vector2i" />
+			<description>
+				Creates one flat sparse terrain tile at integer grid coordinate [param cell].
+			</description>
+		</method>
 		<method name="get_brush_hit" qualifiers="const">
 			<return type="Dictionary" />
 			<param index="0" name="ray_origin" type="Vector3" />
 			<param index="1" name="ray_direction" type="Vector3" />
 			<description>
 				Intersects a world-space ray against the CPU height field and returns hit information for editor tools.
+			</description>
+		</method>
+		<method name="has_grid_cell" qualifiers="const">
+			<return type="bool" />
+			<param index="0" name="cell" type="Vector2i" />
+			<description>
+				Returns whether a sparse terrain tile exists at integer grid coordinate [param cell].
+			</description>
+		</method>
+		<method name="remove_grid_cell">
+			<return type="void" />
+			<param index="0" name="cell" type="Vector2i" />
+			<description>
+				Removes the sparse terrain tile at integer grid coordinate [param cell].
 			</description>
 		</method>
 		<method name="get_debug_lines" qualifiers="const">
@@ -88,14 +141,41 @@
 		<member name="height_scale" type="float" setter="set_height_scale" getter="get_height_scale">
 			Convenience proxy to [member OpenWorldTerrainData.height_scale].
 		</member>
-		<member name="blend_width" type="float" setter="set_blend_width" getter="get_blend_width" default="0.15">
+		<member name="blend_width" type="float" setter="set_blend_width" getter="get_blend_width" default="0.12">
 			Normalized height blend width used between low, mid, and high texture layers.
+		</member>
+		<member name="brush_falloff" type="float" setter="set_brush_falloff" getter="get_brush_falloff" default="1.0">
+			Controls brush edge softness. A value of [code]0.0[/code] makes brush influence nearly constant inside the radius; larger values concentrate influence toward the brush center.
+		</member>
+		<member name="ao_strength" type="float" setter="set_ao_strength" getter="get_ao_strength" default="1.0">
+			Strength of texture-driven ambient occlusion. A value of [code]0.0[/code] disables the AO texture contribution.
+		</member>
+		<member name="anti_tiling_enabled" type="bool" setter="set_anti_tiling_enabled" getter="is_anti_tiling_enabled" default="false">
+			If enabled, the built-in material reduces visible texture repetition by applying low-frequency coordinate warping and optional macro color variation. This affects material sampling only and does not modify terrain height data.
+		</member>
+		<member name="anti_tiling_strength" type="float" setter="set_anti_tiling_strength" getter="get_anti_tiling_strength" default="0.15">
+			Strength of procedural coordinate warping used by anti-tiling. Keep this value low to avoid visible texture swimming or stretched normals.
 		</member>
 		<member name="high_color" type="Color" setter="set_high_color" getter="get_high_color" default="Color(0.78, 0.78, 0.72, 1)">
 			Multiplier color for the high elevation layer.
 		</member>
-		<member name="high_height" type="float" setter="set_high_height" getter="get_high_height" default="0.7">
+		<member name="high_height" type="float" setter="set_high_height" getter="get_high_height" default="0.68">
 			Normalized height where the high elevation layer starts to dominate.
+		</member>
+		<member name="high_normal_texture" type="Texture2D" setter="set_high_normal_texture" getter="get_high_normal_texture">
+			Triplanar normal texture used for high elevations and steep slopes. If unset, the terrain uses its generated height normal for this layer.
+		</member>
+		<member name="high_ao_texture" type="Texture2D" setter="set_high_ao_texture" getter="get_high_ao_texture">
+			Triplanar ambient occlusion texture used for high elevations and steep slopes. The red channel is used; if unset, this layer uses full ambient light.
+		</member>
+		<member name="high_parallax_texture" type="Texture2D" setter="set_high_parallax_texture" getter="get_high_parallax_texture">
+			Triplanar parallax height texture used for high elevations and steep slopes. The red channel offsets material sampling only and does not change terrain geometry.
+		</member>
+		<member name="high_roughness" type="float" setter="set_high_roughness" getter="get_high_roughness" default="0.92">
+			Roughness value blended by the high layer weight.
+		</member>
+		<member name="high_roughness_texture" type="Texture2D" setter="set_high_roughness_texture" getter="get_high_roughness_texture">
+			Triplanar roughness texture used for high elevations and steep slopes. The red channel is used; if unset, [member high_roughness] is used.
 		</member>
 		<member name="high_texture" type="Texture2D" setter="set_high_texture" getter="get_high_texture">
 			Triplanar albedo texture used for high elevations and steep slopes.
@@ -106,8 +186,23 @@
 		<member name="low_color" type="Color" setter="set_low_color" getter="get_low_color" default="Color(0.22, 0.38, 0.18, 1)">
 			Multiplier color for the low elevation layer.
 		</member>
-		<member name="low_height" type="float" setter="set_low_height" getter="get_low_height" default="0.25">
+		<member name="low_height" type="float" setter="set_low_height" getter="get_low_height" default="0.28">
 			Normalized height where the terrain blends from the low layer toward the mid layer.
+		</member>
+		<member name="low_normal_texture" type="Texture2D" setter="set_low_normal_texture" getter="get_low_normal_texture">
+			Triplanar normal texture used for low elevations. If unset, the terrain uses its generated height normal for this layer.
+		</member>
+		<member name="low_ao_texture" type="Texture2D" setter="set_low_ao_texture" getter="get_low_ao_texture">
+			Triplanar ambient occlusion texture used for low elevations. The red channel is used; if unset, this layer uses full ambient light.
+		</member>
+		<member name="low_parallax_texture" type="Texture2D" setter="set_low_parallax_texture" getter="get_low_parallax_texture">
+			Triplanar parallax height texture used for low elevations. The red channel offsets material sampling only and does not change terrain geometry.
+		</member>
+		<member name="low_roughness" type="float" setter="set_low_roughness" getter="get_low_roughness" default="0.92">
+			Roughness value blended by the low layer weight.
+		</member>
+		<member name="low_roughness_texture" type="Texture2D" setter="set_low_roughness_texture" getter="get_low_roughness_texture">
+			Triplanar roughness texture used for low elevations. The red channel is used; if unset, [member low_roughness] is used.
 		</member>
 		<member name="low_texture" type="Texture2D" setter="set_low_texture" getter="get_low_texture">
 			Triplanar albedo texture used for low elevations.
@@ -115,8 +210,32 @@
 		<member name="low_texture_scale" type="float" setter="set_low_texture_scale" getter="get_low_texture_scale" default="0.08">
 			World-space triplanar texture scale for the low elevation layer.
 		</member>
+		<member name="macro_variation_scale" type="float" setter="set_macro_variation_scale" getter="get_macro_variation_scale" default="0.0025">
+			World-space scale for anti-tiling macro variation. Lower values produce larger color variation across the terrain.
+		</member>
+		<member name="macro_variation_strength" type="float" setter="set_macro_variation_strength" getter="get_macro_variation_strength" default="0.25">
+			Strength of the macro variation texture contribution. A value of [code]0.0[/code] disables the macro color modulation while leaving coordinate warping controlled by [member anti_tiling_strength].
+		</member>
+		<member name="macro_variation_texture" type="Texture2D" setter="set_macro_variation_texture" getter="get_macro_variation_texture">
+			Optional low-frequency color variation texture used by anti-tiling. The texture should repeat seamlessly and is sampled in world XZ space.
+		</member>
 		<member name="mid_color" type="Color" setter="set_mid_color" getter="get_mid_color" default="Color(0.42, 0.34, 0.22, 1)">
 			Multiplier color for the mid elevation layer.
+		</member>
+		<member name="mid_normal_texture" type="Texture2D" setter="set_mid_normal_texture" getter="get_mid_normal_texture">
+			Triplanar normal texture used for mid elevations. If unset, the terrain uses its generated height normal for this layer.
+		</member>
+		<member name="mid_ao_texture" type="Texture2D" setter="set_mid_ao_texture" getter="get_mid_ao_texture">
+			Triplanar ambient occlusion texture used for mid elevations. The red channel is used; if unset, this layer uses full ambient light.
+		</member>
+		<member name="mid_parallax_texture" type="Texture2D" setter="set_mid_parallax_texture" getter="get_mid_parallax_texture">
+			Triplanar parallax height texture used for mid elevations. The red channel offsets material sampling only and does not change terrain geometry.
+		</member>
+		<member name="mid_roughness" type="float" setter="set_mid_roughness" getter="get_mid_roughness" default="0.92">
+			Roughness value blended by the mid layer weight.
+		</member>
+		<member name="mid_roughness_texture" type="Texture2D" setter="set_mid_roughness_texture" getter="get_mid_roughness_texture">
+			Triplanar roughness texture used for mid elevations. The red channel is used; if unset, [member mid_roughness] is used.
 		</member>
 		<member name="mid_texture" type="Texture2D" setter="set_mid_texture" getter="get_mid_texture">
 			Triplanar albedo texture used for mid elevations.
@@ -127,29 +246,53 @@
 		<member name="patch_resolution" type="int" setter="set_patch_resolution" getter="get_patch_resolution" default="128">
 			Legacy patch resolution setting retained for compatibility. Tiled rendering uses [member tile_size] for the active patch subdivision.
 		</member>
+		<member name="parallax_enabled" type="bool" setter="set_parallax_enabled" getter="is_parallax_enabled" default="false">
+			If enabled, parallax textures offset material sampling based on view direction. This is a visual material effect and does not modify terrain height data.
+		</member>
+		<member name="parallax_flip" type="bool" setter="set_parallax_flip" getter="is_parallax_flipped" default="false">
+			If enabled, inverts parallax texture height values before applying the sampling offset.
+		</member>
+		<member name="parallax_fade_end" type="float" setter="set_parallax_fade_end" getter="get_parallax_fade_end" default="300.0">
+			Distance where parallax sampling offsets fade fully to zero.
+		</member>
+		<member name="parallax_fade_start" type="float" setter="set_parallax_fade_start" getter="get_parallax_fade_start" default="120.0">
+			Distance where parallax sampling offsets begin fading out.
+		</member>
+		<member name="parallax_scale" type="float" setter="set_parallax_scale" getter="get_parallax_scale" default="0.03">
+			Strength of simple parallax sampling offsets. Keep this small to avoid texture swimming at grazing camera angles.
+		</member>
 		<member name="show_debug_gizmo" type="bool" setter="set_show_debug_gizmo" getter="is_showing_debug_gizmo" default="true">
 			If enabled, the editor displays the terrain bounds gizmo while the node is selected.
 		</member>
-		<member name="slope_end" type="float" setter="set_slope_end" getter="get_slope_end" default="0.75">
+		<member name="slope_end" type="float" setter="set_slope_end" getter="get_slope_end" default="0.85">
 			Slope value where the high layer fully takes over steep surfaces.
 		</member>
-		<member name="slope_high_strength" type="float" setter="set_slope_high_strength" getter="get_slope_high_strength" default="1.0">
+		<member name="slope_high_strength" type="float" setter="set_slope_high_strength" getter="get_slope_high_strength" default="0.65">
 			Strength of the slope-based high layer contribution. Set to [code]0.0[/code] to use height blending only.
 		</member>
-		<member name="slope_start" type="float" setter="set_slope_start" getter="get_slope_start" default="0.35">
+		<member name="slope_start" type="float" setter="set_slope_start" getter="get_slope_start" default="0.45">
 			Slope value where the high layer starts blending onto steep surfaces.
 		</member>
 		<member name="splat_debug_mode" type="int" setter="set_splat_debug_mode" getter="get_splat_debug_mode" enum="OpenWorldTerrain3D.SplatDebugMode" default="0">
-			Debug view for inspecting height, slope, or layer weights instead of final albedo.
+			Debug view for inspecting height, slope, automatic/final layer weights, or painted layer weights instead of final albedo.
 		</member>
 		<member name="terrain_data" type="OpenWorldTerrainData" setter="set_terrain_data" getter="get_terrain_data">
 			Height field resource uploaded as a float height texture.
+		</member>
+		<member name="terrain_layers" type="Array" setter="set_terrain_layers" getter="get_terrain_layers">
+			Array of [OpenWorldTerrainLayer] resources used to organize terrain materials and future generation metadata. In the current renderer, the first three enabled material layers are mapped to the low, mid, and high material slots. [member OpenWorldTerrainLayer.generation_role] can be used to separate height-generated terrain layers from surface-only layers such as roads and dirt paths.
 		</member>
 		<member name="terrain_material" type="Material" setter="set_terrain_material" getter="get_terrain_material">
 			Optional custom material. Used when [member use_builtin_displacement_material] is [code]false[/code].
 		</member>
 		<member name="tile_size" type="int" setter="set_tile_size" getter="get_tile_size" default="256">
-			Number of heightmap quads per terrain tile. Smaller values reduce tile count per upload area; brush edits further use region uploads inside each affected tile.
+			Legacy compatibility alias for [member tile_resolution] minus one.
+		</member>
+		<member name="tile_resolution" type="int" setter="set_tile_resolution" getter="get_tile_resolution">
+			Convenience proxy to [member OpenWorldTerrainData.tile_resolution].
+		</member>
+		<member name="tile_world_size" type="float" setter="set_tile_world_size" getter="get_tile_world_size">
+			Convenience proxy to [member OpenWorldTerrainData.tile_world_size].
 		</member>
 		<member name="texture_scale" type="float" setter="set_texture_scale" getter="get_texture_scale" default="0.08">
 			Compatibility world-space triplanar texture scale. Setting this value updates all layer-specific texture scales.
@@ -161,7 +304,7 @@
 			If enabled, the node creates a basic shader material that displaces vertices from the generated height texture.
 		</member>
 		<member name="world_size" type="float" setter="set_world_size" getter="get_world_size">
-			Convenience proxy to [member OpenWorldTerrainData.world_size].
+			Legacy compatibility alias for [member tile_world_size].
 		</member>
 	</members>
 	<constants>
@@ -188,6 +331,30 @@
 		</constant>
 		<constant name="SPLAT_DEBUG_WEIGHTS" value="3" enum="SplatDebugMode">
 			Renders low, mid, and high layer weights as red, green, and blue.
+		</constant>
+		<constant name="SPLAT_DEBUG_PAINTED_LAYERS" value="4" enum="SplatDebugMode">
+			Renders painted low, mid, and high layer weights as red, green, and blue, multiplied by paint override alpha.
+		</constant>
+		<constant name="LAYER_PAINT_LOW" value="0" enum="LayerPaintTarget">
+			Paints the low terrain layer.
+		</constant>
+		<constant name="LAYER_PAINT_MID" value="1" enum="LayerPaintTarget">
+			Paints the mid terrain layer.
+		</constant>
+		<constant name="LAYER_PAINT_HIGH" value="2" enum="LayerPaintTarget">
+			Paints the high terrain layer.
+		</constant>
+		<constant name="LAYER_BLEND_NORMAL" value="0" enum="LayerBlendMode">
+			Replaces painted layer weights with the selected layer according to brush strength and falloff.
+		</constant>
+		<constant name="LAYER_BLEND_MULTIPLY" value="1" enum="LayerBlendMode">
+			Multiplies existing painted layer weights by the selected layer color before applying brush strength and falloff.
+		</constant>
+		<constant name="LAYER_BLEND_DARKEN" value="2" enum="LayerBlendMode">
+			Keeps the darker value between existing painted layer weights and the selected layer color before applying brush strength and falloff.
+		</constant>
+		<constant name="LAYER_BLEND_LIGHTEN" value="3" enum="LayerBlendMode">
+			Keeps the lighter value between existing painted layer weights and the selected layer color before applying brush strength and falloff.
 		</constant>
 	</constants>
 </class>
