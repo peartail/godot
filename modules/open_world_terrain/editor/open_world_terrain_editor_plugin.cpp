@@ -9,11 +9,13 @@
 #include "editor/editor_undo_redo_manager.h"
 #include "editor/gui/editor_spin_slider.h"
 #include "editor/inspector/editor_inspector.h"
+#include "editor/scene/3d/node_3d_editor_plugin.h"
 #include "editor/themes/editor_scale.h"
 #include "scene/gui/box_container.h"
 #include "scene/gui/button.h"
 #include "scene/gui/control.h"
 #include "scene/gui/option_button.h"
+#include "scene/gui/panel_container.h"
 
 bool OpenWorldTerrain3DGizmoPlugin::has_gizmo(Node3D *p_spatial) {
 	return Object::cast_to<OpenWorldTerrain3D>(p_spatial) != nullptr;
@@ -249,6 +251,7 @@ void OpenWorldTerrainEditorPlugin::_pick_flatten_toggled(bool p_pressed) {
 void OpenWorldTerrainEditorPlugin::_update_toolbar() {
 	const bool has_terrain = terrain != nullptr;
 	toolbar->set_visible(has_terrain);
+	brush_overlay_panel->set_visible(has_terrain && terrain_mode);
 	select_mode_button->set_disabled(!has_terrain);
 	edit_mode_button->set_disabled(!has_terrain);
 	select_mode_button->set_pressed_no_signal(!terrain_mode && has_terrain);
@@ -301,6 +304,27 @@ void OpenWorldTerrainEditorPlugin::_update_toolbar() {
 	flat_button->set_disabled(!has_terrain);
 	random_button->set_disabled(!has_terrain);
 	rebuild_button->set_disabled(!has_terrain);
+}
+
+void OpenWorldTerrainEditorPlugin::_attach_brush_overlay() {
+	Node3DEditorViewport *viewport = Node3DEditor::get_singleton()->get_editor_viewport(0);
+	if (viewport == nullptr || brush_overlay_panel->get_parent() != nullptr) {
+		return;
+	}
+
+	Control *surface = viewport->get_surface();
+	if (surface == nullptr) {
+		return;
+	}
+
+	surface->add_child(brush_overlay_panel);
+	brush_overlay_panel->move_to_front();
+}
+
+void OpenWorldTerrainEditorPlugin::_detach_brush_overlay() {
+	if (brush_overlay_panel->get_parent() != nullptr) {
+		brush_overlay_panel->get_parent()->remove_child(brush_overlay_panel);
+	}
 }
 
 real_t OpenWorldTerrainEditorPlugin::_get_brush_spacing() const {
@@ -649,6 +673,7 @@ void OpenWorldTerrainEditorPlugin::_notification(int p_what) {
 		case NOTIFICATION_ENTER_TREE: {
 			add_node_3d_gizmo_plugin(gizmo_plugin);
 			add_control_to_container(CONTAINER_SPATIAL_EDITOR_MENU, toolbar);
+			_attach_brush_overlay();
 			add_dock(settings_dock);
 			settings_dock->close();
 			set_force_draw_over_forwarding_enabled();
@@ -658,6 +683,7 @@ void OpenWorldTerrainEditorPlugin::_notification(int p_what) {
 		} break;
 
 		case NOTIFICATION_EXIT_TREE: {
+			_detach_brush_overlay();
 			remove_dock(settings_dock);
 			remove_control_from_container(CONTAINER_SPATIAL_EDITOR_MENU, toolbar);
 			remove_node_3d_gizmo_plugin(gizmo_plugin);
@@ -795,6 +821,16 @@ OpenWorldTerrainEditorPlugin::OpenWorldTerrainEditorPlugin() {
 	toolbar = memnew(HBoxContainer);
 	toolbar->hide();
 
+	brush_overlay_panel = memnew(PanelContainer);
+	brush_overlay_panel->hide();
+	brush_overlay_panel->set_anchors_and_offsets_preset(Control::PRESET_TOP_RIGHT, Control::PRESET_MODE_MINSIZE, 12 * EDSCALE);
+	brush_overlay_panel->set_h_grow_direction(Control::GROW_DIRECTION_BEGIN);
+	brush_overlay_panel->set_custom_minimum_size(Size2(220, 0) * EDSCALE);
+
+	brush_options_vbox = memnew(VBoxContainer);
+	brush_options_vbox->add_theme_constant_override("separation", 6 * EDSCALE);
+	brush_overlay_panel->add_child(brush_options_vbox);
+
 	mode_button_group.instantiate();
 
 	select_mode_button = memnew(Button);
@@ -820,7 +856,7 @@ OpenWorldTerrainEditorPlugin::OpenWorldTerrainEditorPlugin() {
 	paint_mode_button->add_item(TTRC("Height"), 0);
 	paint_mode_button->add_item(TTRC("Layer"), 1);
 	paint_mode_button->connect(SceneStringName(item_selected), callable_mp(this, &OpenWorldTerrainEditorPlugin::_paint_mode_selected));
-	toolbar->add_child(paint_mode_button);
+	brush_options_vbox->add_child(paint_mode_button);
 
 	operation_button = memnew(OptionButton);
 	operation_button->set_tooltip_text(TTRC("Brush operation."));
@@ -828,7 +864,7 @@ OpenWorldTerrainEditorPlugin::OpenWorldTerrainEditorPlugin() {
 	operation_button->add_item(TTRC("Lower"), OpenWorldTerrain3D::BRUSH_LOWER);
 	operation_button->add_item(TTRC("Smooth"), OpenWorldTerrain3D::BRUSH_SMOOTH);
 	operation_button->add_item(TTRC("Flatten"), OpenWorldTerrain3D::BRUSH_FLATTEN);
-	toolbar->add_child(operation_button);
+	brush_options_vbox->add_child(operation_button);
 
 	layer_button = memnew(OptionButton);
 	layer_button->set_tooltip_text(TTRC("Layer painted by the brush."));
@@ -836,7 +872,7 @@ OpenWorldTerrainEditorPlugin::OpenWorldTerrainEditorPlugin() {
 	layer_button->add_item(TTRC("Mid"), OpenWorldTerrain3D::LAYER_PAINT_MID);
 	layer_button->add_item(TTRC("High"), OpenWorldTerrain3D::LAYER_PAINT_HIGH);
 	layer_button->hide();
-	toolbar->add_child(layer_button);
+	brush_options_vbox->add_child(layer_button);
 
 	layer_blend_button = memnew(OptionButton);
 	layer_blend_button->set_tooltip_text(TTRC("Blend mode used when painting layer data."));
@@ -845,7 +881,7 @@ OpenWorldTerrainEditorPlugin::OpenWorldTerrainEditorPlugin() {
 	layer_blend_button->add_item(TTRC("Darkness"), OpenWorldTerrain3D::LAYER_BLEND_DARKEN);
 	layer_blend_button->add_item(TTRC("Lighten"), OpenWorldTerrain3D::LAYER_BLEND_LIGHTEN);
 	layer_blend_button->hide();
-	toolbar->add_child(layer_blend_button);
+	brush_options_vbox->add_child(layer_blend_button);
 
 	radius_slider = memnew(EditorSpinSlider);
 	radius_slider->set_label(TTRC("Radius"));
@@ -854,7 +890,7 @@ OpenWorldTerrainEditorPlugin::OpenWorldTerrainEditorPlugin() {
 	radius_slider->set_step(0.1);
 	radius_slider->set_value(24.0);
 	radius_slider->set_custom_minimum_size(Size2(92, 0) * EDSCALE);
-	toolbar->add_child(radius_slider);
+	brush_options_vbox->add_child(radius_slider);
 
 	strength_slider = memnew(EditorSpinSlider);
 	strength_slider->set_label(TTRC("Strength"));
@@ -863,7 +899,7 @@ OpenWorldTerrainEditorPlugin::OpenWorldTerrainEditorPlugin() {
 	strength_slider->set_step(0.001);
 	strength_slider->set_value(0.05);
 	strength_slider->set_custom_minimum_size(Size2(96, 0) * EDSCALE);
-	toolbar->add_child(strength_slider);
+	brush_options_vbox->add_child(strength_slider);
 
 	layer_alpha_slider = memnew(EditorSpinSlider);
 	layer_alpha_slider->set_label(TTRC("Alpha"));
@@ -873,7 +909,7 @@ OpenWorldTerrainEditorPlugin::OpenWorldTerrainEditorPlugin() {
 	layer_alpha_slider->set_value(1.0);
 	layer_alpha_slider->set_custom_minimum_size(Size2(92, 0) * EDSCALE);
 	layer_alpha_slider->hide();
-	toolbar->add_child(layer_alpha_slider);
+	brush_options_vbox->add_child(layer_alpha_slider);
 
 	falloff_slider = memnew(EditorSpinSlider);
 	falloff_slider->set_label(TTRC("Falloff"));
@@ -882,7 +918,7 @@ OpenWorldTerrainEditorPlugin::OpenWorldTerrainEditorPlugin() {
 	falloff_slider->set_step(0.001);
 	falloff_slider->set_value(1.0);
 	falloff_slider->set_custom_minimum_size(Size2(96, 0) * EDSCALE);
-	toolbar->add_child(falloff_slider);
+	brush_options_vbox->add_child(falloff_slider);
 
 	spacing_slider = memnew(EditorSpinSlider);
 	spacing_slider->set_label(TTRC("Spacing"));
@@ -891,7 +927,7 @@ OpenWorldTerrainEditorPlugin::OpenWorldTerrainEditorPlugin() {
 	spacing_slider->set_step(0.001);
 	spacing_slider->set_value(0.05);
 	spacing_slider->set_custom_minimum_size(Size2(96, 0) * EDSCALE);
-	toolbar->add_child(spacing_slider);
+	brush_options_vbox->add_child(spacing_slider);
 
 	flatten_slider = memnew(EditorSpinSlider);
 	flatten_slider->set_label(TTRC("Flatten"));
@@ -900,30 +936,34 @@ OpenWorldTerrainEditorPlugin::OpenWorldTerrainEditorPlugin() {
 	flatten_slider->set_step(0.001);
 	flatten_slider->set_value(0.5);
 	flatten_slider->set_custom_minimum_size(Size2(96, 0) * EDSCALE);
-	toolbar->add_child(flatten_slider);
+	brush_options_vbox->add_child(flatten_slider);
+
+	HBoxContainer *terrain_action_row = memnew(HBoxContainer);
+	terrain_action_row->add_theme_constant_override("separation", 4 * EDSCALE);
+	brush_options_vbox->add_child(terrain_action_row);
 
 	pick_flatten_button = memnew(Button);
 	pick_flatten_button->set_text(TTRC("Pick"));
 	pick_flatten_button->set_toggle_mode(true);
 	pick_flatten_button->set_tooltip_text(TTRC("Pick flatten height from the terrain."));
 	pick_flatten_button->connect(SceneStringName(toggled), callable_mp(this, &OpenWorldTerrainEditorPlugin::_pick_flatten_toggled));
-	toolbar->add_child(pick_flatten_button);
+	terrain_action_row->add_child(pick_flatten_button);
 
 	flat_button = memnew(Button);
 	flat_button->set_text(TTRC("Flat"));
 	flat_button->set_tooltip_text(TTRC("Reset selected OpenWorld terrain to the flatten height."));
 	flat_button->connect(SceneStringName(pressed), callable_mp(this, &OpenWorldTerrainEditorPlugin::_flat_pressed));
-	toolbar->add_child(flat_button);
+	terrain_action_row->add_child(flat_button);
 
 	random_button = memnew(Button);
 	random_button->set_text(TTRC("Random"));
 	random_button->set_tooltip_text(TTRC("Generate random OpenWorld terrain on the selected node."));
 	random_button->connect(SceneStringName(pressed), callable_mp(this, &OpenWorldTerrainEditorPlugin::_random_pressed));
-	toolbar->add_child(random_button);
+	terrain_action_row->add_child(random_button);
 
 	rebuild_button = memnew(Button);
 	rebuild_button->set_text(TTRC("Rebuild"));
 	rebuild_button->set_tooltip_text(TTRC("Rebuild mesh, height texture, and material."));
 	rebuild_button->connect(SceneStringName(pressed), callable_mp(this, &OpenWorldTerrainEditorPlugin::_rebuild_pressed));
-	toolbar->add_child(rebuild_button);
+	terrain_action_row->add_child(rebuild_button);
 }

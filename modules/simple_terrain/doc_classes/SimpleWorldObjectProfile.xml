@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="SimpleWorldObjectProfile" inherits="Resource" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>
+		Placeable object definition for SimpleTerrain world editing.
+	</brief_description>
+	<description>
+		[SimpleWorldObjectProfile] describes one object that can be placed on a [SimpleTerrain3D] surface. Placement records reference this resource through [member id] instead of storing a scene directly, allowing existing placements to be regenerated when the registered scene or placement settings change.
+	</description>
+	<tutorials>
+	</tutorials>
+	<members>
+		<member name="align_to_terrain_normal" type="bool" setter="set_align_to_terrain_normal" getter="is_aligning_to_terrain_normal" default="false">
+			If [code]true[/code], generated instances may align their up axis to the sampled terrain normal.
+		</member>
+		<member name="category" type="String" setter="set_category" getter="get_category" default="&quot;&quot;">
+			Editor grouping label, such as [code]Trees[/code], [code]Rocks[/code], or [code]Grass[/code].
+		</member>
+		<member name="collision_radius" type="float" setter="set_collision_radius" getter="get_collision_radius" default="0.5">
+			Approximate object radius used by placement tools for spacing and overlap checks.
+		</member>
+		<member name="density" type="float" setter="set_density" getter="get_density" default="1.0">
+			Brush, scatter, or grass density multiplier.
+		</member>
+		<member name="display_name" type="String" setter="set_display_name" getter="get_display_name" default="&quot;&quot;">
+			Human-readable label shown by editor UI.
+		</member>
+		<member name="height_max" type="float" setter="set_height_max" getter="get_height_max" default="1000000.0">
+			Maximum terrain height allowed for automatic placement.
+		</member>
+		<member name="height_min" type="float" setter="set_height_min" getter="get_height_min" default="-1000000.0">
+			Minimum terrain height allowed for automatic placement.
+		</member>
+		<member name="id" type="String" setter="set_id" getter="get_id" default="&quot;&quot;">
+			Stable identifier used by [SimpleWorldPlacementData] records.
+		</member>
+		<member name="max_scale" type="Vector3" setter="set_max_scale" getter="get_max_scale" default="Vector3(1, 1, 1)">
+			Maximum random instance scale.
+		</member>
+		<member name="min_scale" type="Vector3" setter="set_min_scale" getter="get_min_scale" default="Vector3(1, 1, 1)">
+			Minimum random instance scale.
+		</member>
+		<member name="placement_type" type="int" setter="set_placement_type" getter="get_placement_type" enum="SimpleWorldObjectProfile.PlacementType" default="0">
+			Preferred placement mode for this profile.
+		</member>
+		<member name="preview_icon" type="Texture2D" setter="set_preview_icon" getter="get_preview_icon">
+			Optional icon or thumbnail for editor palettes.
+		</member>
+		<member name="random_yaw" type="bool" setter="set_random_yaw" getter="is_random_yaw_enabled" default="true">
+			If [code]true[/code], placement tools may randomize rotation around the Y axis.
+		</member>
+		<member name="scene" type="PackedScene" setter="set_scene" getter="get_scene">
+			Scene instantiated when placement data is rebuilt.
+		</member>
+		<member name="slope_max_degrees" type="float" setter="set_slope_max_degrees" getter="get_slope_max_degrees" default="45.0">
+			Maximum terrain slope allowed for automatic placement.
+		</member>
+		<member name="slope_min_degrees" type="float" setter="set_slope_min_degrees" getter="get_slope_min_degrees" default="0.0">
+			Minimum terrain slope allowed for automatic placement.
+		</member>
+		<member name="spacing" type="float" setter="set_spacing" getter="get_spacing" default="1.0">
+			Preferred spacing between generated placements.
+		</member>
+		<member name="surface_offset" type="float" setter="set_surface_offset" getter="get_surface_offset" default="0.0">
+			Offset applied along the terrain normal after sampling the terrain surface.
+		</member>
+		<member name="tags" type="PackedStringArray" setter="set_tags" getter="get_tags" default="PackedStringArray()">
+			Free-form labels for future filters and editor queries.
+		</member>
+	</members>
+	<constants>
+		<constant name="PLACEMENT_SINGLE" value="0" enum="PlacementType">
+			Single click placement.
+		</constant>
+		<constant name="PLACEMENT_BRUSH" value="1" enum="PlacementType">
+			Brush placement.
+		</constant>
+		<constant name="PLACEMENT_SCATTER" value="2" enum="PlacementType">
+			Scatter placement.
+		</constant>
+		<constant name="PLACEMENT_GRASS" value="3" enum="PlacementType">
+			Grass placement, usually generated with multimesh instances.
+		</constant>
+	</constants>
+</class>

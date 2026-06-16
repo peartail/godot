@@ -8,6 +8,9 @@
 
 #include "modules/simple_terrain/simple_terrain_3d.h"
 #include "modules/simple_terrain/simple_terrain_data.h"
+#include "modules/simple_terrain/simple_world_object_profile.h"
+#include "modules/simple_terrain/simple_world_placement_data.h"
+#include "modules/simple_terrain/simple_world_placement_library.h"
 
 #ifdef TOOLS_ENABLED
 #include "modules/simple_terrain/editor/simple_terrain_editor_plugin.h"
@@ -22,6 +25,9 @@ void initialize_simple_terrain_module(ModuleInitializationLevel p_level) {
 		// editor class database.
 		GDREGISTER_CLASS(SimpleTerrainData);
 		GDREGISTER_CLASS(SimpleTerrain3D);
+		GDREGISTER_CLASS(SimpleWorldObjectProfile);
+		GDREGISTER_CLASS(SimpleWorldPlacementLibrary);
+		GDREGISTER_CLASS(SimpleWorldPlacementData);
 	}
 
 #ifdef TOOLS_ENABLED

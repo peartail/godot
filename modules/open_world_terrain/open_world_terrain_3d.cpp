@@ -1392,88 +1392,281 @@ Dictionary OpenWorldTerrain3D::apply_brush_with_delta(const Vector3 &p_world_pos
 	}
 
 	const Vector3 local_position = get_global_transform().affine_inverse().xform(p_world_position);
-	const Vector2i cell = _get_tile_cell_for_local_position(local_position);
-	if (!terrain_data->has_tile(cell)) {
-		return delta;
-	}
 	const PackedVector2Array created_cells = terrain_data->get_created_tile_cells();
-	int tile_data_index = -1;
+	HashMap<Vector2i, int> tile_data_indices;
 	for (int i = 0; i < created_cells.size(); i++) {
 		const Vector2 cell_value = created_cells[i];
-		if (Vector2i(Math::floor(cell_value.x), Math::floor(cell_value.y)) == cell) {
-			tile_data_index = i;
-			break;
-		}
+		tile_data_indices[Vector2i(Math::floor(cell_value.x), Math::floor(cell_value.y))] = i;
 	}
-	ERR_FAIL_COND_V(tile_data_index < 0, delta);
 
-	PackedFloat32Array heights = terrain_data->get_tile_height_data(cell);
-	const PackedFloat32Array original_heights = p_operation == BRUSH_SMOOTH ? heights : PackedFloat32Array();
 	const real_t tile_world_size = terrain_data->get_tile_world_size();
 	const real_t texel_world_size = tile_world_size / (real_t)(resolution - 1);
-	const Vector2 local_in_tile(local_position.x - (real_t)cell.x * tile_world_size, local_position.z - (real_t)cell.y * tile_world_size);
-	const real_t center_x = local_in_tile.x / texel_world_size;
-	const real_t center_y = local_in_tile.y / texel_world_size;
 	const real_t radius_texels = p_radius / texel_world_size;
-	const int min_x = CLAMP(Math::floor(center_x - radius_texels), 0, resolution - 1);
-	const int max_x = CLAMP(Math::ceil(center_x + radius_texels), 0, resolution - 1);
-	const int min_y = CLAMP(Math::floor(center_y - radius_texels), 0, resolution - 1);
-	const int max_y = CLAMP(Math::ceil(center_y + radius_texels), 0, resolution - 1);
+	const Vector2i min_cell(Math::floor((local_position.x - p_radius) / tile_world_size), Math::floor((local_position.z - p_radius) / tile_world_size));
+	const Vector2i max_cell(Math::floor((local_position.x + p_radius) / tile_world_size), Math::floor((local_position.z + p_radius) / tile_world_size));
+
+	HashMap<Vector2i, PackedFloat32Array> edited_tiles;
+	HashMap<Vector2i, Rect2i> dirty_rects;
+	HashSet<Vector2i> edited_cells;
+	HashMap<int, int> delta_positions;
 
 	PackedInt32Array changed_indices;
 	PackedFloat32Array before_values;
 	PackedFloat32Array after_values;
 
-	for (int y = min_y; y <= max_y; y++) {
-		for (int x = min_x; x <= max_x; x++) {
-			const real_t dx = ((real_t)x - center_x) * texel_world_size;
-			const real_t dy = ((real_t)y - center_y) * texel_world_size;
-			const real_t distance = Math::sqrt(dx * dx + dy * dy);
-			if (distance > p_radius) {
-				continue;
-			}
+	const auto get_tile_heights = [&](const Vector2i &p_cell) -> PackedFloat32Array {
+		HashMap<Vector2i, PackedFloat32Array>::Iterator edited_iter = edited_tiles.find(p_cell);
+		if (edited_iter) {
+			return edited_iter->value;
+		}
+		return terrain_data->get_tile_height_data(p_cell);
+	};
 
-			const real_t normalized_distance = CLAMP(distance / p_radius, (real_t)0.0, (real_t)1.0);
-			real_t weight = 1.0;
-			if (brush_falloff > 0.001) {
-				const real_t falloff = 1.0 - normalized_distance;
-				const real_t smooth_weight = falloff * falloff * (3.0 - 2.0 * falloff);
-				weight = Math::pow(smooth_weight, brush_falloff);
-			}
-			const int index = terrain_data->get_tile_height_index(x, y);
-			const real_t before = heights[index];
-			real_t after = before;
+	const auto mark_dirty = [&](const Vector2i &p_cell, int p_x, int p_y) {
+		Rect2i dirty_rect = dirty_rects.has(p_cell) ? dirty_rects[p_cell] : Rect2i(p_x, p_y, 1, 1);
+		const int min_x = MIN(dirty_rect.position.x, p_x);
+		const int min_y = MIN(dirty_rect.position.y, p_y);
+		const int max_x = MAX(dirty_rect.position.x + dirty_rect.size.x - 1, p_x);
+		const int max_y = MAX(dirty_rect.position.y + dirty_rect.size.y - 1, p_y);
+		dirty_rects[p_cell] = Rect2i(min_x, min_y, max_x - min_x + 1, max_y - min_y + 1);
+	};
 
-			switch (p_operation) {
-				case BRUSH_RAISE:
-					after = before + p_strength * weight;
-					break;
-				case BRUSH_LOWER:
-					after = before - p_strength * weight;
-					break;
-				case BRUSH_SMOOTH:
-					after = Math::lerp(before, _get_average_neighbor_height(original_heights, x, y), CLAMP(p_strength * weight, (real_t)0.0, (real_t)1.0));
-					break;
-				case BRUSH_FLATTEN:
-					after = Math::lerp(before, flatten_height, CLAMP(p_strength * weight, (real_t)0.0, (real_t)1.0));
-					break;
-			}
+	const auto record_height_change = [&](const Vector2i &p_cell, PackedFloat32Array &r_heights, int p_x, int p_y, real_t p_after) {
+		HashMap<Vector2i, int>::Iterator tile_index_iter = tile_data_indices.find(p_cell);
+		if (!tile_index_iter) {
+			return;
+		}
 
-			after = CLAMP(after, (real_t)0.0, (real_t)1.0);
-			if (Math::is_equal_approx(before, after)) {
-				continue;
-			}
+		const int index = terrain_data->get_tile_height_index(p_x, p_y);
+		const real_t before = r_heights[index];
+		const real_t after = CLAMP(p_after, (real_t)0.0, (real_t)1.0);
+		if (Math::is_equal_approx(before, after)) {
+			return;
+		}
 
-			heights.set(index, after);
-			changed_indices.push_back(tile_data_index * resolution * resolution + index);
+		r_heights.set(index, after);
+		edited_tiles[p_cell] = r_heights;
+		edited_cells.insert(p_cell);
+		mark_dirty(p_cell, p_x, p_y);
+
+		const int encoded_index = tile_index_iter->value * resolution * resolution + index;
+		HashMap<int, int>::Iterator delta_position_iter = delta_positions.find(encoded_index);
+		if (delta_position_iter) {
+			after_values.set(delta_position_iter->value, after);
+		} else {
+			delta_positions[encoded_index] = changed_indices.size();
+			changed_indices.push_back(encoded_index);
 			before_values.push_back(before);
 			after_values.push_back(after);
 		}
+	};
+
+	for (int cell_y = min_cell.y; cell_y <= max_cell.y; cell_y++) {
+		for (int cell_x = min_cell.x; cell_x <= max_cell.x; cell_x++) {
+			const Vector2i cell(cell_x, cell_y);
+			if (!terrain_data->has_tile(cell)) {
+				continue;
+			}
+
+			PackedFloat32Array heights = get_tile_heights(cell);
+			if (heights.size() != resolution * resolution) {
+				continue;
+			}
+			const PackedFloat32Array original_heights = p_operation == BRUSH_SMOOTH ? heights : PackedFloat32Array();
+			const Vector2 local_in_tile(local_position.x - (real_t)cell.x * tile_world_size, local_position.z - (real_t)cell.y * tile_world_size);
+			const real_t center_x = local_in_tile.x / texel_world_size;
+			const real_t center_y = local_in_tile.y / texel_world_size;
+			const int min_x = CLAMP(Math::floor(center_x - radius_texels), 0, resolution - 1);
+			const int max_x = CLAMP(Math::ceil(center_x + radius_texels), 0, resolution - 1);
+			const int min_y = CLAMP(Math::floor(center_y - radius_texels), 0, resolution - 1);
+			const int max_y = CLAMP(Math::ceil(center_y + radius_texels), 0, resolution - 1);
+
+			for (int y = min_y; y <= max_y; y++) {
+				for (int x = min_x; x <= max_x; x++) {
+					const real_t dx = ((real_t)x - center_x) * texel_world_size;
+					const real_t dy = ((real_t)y - center_y) * texel_world_size;
+					const real_t distance = Math::sqrt(dx * dx + dy * dy);
+					if (distance > p_radius) {
+						continue;
+					}
+
+					const real_t normalized_distance = CLAMP(distance / p_radius, (real_t)0.0, (real_t)1.0);
+					real_t weight = 1.0;
+					if (brush_falloff > 0.001) {
+						const real_t falloff = 1.0 - normalized_distance;
+						const real_t smooth_weight = falloff * falloff * (3.0 - 2.0 * falloff);
+						weight = Math::pow(smooth_weight, brush_falloff);
+					}
+					const int index = terrain_data->get_tile_height_index(x, y);
+					const real_t before = heights[index];
+					real_t after = before;
+
+					switch (p_operation) {
+						case BRUSH_RAISE:
+							after = before + p_strength * weight;
+							break;
+						case BRUSH_LOWER:
+							after = before - p_strength * weight;
+							break;
+						case BRUSH_SMOOTH:
+							after = Math::lerp(before, _get_average_neighbor_height(original_heights, x, y), CLAMP(p_strength * weight, (real_t)0.0, (real_t)1.0));
+							break;
+						case BRUSH_FLATTEN:
+							after = Math::lerp(before, flatten_height, CLAMP(p_strength * weight, (real_t)0.0, (real_t)1.0));
+							break;
+					}
+
+					record_height_change(cell, heights, x, y, after);
+				}
+			}
+		}
 	}
 
-	if (!changed_indices.is_empty()) {
-	terrain_data->set_tile_height_data_no_notify(cell, heights);
-		_refresh_height_texture_region(cell, min_x, min_y, max_x, max_y);
+	if (!edited_cells.is_empty()) {
+		Vector<Vector2i> cells_to_sync;
+		for (const Vector2i &cell : edited_cells) {
+			cells_to_sync.push_back(cell);
+		}
+
+		const auto synchronize_edge = [&](const Vector2i &p_cell, const Vector2i &p_neighbor, bool p_horizontal) {
+			if (!terrain_data->has_tile(p_cell) || !terrain_data->has_tile(p_neighbor)) {
+				return;
+			}
+			if (!dirty_rects.has(p_cell) && !dirty_rects.has(p_neighbor)) {
+				return;
+			}
+
+			const Rect2i cell_dirty = dirty_rects.has(p_cell) ? dirty_rects[p_cell] : Rect2i();
+			const Rect2i neighbor_dirty = dirty_rects.has(p_neighbor) ? dirty_rects[p_neighbor] : Rect2i();
+			const bool cell_edge_dirty = dirty_rects.has(p_cell) && (p_horizontal ?
+							(p_neighbor.x > p_cell.x ? cell_dirty.position.x + cell_dirty.size.x - 1 >= resolution - 1 : cell_dirty.position.x <= 0) :
+							(p_neighbor.y > p_cell.y ? cell_dirty.position.y + cell_dirty.size.y - 1 >= resolution - 1 : cell_dirty.position.y <= 0));
+			const bool neighbor_edge_dirty = dirty_rects.has(p_neighbor) && (p_horizontal ?
+							(p_neighbor.x > p_cell.x ? neighbor_dirty.position.x <= 0 : neighbor_dirty.position.x + neighbor_dirty.size.x - 1 >= resolution - 1) :
+							(p_neighbor.y > p_cell.y ? neighbor_dirty.position.y <= 0 : neighbor_dirty.position.y + neighbor_dirty.size.y - 1 >= resolution - 1));
+			if (!cell_edge_dirty && !neighbor_edge_dirty) {
+				return;
+			}
+
+			int min_i = resolution - 1;
+			int max_i = 0;
+			if (cell_edge_dirty) {
+				const int dirty_min_i = p_horizontal ? cell_dirty.position.y : cell_dirty.position.x;
+				const int dirty_max_i = p_horizontal ? cell_dirty.position.y + cell_dirty.size.y - 1 : cell_dirty.position.x + cell_dirty.size.x - 1;
+				min_i = MIN(min_i, dirty_min_i);
+				max_i = MAX(max_i, dirty_max_i);
+			}
+			if (neighbor_edge_dirty) {
+				const int dirty_min_i = p_horizontal ? neighbor_dirty.position.y : neighbor_dirty.position.x;
+				const int dirty_max_i = p_horizontal ? neighbor_dirty.position.y + neighbor_dirty.size.y - 1 : neighbor_dirty.position.x + neighbor_dirty.size.x - 1;
+				min_i = MIN(min_i, dirty_min_i);
+				max_i = MAX(max_i, dirty_max_i);
+			}
+			min_i = CLAMP(min_i, 0, resolution - 1);
+			max_i = CLAMP(max_i, 0, resolution - 1);
+
+			PackedFloat32Array cell_heights = get_tile_heights(p_cell);
+			PackedFloat32Array neighbor_heights = get_tile_heights(p_neighbor);
+			if (cell_heights.size() != resolution * resolution || neighbor_heights.size() != resolution * resolution) {
+				return;
+			}
+
+			for (int i = min_i; i <= max_i; i++) {
+				const int cell_x = p_horizontal ? (p_neighbor.x > p_cell.x ? resolution - 1 : 0) : i;
+				const int cell_y = p_horizontal ? i : (p_neighbor.y > p_cell.y ? resolution - 1 : 0);
+				const int neighbor_x = p_horizontal ? (p_neighbor.x > p_cell.x ? 0 : resolution - 1) : i;
+				const int neighbor_y = p_horizontal ? i : (p_neighbor.y > p_cell.y ? 0 : resolution - 1);
+				const real_t cell_height = cell_heights[terrain_data->get_tile_height_index(cell_x, cell_y)];
+				const real_t neighbor_height = neighbor_heights[terrain_data->get_tile_height_index(neighbor_x, neighbor_y)];
+				const real_t synchronized_height = (cell_height + neighbor_height) * (real_t)0.5;
+				record_height_change(p_cell, cell_heights, cell_x, cell_y, synchronized_height);
+				record_height_change(p_neighbor, neighbor_heights, neighbor_x, neighbor_y, synchronized_height);
+			}
+		};
+
+		for (const Vector2i &cell : cells_to_sync) {
+			synchronize_edge(cell, cell + Vector2i(1, 0), true);
+			synchronize_edge(cell, cell + Vector2i(-1, 0), true);
+			synchronize_edge(cell, cell + Vector2i(0, 1), false);
+			synchronize_edge(cell, cell + Vector2i(0, -1), false);
+		}
+
+		const auto synchronize_corner = [&](const Vector2i &p_corner) {
+			const Vector2i corner_cells[4] = {
+				Vector2i(p_corner.x - 1, p_corner.y - 1),
+				Vector2i(p_corner.x, p_corner.y - 1),
+				Vector2i(p_corner.x - 1, p_corner.y),
+				Vector2i(p_corner.x, p_corner.y),
+			};
+			const Vector2i corner_indices[4] = {
+				Vector2i(resolution - 1, resolution - 1),
+				Vector2i(0, resolution - 1),
+				Vector2i(resolution - 1, 0),
+				Vector2i(0, 0),
+			};
+
+			bool dirty_corner = false;
+			for (int i = 0; i < 4; i++) {
+				if (!dirty_rects.has(corner_cells[i])) {
+					continue;
+				}
+				const Rect2i dirty_rect = dirty_rects[corner_cells[i]];
+				const Vector2i corner_index = corner_indices[i];
+				if (corner_index.x >= dirty_rect.position.x &&
+						corner_index.x < dirty_rect.position.x + dirty_rect.size.x &&
+						corner_index.y >= dirty_rect.position.y &&
+						corner_index.y < dirty_rect.position.y + dirty_rect.size.y) {
+					dirty_corner = true;
+					break;
+				}
+			}
+			if (!dirty_corner) {
+				return;
+			}
+
+			real_t total = 0.0;
+			int count = 0;
+			PackedFloat32Array corner_heights[4];
+			for (int i = 0; i < 4; i++) {
+				if (!terrain_data->has_tile(corner_cells[i])) {
+					continue;
+				}
+				corner_heights[i] = get_tile_heights(corner_cells[i]);
+				if (corner_heights[i].size() != resolution * resolution) {
+					continue;
+				}
+				total += corner_heights[i][terrain_data->get_tile_height_index(corner_indices[i].x, corner_indices[i].y)];
+				count++;
+			}
+			if (count < 2) {
+				return;
+			}
+
+			const real_t synchronized_height = total / (real_t)count;
+			for (int i = 0; i < 4; i++) {
+				if (corner_heights[i].size() != resolution * resolution) {
+					continue;
+				}
+				record_height_change(corner_cells[i], corner_heights[i], corner_indices[i].x, corner_indices[i].y, synchronized_height);
+			}
+		};
+
+		for (const Vector2i &cell : cells_to_sync) {
+			synchronize_corner(cell);
+			synchronize_corner(cell + Vector2i(1, 0));
+			synchronize_corner(cell + Vector2i(0, 1));
+			synchronize_corner(cell + Vector2i(1, 1));
+		}
+	}
+
+	if (!edited_tiles.is_empty()) {
+		for (const KeyValue<Vector2i, PackedFloat32Array> &E : edited_tiles) {
+			terrain_data->set_tile_height_data_no_notify(E.key, E.value);
+		}
+		for (const KeyValue<Vector2i, Rect2i> &E : dirty_rects) {
+			const Rect2i dirty_rect = E.value;
+			_refresh_height_texture_region(E.key, dirty_rect.position.x, dirty_rect.position.y, dirty_rect.position.x + dirty_rect.size.x - 1, dirty_rect.position.y + dirty_rect.size.y - 1);
+		}
 		update_gizmos();
 		delta["indices"] = changed_indices;
 		delta["before"] = before_values;

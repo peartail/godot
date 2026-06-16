@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="SimpleWorldPlacementData" inherits="Resource" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>
+		Serialized placement records for objects placed on SimpleTerrain.
+	</brief_description>
+	<description>
+		[SimpleWorldPlacementData] stores actual object placements as parallel arrays. Each record references a [SimpleWorldObjectProfile] through [member profile_ids], allowing generated instances to be rebuilt from a [SimpleWorldPlacementLibrary].
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="add_placement">
+			<return type="void" />
+			<param index="0" name="profile_id" type="String" />
+			<param index="1" name="position" type="Vector3" />
+			<param index="2" name="rotation" type="Vector3" />
+			<param index="3" name="scale" type="Vector3" />
+			<param index="4" name="terrain_normal" type="Vector3" />
+			<param index="5" name="seed" type="int" default="0" />
+			<param index="6" name="chunk_coord" type="Vector2" default="Vector2(0, 0)" />
+			<description>
+				Appends a placement record.
+			</description>
+		</method>
+		<method name="clear_placements">
+			<return type="void" />
+			<description>
+				Removes all placement records.
+			</description>
+		</method>
+		<method name="get_placement" qualifiers="const">
+			<return type="Dictionary" />
+			<param index="0" name="index" type="int" />
+			<description>
+				Returns placement fields for [param index] as a dictionary.
+			</description>
+		</method>
+		<method name="get_placement_count" qualifiers="const">
+			<return type="int" />
+			<description>
+				Returns the number of placement records.
+			</description>
+		</method>
+		<method name="remove_placement_at">
+			<return type="void" />
+			<param index="0" name="index" type="int" />
+			<description>
+				Removes the placement record at [param index].
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="chunk_coords" type="PackedVector2Array" setter="set_chunk_coords" getter="get_chunk_coords" default="PackedVector2Array()">
+			Optional chunk coordinate per placement, stored as [Vector2] for serialization.
+		</member>
+		<member name="library" type="SimpleWorldPlacementLibrary" setter="set_library" getter="get_library">
+			Library used to resolve [member profile_ids].
+		</member>
+		<member name="positions" type="PackedVector3Array" setter="set_positions" getter="get_positions" default="PackedVector3Array()">
+			World-space position per placement.
+		</member>
+		<member name="profile_ids" type="PackedStringArray" setter="set_profile_ids" getter="get_profile_ids" default="PackedStringArray()">
+			Profile id per placement.
+		</member>
+		<member name="rotations" type="PackedVector3Array" setter="set_rotations" getter="get_rotations" default="PackedVector3Array()">
+			Euler rotation per placement.
+		</member>
+		<member name="scales" type="PackedVector3Array" setter="set_scales" getter="get_scales" default="PackedVector3Array()">
+			Scale per placement.
+		</member>
+		<member name="seeds" type="PackedInt32Array" setter="set_seeds" getter="get_seeds" default="PackedInt32Array()">
+			Random seed per placement.
+		</member>
+		<member name="terrain_normals" type="PackedVector3Array" setter="set_terrain_normals" getter="get_terrain_normals" default="PackedVector3Array()">
+			Sampled terrain normal per placement.
+		</member>
+		<member name="terrain_path" type="NodePath" setter="set_terrain_path" getter="get_terrain_path" default="NodePath(&quot;&quot;)">
+			Path to the [SimpleTerrain3D] this data was authored against.
+		</member>
+	</members>
+</class>

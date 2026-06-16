@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="SimpleWorldPlacementLibrary" inherits="Resource" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>
+		Registered object profile library for SimpleTerrain world editing.
+	</brief_description>
+	<description>
+		[SimpleWorldPlacementLibrary] stores [SimpleWorldObjectProfile] resources that can be selected by editor tools. Placement data references profiles by id, so the library is the stable registry for rebuilds.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="add_profile">
+			<return type="void" />
+			<param index="0" name="profile" type="SimpleWorldObjectProfile" />
+			<description>
+				Appends [param profile] to the library.
+			</description>
+		</method>
+		<method name="clear_profiles">
+			<return type="void" />
+			<description>
+				Removes all registered profiles.
+			</description>
+		</method>
+		<method name="find_profile_index" qualifiers="const">
+			<return type="int" />
+			<param index="0" name="id" type="String" />
+			<description>
+				Returns the index of the profile with [param id], or [code]-1[/code] if not found.
+			</description>
+		</method>
+		<method name="get_profile" qualifiers="const">
+			<return type="SimpleWorldObjectProfile" />
+			<param index="0" name="index" type="int" />
+			<description>
+				Returns the profile at [param index].
+			</description>
+		</method>
+		<method name="get_profile_by_id" qualifiers="const">
+			<return type="SimpleWorldObjectProfile" />
+			<param index="0" name="id" type="String" />
+			<description>
+				Returns the profile with [param id], or [code]null[/code] if not found.
+			</description>
+		</method>
+		<method name="get_profile_count" qualifiers="const">
+			<return type="int" />
+			<description>
+				Returns the number of registered profiles.
+			</description>
+		</method>
+		<method name="has_profile_id" qualifiers="const">
+			<return type="bool" />
+			<param index="0" name="id" type="String" />
+			<description>
+				Returns whether a profile with [param id] exists.
+			</description>
+		</method>
+		<method name="remove_profile_at">
+			<return type="void" />
+			<param index="0" name="index" type="int" />
+			<description>
+				Removes the profile at [param index].
+			</description>
+		</method>
+		<method name="remove_profile_by_id">
+			<return type="void" />
+			<param index="0" name="id" type="String" />
+			<description>
+				Removes the profile with [param id] if it exists.
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="profiles" type="Array" setter="set_profiles" getter="get_profiles" default="[]">
+			Registered [SimpleWorldObjectProfile] resources.
+		</member>
+	</members>
+</class>

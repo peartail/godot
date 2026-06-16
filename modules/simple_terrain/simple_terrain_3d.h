@@ -5,6 +5,8 @@
 #pragma once
 
 #include "simple_terrain_data.h"
+#include "simple_world_placement_data.h"
+#include "simple_world_placement_library.h"
 #include "scene/3d/mesh_instance_3d.h"
 #include "scene/resources/material.h"
 #include "scene/resources/texture.h"
@@ -34,6 +36,8 @@ private:
 	};
 
 	Ref<SimpleTerrainData> simple_terrain_data;
+	Ref<SimpleWorldPlacementLibrary> world_placement_library;
+	Ref<SimpleWorldPlacementData> world_placement_data;
 
 	// The terrain is rendered by internal RenderingServer instances rather
 	// than the inherited MeshInstance3D::mesh. This gives the renderer a
@@ -103,6 +107,10 @@ public:
 	// flat resource when it needs to render or edit.
 	void set_simple_terrain_data(const Ref<SimpleTerrainData> &p_simple_terrain_data);
 	Ref<SimpleTerrainData> get_simple_terrain_data() const { return simple_terrain_data; }
+	void set_world_placement_library(const Ref<SimpleWorldPlacementLibrary> &p_library);
+	Ref<SimpleWorldPlacementLibrary> get_world_placement_library() const { return world_placement_library; }
+	void set_world_placement_data(const Ref<SimpleWorldPlacementData> &p_data);
+	Ref<SimpleWorldPlacementData> get_world_placement_data() const { return world_placement_data; }
 
 	// Grid controls proxy to SimpleTerrainData so the node remains convenient in the
 	// Inspector while the data can still be saved as a separate resource.

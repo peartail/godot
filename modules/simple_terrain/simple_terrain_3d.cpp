@@ -357,6 +357,22 @@ void SimpleTerrain3D::set_simple_terrain_data(const Ref<SimpleTerrainData> &p_si
 	rebuild_mesh();
 }
 
+void SimpleTerrain3D::set_world_placement_library(const Ref<SimpleWorldPlacementLibrary> &p_library) {
+	if (world_placement_library == p_library) {
+		return;
+	}
+	world_placement_library = p_library;
+	notify_property_list_changed();
+}
+
+void SimpleTerrain3D::set_world_placement_data(const Ref<SimpleWorldPlacementData> &p_data) {
+	if (world_placement_data == p_data) {
+		return;
+	}
+	world_placement_data = p_data;
+	notify_property_list_changed();
+}
+
 void SimpleTerrain3D::set_grid_size(int p_grid_size) {
 	_ensure_data();
 	syncing_data = true;
@@ -807,6 +823,7 @@ Dictionary SimpleTerrain3D::get_brush_hit(const Vector3 &p_ray_origin, const Vec
 		// scripts usually operate in scene coordinates.
 		const Vector3 world_position = get_global_transform().xform(closest_position);
 		result["position"] = world_position;
+		result["local_position"] = closest_position;
 		result["distance"] = p_ray_origin.distance_to(world_position);
 	}
 	return result;
@@ -874,6 +891,10 @@ void SimpleTerrain3D::_bind_methods() {
 	// methods here, and keep editor-only actions inside SimpleTerrainEditorPlugin.
 	ClassDB::bind_method(D_METHOD("set_simple_terrain_data", "simple_terrain_data"), &SimpleTerrain3D::set_simple_terrain_data);
 	ClassDB::bind_method(D_METHOD("get_simple_terrain_data"), &SimpleTerrain3D::get_simple_terrain_data);
+	ClassDB::bind_method(D_METHOD("set_world_placement_library", "library"), &SimpleTerrain3D::set_world_placement_library);
+	ClassDB::bind_method(D_METHOD("get_world_placement_library"), &SimpleTerrain3D::get_world_placement_library);
+	ClassDB::bind_method(D_METHOD("set_world_placement_data", "data"), &SimpleTerrain3D::set_world_placement_data);
+	ClassDB::bind_method(D_METHOD("get_world_placement_data"), &SimpleTerrain3D::get_world_placement_data);
 	ClassDB::bind_method(D_METHOD("set_grid_size", "grid_size"), &SimpleTerrain3D::set_grid_size);
 	ClassDB::bind_method(D_METHOD("get_grid_size"), &SimpleTerrain3D::get_grid_size);
 	ClassDB::bind_method(D_METHOD("set_cell_size", "cell_size"), &SimpleTerrain3D::set_cell_size);
@@ -932,6 +953,10 @@ void SimpleTerrain3D::_bind_methods() {
 
 	// Core terrain data and render chunk controls.
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "simple_terrain_data", PROPERTY_HINT_RESOURCE_TYPE, "SimpleTerrainData"), "set_simple_terrain_data", "get_simple_terrain_data");
+	ADD_GROUP("World Placement", "world_placement_");
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "world_placement_library", PROPERTY_HINT_RESOURCE_TYPE, "SimpleWorldPlacementLibrary"), "set_world_placement_library", "get_world_placement_library");
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "world_placement_data", PROPERTY_HINT_RESOURCE_TYPE, "SimpleWorldPlacementData"), "set_world_placement_data", "get_world_placement_data");
+	ADD_GROUP("", "");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "grid_size", PROPERTY_HINT_RANGE, "2,512,1,or_greater"), "set_grid_size", "get_grid_size");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "cell_size", PROPERTY_HINT_RANGE, "0.01,100,0.01,or_greater"), "set_cell_size", "get_cell_size");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "chunk_size", PROPERTY_HINT_RANGE, "1,256,1,or_greater"), "set_chunk_size", "get_chunk_size");

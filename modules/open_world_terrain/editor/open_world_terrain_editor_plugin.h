@@ -19,6 +19,8 @@ class Control;
 class EditorSpinSlider;
 class HBoxContainer;
 class OptionButton;
+class PanelContainer;
+class VBoxContainer;
 
 class OpenWorldTerrain3DGizmoPlugin : public EditorNode3DGizmoPlugin {
 	GDCLASS(OpenWorldTerrain3DGizmoPlugin, EditorNode3DGizmoPlugin);
@@ -70,6 +72,8 @@ class OpenWorldTerrainEditorPlugin : public EditorPlugin {
 	GDCLASS(OpenWorldTerrainEditorPlugin, EditorPlugin);
 
 	HBoxContainer *toolbar = nullptr;
+	PanelContainer *brush_overlay_panel = nullptr;
+	VBoxContainer *brush_options_vbox = nullptr;
 	Button *select_mode_button = nullptr;
 	Button *edit_mode_button = nullptr;
 	Ref<ButtonGroup> mode_button_group;
@@ -122,6 +126,8 @@ class OpenWorldTerrainEditorPlugin : public EditorPlugin {
 	void _rebuild_pressed();
 	void _pick_flatten_toggled(bool p_pressed);
 	void _update_toolbar();
+	void _attach_brush_overlay();
+	void _detach_brush_overlay();
 	real_t _get_brush_spacing() const;
 	void _apply_brush(const Vector3 &p_world_position);
 	void _record_brush_delta(const Dictionary &p_delta);

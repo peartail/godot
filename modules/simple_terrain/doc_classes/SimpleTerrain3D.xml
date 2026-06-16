@@ -161,6 +161,12 @@
 		<member name="simple_terrain_data" type="SimpleTerrainData" setter="set_simple_terrain_data" getter="get_simple_terrain_data">
 			Resource containing the editable height field. Assign a saved [SimpleTerrainData] resource to reuse terrain across scenes or keep height data independent from the node.
 		</member>
+		<member name="world_placement_data" type="SimpleWorldPlacementData" setter="set_world_placement_data" getter="get_world_placement_data">
+			Optional data resource containing world object placement records authored for this terrain. The initial editor UI can assign and edit this resource, but object generation is handled by later tooling.
+		</member>
+		<member name="world_placement_library" type="SimpleWorldPlacementLibrary" setter="set_world_placement_library" getter="get_world_placement_library">
+			Optional library of registered [SimpleWorldObjectProfile] resources available to world placement tools for this terrain.
+		</member>
 	</members>
 	<constants>
 		<constant name="BRUSH_RAISE" value="0" enum="BrushOperation">
