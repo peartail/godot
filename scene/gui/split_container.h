@@ -126,6 +126,8 @@ private:
 	bool split_offset_pending = false;
 	bool can_use_desired_sizes = false;
 	bool initialized = false;
+	bool allow_shrink_children_below_minimum_size = false;
+	int minimum_size_for_shrunk_children = 0;
 
 	bool touch_dragger_enabled = false;
 	bool drag_nested_intersections = false;
@@ -150,6 +152,7 @@ private:
 
 	Ref<Texture2D> _get_grabber_icon() const;
 	Ref<Texture2D> _get_touch_dragger_icon() const;
+	int _get_child_minimum_size(const Control *p_child, int p_axis) const;
 	Point2i _get_valid_range(int p_dragger_index) const;
 
 	PackedInt32Array _get_desired_sizes() const;
@@ -207,6 +210,11 @@ public:
 
 	void set_dragging_enabled(bool p_enabled);
 	bool is_dragging_enabled() const;
+
+	void set_allow_shrink_children_below_minimum_size(bool p_enabled);
+	bool is_allowing_shrink_children_below_minimum_size() const;
+	void set_minimum_size_for_shrunk_children(int p_size);
+	int get_minimum_size_for_shrunk_children() const;
 
 	virtual Size2 get_minimum_size() const override;
 	virtual Size2 get_desired_size() const override;

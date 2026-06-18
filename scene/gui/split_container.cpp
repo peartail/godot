@@ -441,6 +441,10 @@ int SplitContainer::_get_separation() const {
 	return MAX(theme_cache.separation, vertical ? g->get_height() : g->get_width());
 }
 
+int SplitContainer::_get_child_minimum_size(const Control *p_child, int p_axis) const {
+	return allow_shrink_children_below_minimum_size ? minimum_size_for_shrunk_children : (int)p_child->get_bound_minimum_size()[p_axis];
+}
+
 Point2i SplitContainer::_get_valid_range(int p_dragger_index) const {
 	ERR_FAIL_INDEX_V(p_dragger_index, (int)dragger_positions.size(), Point2i());
 	const int axis = vertical ? 1 : 0;
@@ -461,7 +465,7 @@ Point2i SplitContainer::_get_valid_range(int p_dragger_index) const {
 		ERR_FAIL_NULL_V(child, Point2i());
 		int max_size = (int)child->get_combined_maximum_size()[axis];
 		if (i <= p_dragger_index) {
-			position_range.x += (int)child->get_bound_minimum_size()[axis];
+			position_range.x += _get_child_minimum_size(child, axis);
 			if (has_left_max) {
 				if (max_size >= 0) {
 					max_left += max_size;
@@ -470,7 +474,7 @@ Point2i SplitContainer::_get_valid_range(int p_dragger_index) const {
 				}
 			}
 		} else if (i > p_dragger_index) {
-			position_range.y -= (int)child->get_bound_minimum_size()[axis];
+			position_range.y -= _get_child_minimum_size(child, axis);
 			if (has_right_max) {
 				if (max_size >= 0) {
 					max_right += max_size;
@@ -537,7 +541,7 @@ void SplitContainer::_set_desired_sizes(const PackedInt32Array &p_desired_sizes,
 	for (int i = 0; i < (int)valid_children.size(); i++) {
 		Control *child = valid_children[i];
 		StretchData sdata;
-		sdata.min_size = child->get_bound_minimum_size()[axis];
+		sdata.min_size = _get_child_minimum_size(child, axis);
 		sdata.max_size = child->get_combined_maximum_size()[axis];
 		sdata.final_size = MAX(sdata.min_size, p_desired_sizes.is_empty() ? 0 : p_desired_sizes[i]);
 		total_desired_size += sdata.final_size;
@@ -737,7 +741,7 @@ void SplitContainer::_update_default_dragger_positions() {
 	LocalVector<StretchData> stretch_data;
 	for (const Control *child : valid_children) {
 		StretchData sdata;
-		sdata.min_size = (int)child->get_bound_minimum_size()[axis];
+		sdata.min_size = _get_child_minimum_size(child, axis);
 		sdata.max_size = (int)child->get_combined_maximum_size()[axis];
 		sdata.final_size = sdata.min_size;
 		if ((vertical ? child->get_v_size_flags() : child->get_h_size_flags()).has_flag(SIZE_EXPAND) && child->get_stretch_ratio() > 0) {
@@ -865,7 +869,7 @@ void SplitContainer::_update_dragger_positions(int p_clamp_index) {
 	if (p_clamp_index == -1) {
 		// Check each dragger with the one to the right of it.
 		for (int i = 0; i < (int)dragger_positions.size() - 1; i++) {
-			const int check_min_size = (int)valid_children[i + 1]->get_bound_minimum_size()[axis];
+			const int check_min_size = _get_child_minimum_size(valid_children[i + 1], axis);
 			const int push_pos = dragger_positions[i] + sep + check_min_size;
 			if (dragger_positions[i + 1] < push_pos) {
 				dragger_positions[i + 1] = push_pos;
@@ -880,7 +884,7 @@ void SplitContainer::_update_dragger_positions(int p_clamp_index) {
 		// Propagate constraints to the left.
 		for (int i = p_clamp_index - 1; i >= 0; i--) {
 			const int right_dragger_position = i == p_clamp_index - 1 ? dragging_position : dragger_positions[i + 1];
-			const int min_size = (int)valid_children[i + 1]->get_bound_minimum_size()[axis];
+			const int min_size = _get_child_minimum_size(valid_children[i + 1], axis);
 			const int max_position = right_dragger_position - sep - min_size;
 			if (dragger_positions[i] > max_position) {
 				dragger_positions[i] = max_position;
@@ -898,7 +902,7 @@ void SplitContainer::_update_dragger_positions(int p_clamp_index) {
 		// Propagate constraints to the right.
 		for (int i = p_clamp_index + 1; i < (int)dragger_positions.size(); i++) {
 			const int left_dragger_position = i == p_clamp_index + 1 ? dragging_position : dragger_positions[i - 1];
-			const int min_size = (int)valid_children[i]->get_bound_minimum_size()[axis];
+			const int min_size = _get_child_minimum_size(valid_children[i], axis);
 			const int min_position = left_dragger_position + sep + min_size;
 			if (dragger_positions[i] < min_position) {
 				dragger_positions[i] = min_position;
@@ -1086,8 +1090,8 @@ Size2 SplitContainer::_get_minimum_size(bool p_use_desired_sizes) const {
 
 	for (const Control *child : valid_children) {
 		const Size2 min_size = p_use_desired_sizes ? child->get_bound_desired_size() : child->get_bound_minimum_size();
-		minimum[axis] += (int)min_size[axis];
-		minimum[other_axis] = (int)MAX(minimum[other_axis], min_size[other_axis]);
+		minimum[axis] += allow_shrink_children_below_minimum_size ? minimum_size_for_shrunk_children : (int)min_size[axis];
+		minimum[other_axis] = allow_shrink_children_below_minimum_size ? minimum_size_for_shrunk_children : (int)MAX(minimum[other_axis], min_size[other_axis]);
 	}
 
 	return minimum;
@@ -1601,6 +1605,35 @@ void SplitContainer::set_dragging_enabled(bool p_enabled) {
 
 bool SplitContainer::is_dragging_enabled() const {
 	return dragging_enabled;
+}
+
+void SplitContainer::set_allow_shrink_children_below_minimum_size(bool p_enabled) {
+	if (allow_shrink_children_below_minimum_size == p_enabled) {
+		return;
+	}
+
+	allow_shrink_children_below_minimum_size = p_enabled;
+	update_minimum_size();
+	_resort();
+}
+
+bool SplitContainer::is_allowing_shrink_children_below_minimum_size() const {
+	return allow_shrink_children_below_minimum_size;
+}
+
+void SplitContainer::set_minimum_size_for_shrunk_children(int p_size) {
+	p_size = MAX(p_size, 0);
+	if (minimum_size_for_shrunk_children == p_size) {
+		return;
+	}
+
+	minimum_size_for_shrunk_children = p_size;
+	update_minimum_size();
+	_resort();
+}
+
+int SplitContainer::get_minimum_size_for_shrunk_children() const {
+	return minimum_size_for_shrunk_children;
 }
 
 Vector<int> SplitContainer::get_allowed_size_flags_horizontal() const {

@@ -80,6 +80,7 @@
 #include "editor/export/register_exporters.h"
 #include "editor/export/shader_baker_export_plugin.h"
 #include "editor/file_system/dependency_editor.h"
+#include "editor/file_system/editor_file_system.h"
 #include "editor/file_system/editor_paths.h"
 #include "editor/gui/editor_about.h"
 #include "editor/gui/editor_bottom_panel.h"
@@ -153,6 +154,8 @@
 #include "main/main.h"
 #include "scene/2d/node_2d.h"
 #include "scene/3d/bone_attachment_3d.h"
+#include "scene/3d/mesh_instance_3d.h"
+#include "scene/3d/node_3d.h"
 #include "scene/animation/animation_tree.h"
 #include "scene/gui/color_picker.h"
 #include "scene/gui/dialogs.h"
@@ -169,6 +172,7 @@
 #include "scene/main/window.h"
 #include "scene/property_utils.h"
 #include "scene/resources/3d/mesh_library.h"
+#include "scene/resources/mesh.h"
 #include "scene/resources/dpi_texture.h"
 #include "scene/resources/image_texture.h"
 #include "scene/resources/packed_scene.h"
@@ -206,6 +210,10 @@
 #endif // ANDROID_ENABLED
 
 #include "modules/modules_enabled.gen.h" // For gdscript, mono.
+
+#ifdef MODULE_CSG_ENABLED
+#include "modules/csg/csg_shape.h"
+#endif // MODULE_CSG_ENABLED
 
 #include <cstdlib>
 
@@ -2074,6 +2082,229 @@ void EditorNode::trigger_menu_option(int p_option, bool p_confirmed) {
 	_menu_option_confirm(p_option, p_confirmed);
 }
 
+static String _get_csg_baked_scene_path(const String &p_scene_path) {
+	String base_dir = p_scene_path.get_base_dir();
+	const String file_name = p_scene_path.get_file();
+	const String baked_file = file_name.get_basename() + "_baked." + file_name.get_extension();
+	if (base_dir == "res://") {
+		return String("res://_baked").path_join(baked_file);
+	}
+	return (base_dir + "_baked").path_join(baked_file);
+}
+
+static void _flip_triangle_indices(PackedInt32Array &r_indices) {
+	int32_t *indicesw = r_indices.ptrw();
+	for (int i = 0; i + 2 < r_indices.size(); i += 3) {
+		const int32_t swap = indicesw[i + 1];
+		indicesw[i + 1] = indicesw[i + 2];
+		indicesw[i + 2] = swap;
+	}
+}
+
+static PackedInt32Array _create_flipped_triangle_indices(int p_vertex_count) {
+	PackedInt32Array indices;
+	indices.resize(p_vertex_count);
+	int32_t *indicesw = indices.ptrw();
+	for (int i = 0; i + 2 < p_vertex_count; i += 3) {
+		indicesw[i] = i;
+		indicesw[i + 1] = i + 2;
+		indicesw[i + 2] = i + 1;
+	}
+	return indices;
+}
+
+static bool _append_transformed_mesh_surface(const Ref<Mesh> &p_source_mesh, int p_surface, const Transform3D &p_transform, const Ref<ArrayMesh> &p_target_mesh, const Ref<Material> &p_material) {
+	ERR_FAIL_COND_V(p_source_mesh.is_null(), false);
+	ERR_FAIL_COND_V(p_target_mesh.is_null(), false);
+
+	const Mesh::PrimitiveType primitive = p_source_mesh->surface_get_primitive_type(p_surface);
+	Array arrays = p_source_mesh->surface_get_arrays(p_surface);
+	if (arrays.size() != Mesh::ARRAY_MAX) {
+		return false;
+	}
+
+	PackedVector3Array vertices = arrays[Mesh::ARRAY_VERTEX];
+	if (vertices.is_empty()) {
+		return false;
+	}
+
+	Vector3 *verticesw = vertices.ptrw();
+	for (int i = 0; i < vertices.size(); i++) {
+		verticesw[i] = p_transform.xform(verticesw[i]);
+	}
+	arrays[Mesh::ARRAY_VERTEX] = vertices;
+
+	PackedVector3Array normals = arrays[Mesh::ARRAY_NORMAL];
+	if (normals.size() == vertices.size()) {
+		const Basis normal_xform = p_transform.basis.inverse().transposed();
+		Vector3 *normalsw = normals.ptrw();
+		for (int i = 0; i < normals.size(); i++) {
+			normalsw[i] = normal_xform.xform(normalsw[i]).normalized();
+		}
+		arrays[Mesh::ARRAY_NORMAL] = normals;
+	}
+
+	PackedFloat32Array tangents = arrays[Mesh::ARRAY_TANGENT];
+	if (tangents.size() == vertices.size() * 4) {
+		float *tangentsw = tangents.ptrw();
+		for (int i = 0; i < vertices.size(); i++) {
+			const int tangent_offset = i * 4;
+			const Vector3 tangent = p_transform.basis.xform(Vector3(tangentsw[tangent_offset], tangentsw[tangent_offset + 1], tangentsw[tangent_offset + 2])).normalized();
+			tangentsw[tangent_offset] = tangent.x;
+			tangentsw[tangent_offset + 1] = tangent.y;
+			tangentsw[tangent_offset + 2] = tangent.z;
+			if (p_transform.basis.determinant() < 0) {
+				tangentsw[tangent_offset + 3] = -tangentsw[tangent_offset + 3];
+			}
+		}
+		arrays[Mesh::ARRAY_TANGENT] = tangents;
+	}
+
+	if (primitive == Mesh::PRIMITIVE_TRIANGLES && p_transform.basis.determinant() < 0) {
+		PackedInt32Array indices = arrays[Mesh::ARRAY_INDEX];
+		if (indices.is_empty()) {
+			arrays[Mesh::ARRAY_INDEX] = _create_flipped_triangle_indices(vertices.size());
+		} else {
+			_flip_triangle_indices(indices);
+			arrays[Mesh::ARRAY_INDEX] = indices;
+		}
+	}
+
+	const int target_surface = p_target_mesh->get_surface_count();
+	p_target_mesh->add_surface_from_arrays(primitive, arrays);
+	p_target_mesh->surface_set_material(target_surface, p_material);
+	return true;
+}
+
+static bool _is_csg_shape_node(Node *p_node) {
+#ifdef MODULE_CSG_ENABLED
+	return Object::cast_to<CSGShape3D>(p_node) != nullptr;
+#else
+	return false;
+#endif // MODULE_CSG_ENABLED
+}
+
+static int _append_baked_csg_scene_meshes(Node *p_node, const Transform3D &p_root_inverse, const Ref<ArrayMesh> &p_target_mesh, bool p_inside_csg) {
+	ERR_FAIL_NULL_V(p_node, 0);
+
+	int appended_surfaces = 0;
+
+#ifdef MODULE_CSG_ENABLED
+	CSGShape3D *csg_shape = Object::cast_to<CSGShape3D>(p_node);
+	if (csg_shape && !p_inside_csg) {
+		csg_shape->update_shape();
+		Ref<ArrayMesh> csg_mesh = csg_shape->bake_static_mesh();
+		if (csg_mesh.is_valid()) {
+			const Transform3D csg_transform = p_root_inverse * csg_shape->get_global_transform();
+			for (int i = 0; i < csg_mesh->get_surface_count(); i++) {
+				if (_append_transformed_mesh_surface(csg_mesh, i, csg_transform, p_target_mesh, csg_mesh->surface_get_material(i))) {
+					appended_surfaces++;
+				}
+			}
+		}
+		return appended_surfaces;
+	}
+#endif // MODULE_CSG_ENABLED
+
+	MeshInstance3D *mesh_instance = Object::cast_to<MeshInstance3D>(p_node);
+	if (mesh_instance && !p_inside_csg) {
+		Ref<Mesh> mesh = mesh_instance->get_mesh();
+		if (mesh.is_valid()) {
+			const Transform3D mesh_transform = p_root_inverse * mesh_instance->get_global_transform();
+			for (int i = 0; i < mesh->get_surface_count(); i++) {
+				if (_append_transformed_mesh_surface(mesh, i, mesh_transform, p_target_mesh, mesh_instance->get_active_material(i))) {
+					appended_surfaces++;
+				}
+			}
+		}
+	}
+
+	const bool child_inside_csg = p_inside_csg || _is_csg_shape_node(p_node);
+	for (int i = 0; i < p_node->get_child_count(); i++) {
+		appended_surfaces += _append_baked_csg_scene_meshes(p_node->get_child(i), p_root_inverse, p_target_mesh, child_inside_csg);
+	}
+
+	return appended_surfaces;
+}
+
+void EditorNode::_bake_csg_scene(bool p_confirmed) {
+#ifndef MODULE_CSG_ENABLED
+	show_accept(TTR("The CSG module is not enabled in this editor build."), TTR("OK"));
+	return;
+#else
+	Node *scene = editor_data.get_edited_scene_root();
+	if (!scene) {
+		show_accept(TTR("A root node is required to bake the scene."), TTR("OK"));
+		return;
+	}
+
+	const String scene_path = scene->get_scene_file_path();
+	if (scene_path.is_empty()) {
+		show_accept(TTR("The current scene must be saved before it can be baked."), TTR("OK"));
+		return;
+	}
+
+	const String baked_scene_path = _get_csg_baked_scene_path(scene_path);
+	if (FileAccess::exists(baked_scene_path) && !p_confirmed) {
+		confirmation->set_text(vformat(TTR("The baked scene already exists:\n%s\n\nOverwrite it?"), baked_scene_path));
+		confirmation->popup_centered();
+		return;
+	}
+
+	const String output_dir = baked_scene_path.get_base_dir();
+	Error err = OK;
+	if (!DirAccess::exists(output_dir)) {
+		err = EditorFileSystem::get_singleton()->make_dir_recursive(output_dir);
+		if (err != OK) {
+			show_accept(vformat(TTR("Could not create output folder:\n%s"), output_dir), TTR("OK"));
+			return;
+		}
+	}
+
+	Transform3D root_inverse;
+	Node3D *scene_root_3d = Object::cast_to<Node3D>(scene);
+	if (scene_root_3d) {
+		root_inverse = scene_root_3d->get_global_transform().affine_inverse();
+	}
+
+	Ref<ArrayMesh> baked_mesh;
+	baked_mesh.instantiate();
+	const int appended_surfaces = _append_baked_csg_scene_meshes(scene, root_inverse, baked_mesh, false);
+	if (appended_surfaces == 0 || baked_mesh->get_surface_count() == 0) {
+		show_accept(TTR("No CSG or MeshInstance3D geometry was found to bake."), TTR("OK"));
+		return;
+	}
+
+	MeshInstance3D *baked_root = memnew(MeshInstance3D);
+	baked_root->set_name(scene_path.get_file().get_basename() + "_baked");
+	baked_root->set_mesh(baked_mesh);
+
+	Ref<PackedScene> packed_scene;
+	packed_scene.instantiate();
+	err = packed_scene->pack(baked_root);
+	memdelete(baked_root);
+
+	if (err != OK) {
+		show_accept(TTR("Could not pack the baked scene."), TTR("OK"));
+		return;
+	}
+
+	int save_flags = ResourceSaver::FLAG_REPLACE_SUBRESOURCE_PATHS;
+	if (EDITOR_GET("filesystem/on_save/compress_binary_resources")) {
+		save_flags |= ResourceSaver::FLAG_COMPRESS;
+	}
+
+	err = ResourceSaver::save(packed_scene, baked_scene_path, save_flags);
+	if (err != OK) {
+		_dialog_display_save_error(baked_scene_path, err);
+		return;
+	}
+
+	EditorFileSystem::get_singleton()->scan_changes();
+	EditorToaster::get_singleton()->popup_str(vformat(TTR("Baked CSG scene saved to \"%s\"."), baked_scene_path), EditorToaster::SEVERITY_INFO);
+#endif // MODULE_CSG_ENABLED
+}
+
 void EditorNode::_dialog_display_save_error(String p_file, Error p_error) {
 	if (p_error) {
 		switch (p_error) {
@@ -3554,6 +3785,10 @@ void EditorNode::_menu_option_confirm(int p_option, bool p_confirmed) {
 			_save_all_scenes();
 		} break;
 
+		case SCENE_BAKE_CSG_SCENE: {
+			_bake_csg_scene(p_confirmed);
+		} break;
+
 		case EditorSceneTabs::SCENE_RUN: {
 			Node *scene = editor_data.get_edited_scene_root(scene_tabs->get_option_tab());
 			ERR_FAIL_NULL(scene);
@@ -4264,6 +4499,15 @@ void EditorNode::_update_file_menu_opened() {
 		file_menu->set_item_disabled(file_menu->get_item_index(SCENE_SAVE_ALL_SCENES), true);
 		file_menu->set_item_tooltip(file_menu->get_item_index(SCENE_SAVE_ALL_SCENES), TTR("All scenes are already saved."));
 	}
+
+	const int bake_csg_scene_idx = file_menu->get_item_index(SCENE_BAKE_CSG_SCENE);
+	if (bake_csg_scene_idx >= 0) {
+		Node *scene = editor_data.get_edited_scene_root();
+		const bool can_bake_csg_scene = scene && !scene->get_scene_file_path().is_empty();
+		file_menu->set_item_disabled(bake_csg_scene_idx, !can_bake_csg_scene);
+		file_menu->set_item_tooltip(bake_csg_scene_idx, can_bake_csg_scene ? String() : TTR("Save the current scene before baking it."));
+	}
+
 	_update_undo_redo_allowed();
 }
 
@@ -8019,6 +8263,9 @@ void EditorNode::_build_file_menu() {
 	file_menu->add_shortcut(ED_GET_SHORTCUT("editor/save_scene"), SCENE_SAVE_SCENE);
 	file_menu->add_shortcut(ED_GET_SHORTCUT("editor/save_scene_as"), SCENE_SAVE_AS_SCENE);
 	file_menu->add_shortcut(ED_GET_SHORTCUT("editor/save_all_scenes"), SCENE_SAVE_ALL_SCENES);
+	file_menu->add_separator();
+
+	file_menu->add_item(TTRC("Bake CSG Scene..."), SCENE_BAKE_CSG_SCENE);
 	file_menu->add_separator();
 
 	file_menu->add_shortcut(ED_GET_SHORTCUT("editor/quick_open"), SCENE_QUICK_OPEN);

@@ -179,6 +179,7 @@ public:
 	void apply_height_patch(const PackedInt32Array &p_indices, const PackedFloat32Array &p_heights);
 	Dictionary get_brush_hit(const Vector3 &p_ray_origin, const Vector3 &p_ray_direction) const;
 	PackedVector3Array get_chunk_debug_lines() const;
+	virtual Ref<TriangleMesh> generate_triangle_mesh() const override;
 	virtual AABB get_aabb() const override;
 	virtual PackedStringArray get_configuration_warnings() const override;
 

@@ -261,6 +261,7 @@ DockTabContainer::DockTabContainer(EditorDock::DockSlot p_slot) {
 
 	set_drag_to_rearrange_enabled(true);
 	set_tabs_rearrange_group(1);
+	set_clip_contents(true);
 	hide();
 
 	drag_hint = memnew(EditorDockDragHint);

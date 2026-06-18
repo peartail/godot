@@ -131,6 +131,8 @@ DockSplitContainer::DockSplitContainer() {
 	if (EDITOR_GET("interface/touchscreen/enable_touch_optimizations")) {
 		callable_mp((SplitContainer *)this, &SplitContainer::set_touch_dragger_enabled).call_deferred(true);
 	}
+	set_allow_shrink_children_below_minimum_size(true);
+	set_minimum_size_for_shrunk_children(100 * EDSCALE);
 	set_drag_nested_intersections(true);
 }
 

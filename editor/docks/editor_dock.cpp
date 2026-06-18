@@ -330,4 +330,5 @@ Ref<Texture2D> EditorDock::get_effective_icon(const Callable &p_icon_fetch) {
 
 EditorDock::EditorDock() {
 	set_accessibility_region(true);
+	set_clip_contents(true);
 }

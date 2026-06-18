@@ -6,6 +6,7 @@
 
 #include "core/math/geometry_3d.h"
 #include "core/math/random_pcg.h"
+#include "core/math/triangle_mesh.h"
 #include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
 #include "scene/resources/3d/world_3d.h"
@@ -182,7 +183,7 @@ void SimpleTerrain3D::_clear_chunks() {
 void SimpleTerrain3D::_sync_chunk_instances() {
 	RenderingServer *rs = RenderingServer::get_singleton();
 	const RID scenario = is_inside_tree() && get_world_3d().is_valid() ? get_world_3d()->get_scenario() : RID();
-	const Transform3D global_transform = get_global_transform();
+	const Transform3D global_transform = is_inside_tree() ? get_global_transform() : Transform3D();
 	for (TerrainChunk &chunk : chunks) {
 		if (!chunk.instance.is_valid()) {
 			chunk.instance = rs->instance_create();
@@ -605,7 +606,7 @@ void SimpleTerrain3D::apply_brush(const Vector3 &p_world_position, real_t p_radi
 Dictionary SimpleTerrain3D::apply_brush_with_delta(const Vector3 &p_world_position, real_t p_radius, real_t p_strength, BrushOperation p_operation) {
 	Dictionary delta;
 	_ensure_data();
-	if (p_radius <= 0.0 || p_strength == 0.0) {
+	if (!is_inside_tree() || p_radius <= 0.0 || p_strength == 0.0) {
 		return delta;
 	}
 
@@ -722,7 +723,7 @@ void SimpleTerrain3D::apply_height_patch(const PackedInt32Array &p_indices, cons
 
 Dictionary SimpleTerrain3D::get_brush_hit(const Vector3 &p_ray_origin, const Vector3 &p_ray_direction) const {
 	Dictionary result;
-	if (simple_terrain_data.is_null() || p_ray_direction.is_zero_approx()) {
+	if (!is_inside_tree() || simple_terrain_data.is_null() || p_ray_direction.is_zero_approx()) {
 		return result;
 	}
 
@@ -774,6 +775,7 @@ Dictionary SimpleTerrain3D::get_brush_hit(const Vector3 &p_ray_origin, const Vec
 	const real_t delta_t_z = step_z == 0 ? Math::INF : cell_size / Math::abs(local_direction.z);
 	real_t closest_distance = Math::INF;
 	Vector3 closest_position;
+	Vector3 closest_normal = Vector3(0.0, 1.0, 0.0);
 	bool found = false;
 
 	auto test_cell = [&](int p_x, int p_z) {
@@ -785,16 +787,26 @@ Dictionary SimpleTerrain3D::get_brush_hit(const Vector3 &p_ray_origin, const Vec
 		if (Geometry3D::ray_intersects_triangle(local_origin, local_direction, top_left, top_right, bottom_left, &hit)) {
 			const real_t distance = local_origin.distance_to(hit);
 			if (distance < closest_distance) {
+				Vector3 normal = (top_right - top_left).cross(bottom_left - top_left).normalized();
+				if (normal.y < 0.0) {
+					normal = -normal;
+				}
 				closest_distance = distance;
 				closest_position = hit;
+				closest_normal = normal;
 				found = true;
 			}
 		}
 		if (Geometry3D::ray_intersects_triangle(local_origin, local_direction, top_right, bottom_right, bottom_left, &hit)) {
 			const real_t distance = local_origin.distance_to(hit);
 			if (distance < closest_distance) {
+				Vector3 normal = (bottom_right - top_right).cross(bottom_left - top_right).normalized();
+				if (normal.y < 0.0) {
+					normal = -normal;
+				}
 				closest_distance = distance;
 				closest_position = hit;
+				closest_normal = normal;
 				found = true;
 			}
 		}
@@ -822,8 +834,10 @@ Dictionary SimpleTerrain3D::get_brush_hit(const Vector3 &p_ray_origin, const Vec
 		// Public API returns world-space data because editor tools and gameplay
 		// scripts usually operate in scene coordinates.
 		const Vector3 world_position = get_global_transform().xform(closest_position);
+		const Vector3 world_normal = get_global_transform().basis.xform(closest_normal).normalized();
 		result["position"] = world_position;
 		result["local_position"] = closest_position;
+		result["normal"] = world_normal;
 		result["distance"] = p_ray_origin.distance_to(world_position);
 	}
 	return result;
@@ -1021,6 +1035,33 @@ AABB SimpleTerrain3D::get_aabb() const {
 
 	const real_t size = (real_t)simple_terrain_data->get_grid_size() * simple_terrain_data->get_cell_size();
 	return AABB(Vector3(-size * 0.5, min_height, -size * 0.5), Vector3(size, MAX((real_t)0.01, max_height - min_height), size));
+}
+
+Ref<TriangleMesh> SimpleTerrain3D::generate_triangle_mesh() const {
+	Vector<Vector3> faces;
+	for (const TerrainChunk &chunk : chunks) {
+		if (chunk.mesh.is_null()) {
+			continue;
+		}
+		const Vector<Face3> chunk_faces = chunk.mesh->get_faces();
+		const int old_size = faces.size();
+		faces.resize(old_size + chunk_faces.size() * 3);
+		Vector3 *faces_w = faces.ptrw();
+		for (int i = 0; i < chunk_faces.size(); i++) {
+			faces_w[old_size + i * 3 + 0] = chunk_faces[i].vertex[0];
+			faces_w[old_size + i * 3 + 1] = chunk_faces[i].vertex[1];
+			faces_w[old_size + i * 3 + 2] = chunk_faces[i].vertex[2];
+		}
+	}
+
+	if (faces.is_empty()) {
+		return Ref<TriangleMesh>();
+	}
+
+	Ref<TriangleMesh> triangle_mesh;
+	triangle_mesh.instantiate();
+	triangle_mesh->create_from_faces(faces);
+	return triangle_mesh;
 }
 
 PackedStringArray SimpleTerrain3D::get_configuration_warnings() const {

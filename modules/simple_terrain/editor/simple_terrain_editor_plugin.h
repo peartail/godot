@@ -18,6 +18,7 @@
 class Button;
 class ButtonGroup;
 class Control;
+class EditorFileDialog;
 class EditorResourcePicker;
 class EditorSpinSlider;
 class HBoxContainer;
@@ -58,23 +59,29 @@ class SimpleWorldPlacementDock : public EditorDock {
 	OptionButton *category_filter = nullptr;
 	ItemList *profile_list = nullptr;
 	Button *add_profile_button = nullptr;
+	Button *add_scene_button = nullptr;
 	Button *duplicate_profile_button = nullptr;
 	Button *remove_profile_button = nullptr;
 	EditorInspector *profile_inspector = nullptr;
+	EditorFileDialog *scene_file_dialog = nullptr;
 
 	void _library_resource_changed(const Ref<Resource> &p_resource);
 	void _data_resource_changed(const Ref<Resource> &p_resource);
 	void _new_library_pressed();
 	void _new_data_pressed();
 	void _add_profile_pressed();
+	void _add_scene_pressed();
+	void _scene_file_selected(const String &p_path);
 	void _duplicate_profile_pressed();
 	void _remove_profile_pressed();
 	void _profile_list_item_selected(int p_index);
 	void _search_text_changed(const String &p_text);
 	void _category_selected(int p_index);
+	void _editor_selection_changed();
 	void _library_changed();
 	void _profile_changed();
 	void _refresh_after_resource_undo();
+	void _refresh_after_resource_undo_deferred();
 
 	void _set_library_with_undo(const Ref<SimpleWorldPlacementLibrary> &p_library, const String &p_action_name);
 	void _set_data_with_undo(const Ref<SimpleWorldPlacementData> &p_data, const String &p_action_name);
@@ -85,6 +92,15 @@ class SimpleWorldPlacementDock : public EditorDock {
 	void _refresh_profile_list();
 	void _refresh_profile_inspector();
 	void _update_controls();
+	void _debug_log(const String &p_message) const;
+	void _debug_log_state(const String &p_context) const;
+	void _save_resource_if_file_backed(const Ref<Resource> &p_resource) const;
+	void _save_current_resources_if_file_backed() const;
+	SimpleTerrain3D *_get_selected_terrain() const;
+	bool _sync_selected_terrain();
+	Vector<String> _get_scene_paths_from_drag_data(const Variant &p_data) const;
+	bool _has_scene_files_in_drag_data(const Variant &p_data) const;
+	void _add_scene_paths(const Vector<String> &p_paths, const String &p_action_name);
 	String _make_unique_profile_id(const String &p_base_id) const;
 	Ref<SimpleWorldObjectProfile> _get_selected_profile() const;
 
@@ -92,6 +108,11 @@ protected:
 	static void _bind_methods();
 
 public:
+	virtual bool can_drop_data(const Point2 &p_point, const Variant &p_data) const override;
+	virtual void drop_data(const Point2 &p_point, const Variant &p_data) override;
+	bool can_drop_data_fw(const Point2 &p_point, const Variant &p_data, Control *p_from) const;
+	void drop_data_fw(const Point2 &p_point, const Variant &p_data, Control *p_from);
+	Ref<SimpleWorldObjectProfile> get_selected_profile() const;
 	void edit(SimpleTerrain3D *p_terrain);
 
 	SimpleWorldPlacementDock();
@@ -118,11 +139,16 @@ class SimpleTerrainEditorPlugin : public EditorPlugin {
 	// of a generic inspector operation.
 	HBoxContainer *toolbar = nullptr;
 	PanelContainer *brush_overlay_panel = nullptr;
+	PanelContainer *placement_overlay_panel = nullptr;
 	VBoxContainer *brush_options_vbox = nullptr;
+	VBoxContainer *placement_options_vbox = nullptr;
 	Button *select_mode_button = nullptr;
 	Button *edit_mode_button = nullptr;
+	Button *placement_mode_button = nullptr;
 	Ref<ButtonGroup> mode_button_group;
 	OptionButton *operation_button = nullptr;
+	Label *placement_status_label = nullptr;
+	Label *placement_library_label = nullptr;
 	EditorSpinSlider *radius_slider = nullptr;
 	EditorSpinSlider *strength_slider = nullptr;
 	Button *flat_button = nullptr;
@@ -133,6 +159,7 @@ class SimpleTerrainEditorPlugin : public EditorPlugin {
 
 	SimpleTerrain3D *terrain = nullptr;
 	bool terrain_mode = false;
+	bool placement_mode = false;
 	bool painting = false;
 	bool has_cursor_hit = false;
 
@@ -153,12 +180,19 @@ class SimpleTerrainEditorPlugin : public EditorPlugin {
 	// the editor plugin easier to replace or port to GDExtension later.
 	void _select_mode_pressed();
 	void _edit_mode_pressed();
+	void _placement_mode_pressed();
 	void _operation_selected(int p_index);
 	void _flat_pressed();
 	void _random_pressed();
 	void _update_toolbar();
+	void _update_placement_overlay();
+	Node3D *_get_or_create_placement_root(EditorUndoRedoManager *p_undo_redo);
+	void _place_selected_profile(Camera3D *p_camera, const Vector2 &p_mouse_position);
+	void _set_placement_arrays(SimpleWorldPlacementData *p_data, const PackedStringArray &p_profile_ids, const PackedVector3Array &p_positions, const PackedVector3Array &p_rotations, const PackedVector3Array &p_scales, const PackedVector3Array &p_normals, const PackedInt32Array &p_seeds, const PackedVector2Array &p_chunk_coords);
 	void _attach_brush_overlay();
 	void _detach_brush_overlay();
+	void _attach_placement_overlay();
+	void _detach_placement_overlay();
 	void _apply_brush(const Vector3 &p_world_position);
 	void _record_brush_delta(const Dictionary &p_delta);
 	Dictionary _get_hit(Camera3D *p_camera, const Vector2 &p_mouse_position) const;
@@ -171,6 +205,7 @@ class SimpleTerrainEditorPlugin : public EditorPlugin {
 	void _commit_stroke_undo();
 
 protected:
+	static void _bind_methods();
 	void _notification(int p_what);
 
 public:
