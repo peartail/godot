@@ -119,6 +119,7 @@
 #include "editor/debugger/debug_adapter/debug_adapter_server.h"
 #include "editor/debugger/editor_debugger_node.h"
 #include "editor/doc/doc_data_class_path.gen.h"
+#include "editor/doc/doc_data_compressed.gen.h"
 #include "editor/doc/doc_tools.h"
 #include "editor/doc/editor_help.h"
 #include "editor/editor_node.h"
@@ -292,6 +293,8 @@ static bool dump_extension_api = false;
 static bool include_docs_in_extension_api_dump = false;
 static bool validate_extension_api = false;
 static String validate_extension_api_file;
+static String agent_docs_action;
+static String agent_docs_argument;
 #endif
 bool profile_gpu = false;
 
@@ -329,6 +332,276 @@ static String get_full_version_string() {
 	}
 	return String(GODOT_VERSION_FULL_BUILD) + hash;
 }
+
+#ifdef TOOLS_ENABLED
+static String agent_docs_format_text(const String &p_text) {
+	String text = p_text.strip_edges();
+	text = text.replace("[codeblock]", "```gdscript");
+	text = text.replace("[codeblock lang=gdscript]", "```gdscript");
+	text = text.replace("[codeblock lang=csharp]", "```csharp");
+	text = text.replace("[/codeblock]", "```");
+	text = text.replace("[code]", "`");
+	text = text.replace("[/code]", "`");
+
+	String formatted;
+	for (int i = 0; i < text.length(); i++) {
+		if (text[i] != '[') {
+			formatted += text[i];
+			continue;
+		}
+
+		int end = text.find_char(']', i);
+		if (end == -1) {
+			formatted += text[i];
+			continue;
+		}
+
+		String tag = text.substr(i + 1, end - i - 1);
+		if (tag.begins_with("/")) {
+			i = end;
+			continue;
+		}
+
+		Vector<String> parts = tag.split(" ", false, 1);
+		if (parts.size() == 2 &&
+				(parts[0] == "member" || parts[0] == "method" || parts[0] == "param" ||
+						parts[0] == "constant" || parts[0] == "enum" || parts[0] == "signal" ||
+						parts[0] == "annotation" || parts[0] == "theme_item")) {
+			formatted += "`" + parts[1] + "`";
+			i = end;
+			continue;
+		}
+
+		if (tag == "b" || tag == "i" || tag == "u" || tag == "kbd" || tag == "center" || tag == "br") {
+			if (tag == "br") {
+				formatted += "\n";
+			}
+			i = end;
+			continue;
+		}
+
+		if (!tag.is_empty() && (tag[0] == '@' || (tag[0] >= 'A' && tag[0] <= 'Z'))) {
+			formatted += "`" + tag + "`";
+			i = end;
+			continue;
+		}
+
+		formatted += text.substr(i, end - i + 1);
+		i = end;
+	}
+
+	return formatted.strip_edges();
+}
+
+static String agent_docs_format_type(const String &p_type, const String &p_enum, bool p_is_bitfield) {
+	if (!p_enum.is_empty()) {
+		return (p_is_bitfield ? "BitField[" : "") + p_enum + (p_is_bitfield ? "]" : "");
+	}
+	return p_type.is_empty() ? "void" : p_type;
+}
+
+static String agent_docs_format_method_signature(const DocData::MethodDoc &p_method) {
+	String signature;
+	if (!p_method.return_type.is_empty()) {
+		signature += agent_docs_format_type(p_method.return_type, p_method.return_enum, p_method.return_is_bitfield) + " ";
+	}
+	signature += p_method.name + "(";
+	for (int i = 0; i < p_method.arguments.size(); i++) {
+		const DocData::ArgumentDoc &arg = p_method.arguments[i];
+		if (i > 0) {
+			signature += ", ";
+		}
+		signature += agent_docs_format_type(arg.type, arg.enumeration, arg.is_bitfield) + " " + arg.name;
+		if (!arg.default_value.is_empty()) {
+			signature += " = " + arg.default_value;
+		}
+	}
+	signature += ")";
+	if (!p_method.qualifiers.is_empty()) {
+		signature += " " + p_method.qualifiers;
+	}
+	return signature;
+}
+
+static String agent_docs_render_methods(const String &p_title, const Vector<DocData::MethodDoc> &p_methods) {
+	if (p_methods.is_empty()) {
+		return "";
+	}
+
+	String output = "\n## " + p_title + "\n\n";
+	for (const DocData::MethodDoc &method : p_methods) {
+		output += "### `" + agent_docs_format_method_signature(method) + "`\n\n";
+		String description = agent_docs_format_text(method.description);
+		if (!description.is_empty()) {
+			output += description + "\n\n";
+		}
+	}
+	return output;
+}
+
+static String agent_docs_render_class(const DocData::ClassDoc &p_class_doc) {
+	String output = "# " + p_class_doc.name + "\n\n";
+	if (!p_class_doc.inherits.is_empty()) {
+		output += "- Inherits: `" + p_class_doc.inherits + "`\n";
+	}
+	if (!p_class_doc.api_type.is_empty()) {
+		output += "- API type: `" + p_class_doc.api_type + "`\n";
+	}
+	if (!p_class_doc.inherits.is_empty() || !p_class_doc.api_type.is_empty()) {
+		output += "\n";
+	}
+
+	String brief = agent_docs_format_text(p_class_doc.brief_description);
+	if (!brief.is_empty()) {
+		output += brief + "\n\n";
+	}
+
+	String description = agent_docs_format_text(p_class_doc.description);
+	if (!description.is_empty()) {
+		output += "## Description\n\n" + description + "\n\n";
+	}
+
+	if (!p_class_doc.properties.is_empty()) {
+		output += "## Properties\n\n";
+		for (const DocData::PropertyDoc &property : p_class_doc.properties) {
+			output += "- `" + agent_docs_format_type(property.type, property.enumeration, property.is_bitfield) + " " + property.name + "`";
+			if (!property.default_value.is_empty()) {
+				output += " = `" + property.default_value + "`";
+			}
+			String property_description = agent_docs_format_text(property.description);
+			if (!property_description.is_empty()) {
+				output += "\n  " + property_description.replace("\n", "\n  ");
+			}
+			output += "\n";
+		}
+		output += "\n";
+	}
+
+	output += agent_docs_render_methods("Constructors", p_class_doc.constructors);
+	output += agent_docs_render_methods("Methods", p_class_doc.methods);
+	output += agent_docs_render_methods("Signals", p_class_doc.signals);
+
+	if (!p_class_doc.constants.is_empty()) {
+		output += "## Constants\n\n";
+		for (const DocData::ConstantDoc &constant : p_class_doc.constants) {
+			output += "- `" + constant.name + "`";
+			if (!constant.value.is_empty()) {
+				output += " = `" + constant.value + "`";
+			}
+			String constant_description = agent_docs_format_text(constant.description);
+			if (!constant_description.is_empty()) {
+				output += "\n  " + constant_description.replace("\n", "\n  ");
+			}
+			output += "\n";
+		}
+		output += "\n";
+	}
+
+	return output.strip_edges() + "\n";
+}
+
+static Vector<String> agent_docs_get_sorted_class_names(const DocTools *p_doc) {
+	Vector<String> names;
+	for (const KeyValue<String, DocData::ClassDoc> &E : p_doc->class_list) {
+		names.push_back(E.key);
+	}
+	names.sort();
+	return names;
+}
+
+static bool agent_docs_class_matches_query(const DocData::ClassDoc &p_class_doc, const String &p_query) {
+	String query = p_query.to_lower();
+	String haystack = (p_class_doc.name + "\n" + p_class_doc.inherits + "\n" + p_class_doc.brief_description + "\n" + p_class_doc.description + "\n" + p_class_doc.keywords).to_lower();
+	if (haystack.contains(query)) {
+		return true;
+	}
+	for (const DocData::PropertyDoc &property : p_class_doc.properties) {
+		if ((property.name + "\n" + property.type + "\n" + property.description + "\n" + property.keywords).to_lower().contains(query)) {
+			return true;
+		}
+	}
+	for (const DocData::MethodDoc &method : p_class_doc.methods) {
+		if ((method.name + "\n" + method.description + "\n" + method.keywords).to_lower().contains(query)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static Error agent_docs_write_file(const String &p_path, const String &p_content) {
+	Error err;
+	Ref<FileAccess> file = FileAccess::open(p_path, FileAccess::WRITE, &err);
+	ERR_FAIL_COND_V_MSG(err != OK || file.is_null(), err == OK ? ERR_CANT_OPEN : err, "Cannot write agent docs file: " + p_path);
+	file->store_string(p_content);
+	return OK;
+}
+
+static int agent_docs_run(const String &p_action, const String &p_argument) {
+	DocTools *doc = EditorHelp::get_doc_data();
+	DocTools embedded_doc;
+	if (doc == nullptr) {
+		Error err = embedded_doc.load_compressed(_doc_data_compressed, _doc_data_compressed_size, _doc_data_uncompressed_size);
+		ERR_FAIL_COND_V_MSG(err != OK, EXIT_FAILURE, "Cannot load embedded agent docs.");
+		doc = &embedded_doc;
+	}
+
+	if (p_action == "list") {
+		Vector<String> names = agent_docs_get_sorted_class_names(doc);
+		for (const String &name : names) {
+			const DocData::ClassDoc *class_doc = doc->class_list.getptr(name);
+			if (class_doc) {
+				print_line(name + (class_doc->brief_description.is_empty() ? "" : " - " + agent_docs_format_text(class_doc->brief_description)));
+			}
+		}
+		return EXIT_SUCCESS;
+	}
+
+	if (p_action == "class") {
+		const DocData::ClassDoc *class_doc = doc->class_list.getptr(p_argument);
+		ERR_FAIL_NULL_V_MSG(class_doc, EXIT_FAILURE, "Agent docs class not found: " + p_argument);
+		print_line(agent_docs_render_class(*class_doc));
+		return EXIT_SUCCESS;
+	}
+
+	if (p_action == "search") {
+		Vector<String> names = agent_docs_get_sorted_class_names(doc);
+		for (const String &name : names) {
+			const DocData::ClassDoc *class_doc = doc->class_list.getptr(name);
+			if (class_doc && agent_docs_class_matches_query(*class_doc, p_argument)) {
+				print_line(name + (class_doc->brief_description.is_empty() ? "" : " - " + agent_docs_format_text(class_doc->brief_description)));
+			}
+		}
+		return EXIT_SUCCESS;
+	}
+
+	if (p_action == "dump") {
+		String output_dir = p_argument;
+		Ref<DirAccess> da = DirAccess::create_for_path(output_dir);
+		ERR_FAIL_COND_V_MSG(da.is_null(), EXIT_FAILURE, "Cannot create agent docs directory: " + output_dir);
+		Error err = da->make_dir_recursive(output_dir);
+		ERR_FAIL_COND_V_MSG(err != OK, EXIT_FAILURE, "Cannot create agent docs directory: " + output_dir);
+
+		String output = "# Godot Agent Class Reference\n\n";
+		output += "Generated from the editor's embedded class reference. Agents can search this file when project-local docs are missing.\n\n";
+
+		Vector<String> names = agent_docs_get_sorted_class_names(doc);
+		for (const String &name : names) {
+			const DocData::ClassDoc *class_doc = doc->class_list.getptr(name);
+			if (class_doc) {
+				output += agent_docs_render_class(*class_doc) + "\n---\n\n";
+			}
+		}
+
+		String output_path = output_dir.path_join("godot_agent_docs.md");
+		err = agent_docs_write_file(output_path, output);
+		ERR_FAIL_COND_V_MSG(err != OK, EXIT_FAILURE, "Cannot write agent docs file: " + output_path);
+		print_line("Wrote agent docs: " + output_path);
+		return EXIT_SUCCESS;
+	}
+
+	ERR_FAIL_V_MSG(EXIT_FAILURE, "Unknown agent docs action: " + p_action);
+}
+#endif // TOOLS_ENABLED
 
 #if defined(TOOLS_ENABLED) && defined(MODULE_GDSCRIPT_ENABLED)
 static Vector<String> get_files_with_extension(const String &p_root, const String &p_extension) {
@@ -726,6 +999,10 @@ void Main::print_help(const char *p_binary) {
 	print_help_option("--dump-extension-api-with-docs", "Generate JSON dump of the Godot API like the previous option, but including documentation.\n", CLI_OPTION_AVAILABILITY_EDITOR);
 	print_help_option("--validate-extension-api <path>", "Validate an extension API file dumped (with one of the two previous options) from a previous version of the engine to ensure API compatibility.\n", CLI_OPTION_AVAILABILITY_EDITOR);
 	print_help_option("", "If incompatibilities or errors are detected, the exit code will be non-zero.\n");
+	print_help_option("--agent-docs-list", "Print embedded class documentation names and brief descriptions for AI agents.\n", CLI_OPTION_AVAILABILITY_EDITOR);
+	print_help_option("--agent-docs-class <class>", "Print one embedded class reference as Markdown for AI agents.\n", CLI_OPTION_AVAILABILITY_EDITOR);
+	print_help_option("--agent-docs-search <query>", "Search embedded class documentation and print matching class names for AI agents.\n", CLI_OPTION_AVAILABILITY_EDITOR);
+	print_help_option("--agent-docs-dump <path>", "Dump embedded class documentation as Markdown to <path>/godot_agent_docs.md for AI agents.\n", CLI_OPTION_AVAILABILITY_EDITOR);
 	print_help_option("--benchmark", "Benchmark the run time and print it to console.\n", CLI_OPTION_AVAILABILITY_EDITOR);
 	print_help_option("--benchmark-file <path>", "Benchmark the run time and save it to a given file in JSON format. The path should be absolute.\n", CLI_OPTION_AVAILABILITY_EDITOR);
 #endif // TOOLS_ENABLED
@@ -1657,6 +1934,50 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 			// run the project instead of a cmdline tool.
 			// Needs full refactoring to fix properly.
 			main_args.push_back(arg);
+		} else if (arg == "--agent-docs-list") {
+			editor = true;
+			cmdline_tool = true;
+			agent_docs_action = "list";
+			main_args.push_back(arg);
+		} else if (arg == "--agent-docs-class") {
+			editor = true;
+			cmdline_tool = true;
+			agent_docs_action = "class";
+			main_args.push_back(arg);
+			if (N) {
+				agent_docs_argument = N->get();
+				main_args.push_back(N->get());
+				N = N->next();
+			} else {
+				OS::get_singleton()->print("Missing class name argument after --agent-docs-class, aborting.");
+				goto error;
+			}
+		} else if (arg == "--agent-docs-search") {
+			editor = true;
+			cmdline_tool = true;
+			agent_docs_action = "search";
+			main_args.push_back(arg);
+			if (N) {
+				agent_docs_argument = N->get();
+				main_args.push_back(N->get());
+				N = N->next();
+			} else {
+				OS::get_singleton()->print("Missing search query argument after --agent-docs-search, aborting.");
+				goto error;
+			}
+		} else if (arg == "--agent-docs-dump") {
+			editor = true;
+			cmdline_tool = true;
+			agent_docs_action = "dump";
+			main_args.push_back(arg);
+			if (N) {
+				agent_docs_argument = N->get();
+				main_args.push_back(N->get());
+				N = N->next();
+			} else {
+				OS::get_singleton()->print("Missing output path argument after --agent-docs-dump, aborting.");
+				goto error;
+			}
 		} else if (arg == "--validate-extension-api") {
 			// Register as an editor instance to use low-end fallback if relevant.
 			editor = true;
@@ -4274,6 +4595,11 @@ int Main::start() {
 		}
 
 		return EXIT_SUCCESS;
+	}
+
+	if (!agent_docs_action.is_empty()) {
+		Engine::get_singleton()->set_editor_hint(true);
+		return agent_docs_run(agent_docs_action, agent_docs_argument);
 	}
 
 	// GDExtension API and interface.

@@ -20,6 +20,13 @@ public:
 		PLACEMENT_GRASS,
 	};
 
+	enum NavigationObstacleMode {
+		NAVIGATION_OBSTACLE_NONE,
+		NAVIGATION_OBSTACLE_BAKE_STATIC,
+		NAVIGATION_OBSTACLE_RUNTIME_AVOIDANCE,
+		NAVIGATION_OBSTACLE_BAKE_AND_RUNTIME,
+	};
+
 private:
 	String id;
 	String display_name;
@@ -40,6 +47,11 @@ private:
 	real_t height_max = 1000000.0;
 	real_t surface_offset = 0.0;
 	PackedStringArray tags;
+	NavigationObstacleMode navigation_obstacle_mode = NAVIGATION_OBSTACLE_NONE;
+	real_t navigation_obstacle_radius = 0.5;
+	real_t navigation_obstacle_height = 2.0;
+	bool navigation_obstacle_carve = false;
+	uint32_t navigation_avoidance_layers = 1;
 
 protected:
 	static void _bind_methods();
@@ -101,6 +113,21 @@ public:
 
 	void set_tags(const PackedStringArray &p_tags);
 	PackedStringArray get_tags() const { return tags; }
+
+	void set_navigation_obstacle_mode(NavigationObstacleMode p_mode);
+	NavigationObstacleMode get_navigation_obstacle_mode() const { return navigation_obstacle_mode; }
+	bool uses_baked_navigation_obstacle() const;
+	bool uses_runtime_navigation_obstacle() const;
+
+	void set_navigation_obstacle_radius(real_t p_radius);
+	real_t get_navigation_obstacle_radius() const { return navigation_obstacle_radius; }
+	void set_navigation_obstacle_height(real_t p_height);
+	real_t get_navigation_obstacle_height() const { return navigation_obstacle_height; }
+	void set_navigation_obstacle_carve(bool p_carve);
+	bool get_navigation_obstacle_carve() const { return navigation_obstacle_carve; }
+	void set_navigation_avoidance_layers(uint32_t p_layers);
+	uint32_t get_navigation_avoidance_layers() const { return navigation_avoidance_layers; }
 };
 
 VARIANT_ENUM_CAST(SimpleWorldObjectProfile::PlacementType);
+VARIANT_ENUM_CAST(SimpleWorldObjectProfile::NavigationObstacleMode);

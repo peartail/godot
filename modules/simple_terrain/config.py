@@ -7,7 +7,13 @@ def configure(env):
 
 
 def get_doc_classes():
-    return ["SimpleTerrain3D", "SimpleTerrainData"]
+    return [
+        "SimpleTerrain3D",
+        "SimpleTerrainData",
+        "SimpleWorldObjectProfile",
+        "SimpleWorldPlacementData",
+        "SimpleWorldPlacementLibrary",
+    ]
 
 
 def get_doc_path():

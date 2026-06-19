@@ -20,6 +20,7 @@
 #include "editor/inspector/editor_resource_picker.h"
 #include "editor/scene/3d/node_3d_editor_plugin.h"
 #include "editor/themes/editor_scale.h"
+#include "scene/3d/navigation/navigation_obstacle_3d.h"
 #include "scene/gui/box_container.h"
 #include "scene/gui/button.h"
 #include "scene/gui/item_list.h"
@@ -153,6 +154,11 @@ void SimpleWorldPlacementDock::_duplicate_profile_pressed() {
 	duplicate->set_height_max(source->get_height_max());
 	duplicate->set_surface_offset(source->get_surface_offset());
 	duplicate->set_tags(source->get_tags());
+	duplicate->set_navigation_obstacle_mode(source->get_navigation_obstacle_mode());
+	duplicate->set_navigation_obstacle_radius(source->get_navigation_obstacle_radius());
+	duplicate->set_navigation_obstacle_height(source->get_navigation_obstacle_height());
+	duplicate->set_navigation_obstacle_carve(source->get_navigation_obstacle_carve());
+	duplicate->set_navigation_avoidance_layers(source->get_navigation_avoidance_layers());
 
 	Ref<SimpleWorldPlacementLibrary> library = terrain->get_world_placement_library();
 	Array before = library->get_profiles().duplicate();
@@ -949,6 +955,7 @@ void SimpleTerrainEditorPlugin::_flat_pressed() {
 	const PackedFloat32Array before_heights = terrain->get_height_data();
 	terrain->reset_flat_terrain();
 	_commit_height_undo(TTR("Reset Terrain"), before_heights);
+	_update_toolbar();
 }
 
 void SimpleTerrainEditorPlugin::_random_pressed() {
@@ -958,6 +965,15 @@ void SimpleTerrainEditorPlugin::_random_pressed() {
 	const PackedFloat32Array before_heights = terrain->get_height_data();
 	terrain->randomize_seed();
 	_commit_height_undo(TTR("Generate Random Terrain"), before_heights);
+	_update_toolbar();
+}
+
+void SimpleTerrainEditorPlugin::_bake_navigation_pressed() {
+	if (terrain == nullptr) {
+		return;
+	}
+	terrain->bake_navigation(false);
+	_update_toolbar();
 }
 
 void SimpleTerrainEditorPlugin::_update_toolbar() {
@@ -978,6 +994,14 @@ void SimpleTerrainEditorPlugin::_update_toolbar() {
 	strength_slider->set_read_only(!terrain_mode);
 	flat_button->set_disabled(!has_terrain);
 	random_button->set_disabled(!has_terrain);
+	bake_navigation_button->set_disabled(!has_terrain);
+	if (has_terrain && terrain->is_navigation_bake_dirty()) {
+		bake_navigation_button->set_text(TTRC("Bake Nav *"));
+		bake_navigation_button->set_tooltip_text(TTRC("Bake SimpleTerrain navigation mesh. The asterisk means the baked mesh is out of date."));
+	} else {
+		bake_navigation_button->set_text(TTRC("Bake Nav"));
+		bake_navigation_button->set_tooltip_text(TTRC("Bake SimpleTerrain navigation mesh."));
+	}
 	_update_placement_overlay();
 }
 
@@ -1113,6 +1137,19 @@ void SimpleTerrainEditorPlugin::_place_selected_profile(Camera3D *p_camera, cons
 	instance_3d->set_transform(local_transform);
 	instance_3d->set_name(profile->get_id().is_empty() ? String("WorldObject") : profile->get_id());
 
+	NavigationObstacle3D *runtime_obstacle = nullptr;
+	if (profile->uses_runtime_navigation_obstacle() && profile->get_navigation_obstacle_radius() > 0.0) {
+		runtime_obstacle = memnew(NavigationObstacle3D);
+		runtime_obstacle->set_name("NavigationObstacle3D");
+		runtime_obstacle->set_radius(profile->get_navigation_obstacle_radius());
+		runtime_obstacle->set_height(profile->get_navigation_obstacle_height());
+		runtime_obstacle->set_avoidance_layers(profile->get_navigation_avoidance_layers());
+		runtime_obstacle->set_avoidance_enabled(true);
+		runtime_obstacle->set_affect_navigation_mesh(false);
+		runtime_obstacle->set_carve_navigation_mesh(profile->get_navigation_obstacle_carve());
+		instance_3d->add_child(runtime_obstacle);
+	}
+
 	Ref<SimpleWorldPlacementData> placement_data = terrain->get_world_placement_data();
 	Ref<SimpleWorldPlacementData> old_data = placement_data;
 	if (placement_data.is_null()) {
@@ -1161,6 +1198,9 @@ void SimpleTerrainEditorPlugin::_place_selected_profile(Camera3D *p_camera, cons
 	Node *edited_scene = EditorNode::get_singleton()->get_edited_scene();
 	if (edited_scene != nullptr) {
 		undo_redo->add_do_method(instance_3d, "set_owner", edited_scene);
+		if (runtime_obstacle != nullptr) {
+			undo_redo->add_do_method(runtime_obstacle, "set_owner", edited_scene);
+		}
 	}
 	undo_redo->add_do_property(terrain, "world_placement_data", placement_data);
 	undo_redo->add_do_method(this, "_set_placement_arrays", placement_data.ptr(), after_profile_ids, after_positions, after_rotations, after_scales, after_normals, after_seeds, after_chunk_coords);
@@ -1531,6 +1571,7 @@ EditorPlugin::AfterGUIInput SimpleTerrainEditorPlugin::forward_3d_gui_input(Came
 			stroke_indices = PackedInt32Array();
 			stroke_before_values = PackedFloat32Array();
 			stroke_after_values = PackedFloat32Array();
+			_update_toolbar();
 			return AFTER_GUI_INPUT_STOP;
 		}
 	}
@@ -1669,4 +1710,10 @@ SimpleTerrainEditorPlugin::SimpleTerrainEditorPlugin() {
 	random_button->set_tooltip_text(TTRC("Generate random terrain on the selected terrain."));
 	random_button->connect(SceneStringName(pressed), callable_mp(this, &SimpleTerrainEditorPlugin::_random_pressed));
 	terrain_action_row->add_child(random_button);
+
+	bake_navigation_button = memnew(Button);
+	bake_navigation_button->set_text(TTRC("Bake Nav"));
+	bake_navigation_button->set_tooltip_text(TTRC("Bake SimpleTerrain navigation mesh."));
+	bake_navigation_button->connect(SceneStringName(pressed), callable_mp(this, &SimpleTerrainEditorPlugin::_bake_navigation_pressed));
+	terrain_action_row->add_child(bake_navigation_button);
 }

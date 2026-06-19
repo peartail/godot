@@ -16,3 +16,16 @@ scons platform=windows target=editor dev_build=yes module_open_world_terrain_ena
 .\bin\godot.windows.editor.dev.x86_64.mono.console.exe --headless --generate-mono-glue modules\mono\glue
 python modules\mono\build_scripts\build_assemblies.py --godot-output-dir bin --godot-platform windows --dev-debug
 ```
+
+## Agent-Readable Engine Docs
+
+- Custom editor builds expose embedded class reference docs through CLI commands for AI agents:
+
+```powershell
+.\bin\godot.windows.editor.dev.x86_64.mono.console.exe --headless --agent-docs-search OpenWorldTerrain
+.\bin\godot.windows.editor.dev.x86_64.mono.console.exe --headless --agent-docs-class OpenWorldTerrain3D
+.\bin\godot.windows.editor.dev.x86_64.mono.console.exe --headless --agent-docs-dump .\.agent_docs
+```
+
+- In a separate game project that uses this custom engine, add the same commands to that project's `AGENTS.md` so agents know they can query engine docs from the terminal.
+- See `codex_docs/agent_docs_cli.md` for the full command reference.

@@ -160,6 +160,56 @@ void SimpleWorldObjectProfile::set_tags(const PackedStringArray &p_tags) {
 	emit_changed();
 }
 
+void SimpleWorldObjectProfile::set_navigation_obstacle_mode(NavigationObstacleMode p_mode) {
+	if (navigation_obstacle_mode == p_mode) {
+		return;
+	}
+	navigation_obstacle_mode = p_mode;
+	emit_changed();
+}
+
+bool SimpleWorldObjectProfile::uses_baked_navigation_obstacle() const {
+	return navigation_obstacle_mode == NAVIGATION_OBSTACLE_BAKE_STATIC || navigation_obstacle_mode == NAVIGATION_OBSTACLE_BAKE_AND_RUNTIME;
+}
+
+bool SimpleWorldObjectProfile::uses_runtime_navigation_obstacle() const {
+	return navigation_obstacle_mode == NAVIGATION_OBSTACLE_RUNTIME_AVOIDANCE || navigation_obstacle_mode == NAVIGATION_OBSTACLE_BAKE_AND_RUNTIME;
+}
+
+void SimpleWorldObjectProfile::set_navigation_obstacle_radius(real_t p_radius) {
+	const real_t new_radius = MAX((real_t)0.0, p_radius);
+	if (Math::is_equal_approx(navigation_obstacle_radius, new_radius)) {
+		return;
+	}
+	navigation_obstacle_radius = new_radius;
+	emit_changed();
+}
+
+void SimpleWorldObjectProfile::set_navigation_obstacle_height(real_t p_height) {
+	const real_t new_height = MAX((real_t)0.0, p_height);
+	if (Math::is_equal_approx(navigation_obstacle_height, new_height)) {
+		return;
+	}
+	navigation_obstacle_height = new_height;
+	emit_changed();
+}
+
+void SimpleWorldObjectProfile::set_navigation_obstacle_carve(bool p_carve) {
+	if (navigation_obstacle_carve == p_carve) {
+		return;
+	}
+	navigation_obstacle_carve = p_carve;
+	emit_changed();
+}
+
+void SimpleWorldObjectProfile::set_navigation_avoidance_layers(uint32_t p_layers) {
+	if (navigation_avoidance_layers == p_layers) {
+		return;
+	}
+	navigation_avoidance_layers = p_layers;
+	emit_changed();
+}
+
 void SimpleWorldObjectProfile::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_id", "id"), &SimpleWorldObjectProfile::set_id);
 	ClassDB::bind_method(D_METHOD("get_id"), &SimpleWorldObjectProfile::get_id);
@@ -199,11 +249,27 @@ void SimpleWorldObjectProfile::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_surface_offset"), &SimpleWorldObjectProfile::get_surface_offset);
 	ClassDB::bind_method(D_METHOD("set_tags", "tags"), &SimpleWorldObjectProfile::set_tags);
 	ClassDB::bind_method(D_METHOD("get_tags"), &SimpleWorldObjectProfile::get_tags);
+	ClassDB::bind_method(D_METHOD("set_navigation_obstacle_mode", "mode"), &SimpleWorldObjectProfile::set_navigation_obstacle_mode);
+	ClassDB::bind_method(D_METHOD("get_navigation_obstacle_mode"), &SimpleWorldObjectProfile::get_navigation_obstacle_mode);
+	ClassDB::bind_method(D_METHOD("uses_baked_navigation_obstacle"), &SimpleWorldObjectProfile::uses_baked_navigation_obstacle);
+	ClassDB::bind_method(D_METHOD("uses_runtime_navigation_obstacle"), &SimpleWorldObjectProfile::uses_runtime_navigation_obstacle);
+	ClassDB::bind_method(D_METHOD("set_navigation_obstacle_radius", "radius"), &SimpleWorldObjectProfile::set_navigation_obstacle_radius);
+	ClassDB::bind_method(D_METHOD("get_navigation_obstacle_radius"), &SimpleWorldObjectProfile::get_navigation_obstacle_radius);
+	ClassDB::bind_method(D_METHOD("set_navigation_obstacle_height", "height"), &SimpleWorldObjectProfile::set_navigation_obstacle_height);
+	ClassDB::bind_method(D_METHOD("get_navigation_obstacle_height"), &SimpleWorldObjectProfile::get_navigation_obstacle_height);
+	ClassDB::bind_method(D_METHOD("set_navigation_obstacle_carve", "carve"), &SimpleWorldObjectProfile::set_navigation_obstacle_carve);
+	ClassDB::bind_method(D_METHOD("get_navigation_obstacle_carve"), &SimpleWorldObjectProfile::get_navigation_obstacle_carve);
+	ClassDB::bind_method(D_METHOD("set_navigation_avoidance_layers", "layers"), &SimpleWorldObjectProfile::set_navigation_avoidance_layers);
+	ClassDB::bind_method(D_METHOD("get_navigation_avoidance_layers"), &SimpleWorldObjectProfile::get_navigation_avoidance_layers);
 
 	BIND_ENUM_CONSTANT(PLACEMENT_SINGLE);
 	BIND_ENUM_CONSTANT(PLACEMENT_BRUSH);
 	BIND_ENUM_CONSTANT(PLACEMENT_SCATTER);
 	BIND_ENUM_CONSTANT(PLACEMENT_GRASS);
+	BIND_ENUM_CONSTANT(NAVIGATION_OBSTACLE_NONE);
+	BIND_ENUM_CONSTANT(NAVIGATION_OBSTACLE_BAKE_STATIC);
+	BIND_ENUM_CONSTANT(NAVIGATION_OBSTACLE_RUNTIME_AVOIDANCE);
+	BIND_ENUM_CONSTANT(NAVIGATION_OBSTACLE_BAKE_AND_RUNTIME);
 
 	ADD_PROPERTY(PropertyInfo(Variant::STRING, "id"), "set_id", "get_id");
 	ADD_PROPERTY(PropertyInfo(Variant::STRING, "display_name"), "set_display_name", "get_display_name");
@@ -224,4 +290,10 @@ void SimpleWorldObjectProfile::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "height_max", PROPERTY_HINT_RANGE, "-1000000,1000000,0.01,suffix:m"), "set_height_max", "get_height_max");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "surface_offset", PROPERTY_HINT_RANGE, "-1000,1000,0.01,suffix:m"), "set_surface_offset", "get_surface_offset");
 	ADD_PROPERTY(PropertyInfo(Variant::PACKED_STRING_ARRAY, "tags"), "set_tags", "get_tags");
+	ADD_GROUP("Navigation Obstacle", "navigation_");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "navigation_obstacle_mode", PROPERTY_HINT_ENUM, "None,Bake Static,Runtime Avoidance,Bake And Runtime"), "set_navigation_obstacle_mode", "get_navigation_obstacle_mode");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "navigation_obstacle_radius", PROPERTY_HINT_RANGE, "0,1000,0.01,or_greater,suffix:m"), "set_navigation_obstacle_radius", "get_navigation_obstacle_radius");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "navigation_obstacle_height", PROPERTY_HINT_RANGE, "0,1000,0.01,or_greater,suffix:m"), "set_navigation_obstacle_height", "get_navigation_obstacle_height");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "navigation_obstacle_carve"), "set_navigation_obstacle_carve", "get_navigation_obstacle_carve");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "navigation_avoidance_layers", PROPERTY_HINT_LAYERS_3D_NAVIGATION), "set_navigation_avoidance_layers", "get_navigation_avoidance_layers");
 }

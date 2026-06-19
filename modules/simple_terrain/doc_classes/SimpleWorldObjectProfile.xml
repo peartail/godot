@@ -39,6 +39,21 @@
 		<member name="min_scale" type="Vector3" setter="set_min_scale" getter="get_min_scale" default="Vector3(1, 1, 1)">
 			Minimum random instance scale.
 		</member>
+		<member name="navigation_avoidance_layers" type="int" setter="set_navigation_avoidance_layers" getter="get_navigation_avoidance_layers" default="1">
+			Avoidance layers to apply when runtime code creates a [NavigationObstacle3D] for this profile.
+		</member>
+		<member name="navigation_obstacle_carve" type="bool" setter="set_navigation_obstacle_carve" getter="get_navigation_obstacle_carve" default="false">
+			If [code]true[/code], baked static obstructions carve the navigation mesh instead of only adding an obstruction volume.
+		</member>
+		<member name="navigation_obstacle_height" type="float" setter="set_navigation_obstacle_height" getter="get_navigation_obstacle_height" default="2.0">
+			Height of the navigation obstruction generated for this profile.
+		</member>
+		<member name="navigation_obstacle_mode" type="int" setter="set_navigation_obstacle_mode" getter="get_navigation_obstacle_mode" enum="SimpleWorldObjectProfile.NavigationObstacleMode" default="0">
+			Controls whether placed objects from this profile are ignored by navigation, included in [SimpleTerrain3D] navmesh baking, receive a runtime [NavigationObstacle3D] when placed by the SimpleTerrain editor, or both.
+		</member>
+		<member name="navigation_obstacle_radius" type="float" setter="set_navigation_obstacle_radius" getter="get_navigation_obstacle_radius" default="0.5">
+			Radius of the circular navigation obstruction generated for this profile.
+		</member>
 		<member name="placement_type" type="int" setter="set_placement_type" getter="get_placement_type" enum="SimpleWorldObjectProfile.PlacementType" default="0">
 			Preferred placement mode for this profile.
 		</member>
@@ -79,6 +94,18 @@
 		</constant>
 		<constant name="PLACEMENT_GRASS" value="3" enum="PlacementType">
 			Grass placement, usually generated with multimesh instances.
+		</constant>
+		<constant name="NAVIGATION_OBSTACLE_NONE" value="0" enum="NavigationObstacleMode">
+			Placed objects from this profile are ignored by SimpleTerrain navigation obstacle handling.
+		</constant>
+		<constant name="NAVIGATION_OBSTACLE_BAKE_STATIC" value="1" enum="NavigationObstacleMode">
+			Placed objects from this profile are included as static obstructions when [SimpleTerrain3D.bake_navigation] is called.
+		</constant>
+		<constant name="NAVIGATION_OBSTACLE_RUNTIME_AVOIDANCE" value="2" enum="NavigationObstacleMode">
+			Placed objects from this profile receive runtime avoidance obstacles when placed by the SimpleTerrain editor, but are not included in the baked navmesh.
+		</constant>
+		<constant name="NAVIGATION_OBSTACLE_BAKE_AND_RUNTIME" value="3" enum="NavigationObstacleMode">
+			Placed objects from this profile are included in baked navigation and may also create runtime avoidance obstacles.
 		</constant>
 	</constants>
 </class>

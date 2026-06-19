@@ -49,6 +49,13 @@
 				Applies explicit height values to the vertices listed in [param indices] and rebuilds only the affected chunks. This is primarily used by editor undo/redo to avoid storing or restoring the full height field after each brush stroke.
 			</description>
 		</method>
+		<method name="bake_navigation">
+			<return type="void" />
+			<param index="0" name="on_thread" type="bool" default="false" />
+			<description>
+				Bakes the terrain height field into [member navigation_baked_mesh] using Godot's navigation mesh baker and switches [member navigation_build_mode] to [constant NAVIGATION_BUILD_BAKED]. This is intended as a manual step after terrain editing, not as an automatic brush-stroke update.
+			</description>
+		</method>
 		<method name="generate_random_terrain">
 			<return type="void" />
 			<description>
@@ -81,6 +88,12 @@
 				Rebuilds all terrain chunk meshes from [member simple_terrain_data]. Call this after making many direct changes to [member SimpleTerrainData.height_data] if those changes did not go through [SimpleTerrain3D]'s setters.
 			</description>
 		</method>
+		<method name="rebuild_navigation">
+			<return type="void" />
+			<description>
+				Rebuilds all terrain navigation meshes from [member simple_terrain_data]. Navigation meshes are generated per chunk and registered on the world's default 3D navigation map when [member navigation_enabled] is [code]true[/code].
+			</description>
+		</method>
 		<method name="reset_flat_terrain">
 			<return type="void" />
 			<description>
@@ -103,6 +116,42 @@
 		</member>
 		<member name="height_data" type="PackedFloat32Array" setter="set_height_data" getter="get_height_data" default="PackedFloat32Array()">
 			Convenience proxy to [member SimpleTerrainData.height_data]. Setting this property normalizes the array size and rebuilds terrain chunks.
+		</member>
+		<member name="navigation_build_mode" type="int" setter="set_navigation_build_mode" getter="get_navigation_build_mode" enum="SimpleTerrain3D.NavigationBuildMode" default="1">
+			Controls how generated terrain navigation polygons are emitted. [constant NAVIGATION_BUILD_TRIANGLES] preserves the legacy two-triangles-per-cell output, [constant NAVIGATION_BUILD_QUADS] emits planar terrain cells as quads, [constant NAVIGATION_BUILD_MERGED_RECTS] merges compatible cells into larger rectangular polygons inside each chunk, and [constant NAVIGATION_BUILD_BAKED] uses [member navigation_baked_mesh].
+		</member>
+		<member name="navigation_baked_mesh" type="NavigationMesh" setter="set_navigation_baked_mesh" getter="get_navigation_baked_mesh">
+			Navigation mesh resource produced by [method bake_navigation]. Assign a saved [NavigationMesh] resource here to keep baked navigation data outside the scene file, or leave it embedded in the scene.
+		</member>
+		<member name="navigation_debug_visible" type="bool" setter="set_navigation_debug_visible" getter="is_navigation_debug_visible" default="true">
+			If [code]true[/code], SimpleTerrain3D can show its generated navigation debug overlay when Godot's global navigation debug display is enabled. Disable this to hide only the SimpleTerrain overlay while leaving navigation itself active.
+		</member>
+		<member name="navigation_enabled" type="bool" setter="set_navigation_enabled" getter="is_navigation_enabled" default="false">
+			If [code]true[/code], the terrain creates one [NavigationMesh] region per chunk and keeps those regions synchronized with terrain edits and node transforms.
+		</member>
+		<member name="navigation_layers" type="int" setter="set_navigation_layers" getter="get_navigation_layers" default="1">
+			Navigation layers assigned to generated terrain navigation regions.
+		</member>
+		<member name="navigation_max_slope" type="float" setter="set_navigation_max_slope" getter="get_navigation_max_slope" default="45.0">
+			Maximum terrain slope, in degrees, that is included in generated navigation meshes.
+		</member>
+		<member name="navigation_quad_max_normal_angle" type="float" setter="set_navigation_quad_max_normal_angle" getter="get_navigation_quad_max_normal_angle" default="5.0">
+			Maximum angle, in degrees, allowed between a terrain cell's two triangle normals before quad generation falls back to triangle polygons.
+		</member>
+		<member name="navigation_quad_planar_tolerance" type="float" setter="set_navigation_quad_planar_tolerance" getter="get_navigation_quad_planar_tolerance" default="0.05">
+			Maximum distance allowed between the fourth terrain cell vertex and the first triangle plane before quad generation falls back to triangle polygons.
+		</member>
+		<member name="navigation_merge_max_normal_angle" type="float" setter="set_navigation_merge_max_normal_angle" getter="get_navigation_merge_max_normal_angle" default="8.0">
+			Maximum normal angle difference, in degrees, between cells that can be merged by [constant NAVIGATION_BUILD_MERGED_RECTS].
+		</member>
+		<member name="navigation_merge_max_height_delta" type="float" setter="set_navigation_merge_max_height_delta" getter="get_navigation_merge_max_height_delta" default="0.25">
+			Maximum height variation per merged rectangle step used to reject sharp discontinuities when [constant NAVIGATION_BUILD_MERGED_RECTS] is enabled.
+		</member>
+		<member name="navigation_merge_planar_tolerance" type="float" setter="set_navigation_merge_planar_tolerance" getter="get_navigation_merge_planar_tolerance" default="0.15">
+			Maximum distance allowed from merged rectangle corners to the seed cell plane when [constant NAVIGATION_BUILD_MERGED_RECTS] is enabled.
+		</member>
+		<member name="navigation_merge_max_rect_size" type="int" setter="set_navigation_merge_max_rect_size" getter="get_navigation_merge_max_rect_size" default="8">
+			Maximum width or height, in terrain cells, of a single rectangle emitted by [constant NAVIGATION_BUILD_MERGED_RECTS].
 		</member>
 		<member name="terrain_material" type="Material" setter="set_terrain_material" getter="get_terrain_material">
 			Material applied to internal terrain chunks. If this is assigned, it takes precedence over [member use_builtin_triplanar_material] and [member GeometryInstance3D.material_override].
@@ -168,6 +217,13 @@
 			Optional library of registered [SimpleWorldObjectProfile] resources available to world placement tools for this terrain.
 		</member>
 	</members>
+	<signals>
+		<signal name="navigation_bake_finished">
+			<description>
+				Emitted after [method bake_navigation] finishes and [member navigation_baked_mesh] has been synchronized with the terrain navigation region.
+			</description>
+		</signal>
+	</signals>
 	<constants>
 		<constant name="BRUSH_RAISE" value="0" enum="BrushOperation">
 			Raises terrain under the brush.
@@ -180,6 +236,18 @@
 		</constant>
 		<constant name="BRUSH_FLATTEN" value="3" enum="BrushOperation">
 			Moves terrain under the brush toward the sampled center height.
+		</constant>
+		<constant name="NAVIGATION_BUILD_TRIANGLES" value="0" enum="NavigationBuildMode">
+			Builds navigation meshes with two triangle polygons per walkable terrain cell. This matches the legacy SimpleTerrain3D behavior.
+		</constant>
+		<constant name="NAVIGATION_BUILD_QUADS" value="1" enum="NavigationBuildMode">
+			Builds one quad polygon per sufficiently planar walkable terrain cell, falling back to triangles for irregular cells.
+		</constant>
+		<constant name="NAVIGATION_BUILD_MERGED_RECTS" value="2" enum="NavigationBuildMode">
+			Merges compatible walkable terrain cells into larger rectangular polygons within each chunk.
+		</constant>
+		<constant name="NAVIGATION_BUILD_BAKED" value="3" enum="NavigationBuildMode">
+			Uses [member navigation_baked_mesh], usually produced by manually calling [method bake_navigation] after terrain editing.
 		</constant>
 	</constants>
 </class>

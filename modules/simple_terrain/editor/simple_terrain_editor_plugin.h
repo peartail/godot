@@ -153,6 +153,7 @@ class SimpleTerrainEditorPlugin : public EditorPlugin {
 	EditorSpinSlider *strength_slider = nullptr;
 	Button *flat_button = nullptr;
 	Button *random_button = nullptr;
+	Button *bake_navigation_button = nullptr;
 	Ref<SimpleTerrain3DGizmoPlugin> gizmo_plugin;
 	Ref<SimpleTerrainInspectorPlugin> inspector_plugin;
 	SimpleWorldPlacementDock *placement_dock = nullptr;
@@ -184,6 +185,7 @@ class SimpleTerrainEditorPlugin : public EditorPlugin {
 	void _operation_selected(int p_index);
 	void _flat_pressed();
 	void _random_pressed();
+	void _bake_navigation_pressed();
 	void _update_toolbar();
 	void _update_placement_overlay();
 	Node3D *_get_or_create_placement_root(EditorUndoRedoManager *p_undo_redo);
