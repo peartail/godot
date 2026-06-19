@@ -126,6 +126,9 @@
 		<member name="navigation_debug_visible" type="bool" setter="set_navigation_debug_visible" getter="is_navigation_debug_visible" default="true">
 			If [code]true[/code], SimpleTerrain3D can show its generated navigation debug overlay when Godot's global navigation debug display is enabled. Disable this to hide only the SimpleTerrain overlay while leaving navigation itself active.
 		</member>
+		<member name="navigation_debug_runtime_obstacles_visible" type="bool" setter="set_navigation_debug_runtime_obstacles_visible" getter="is_navigation_debug_runtime_obstacles_visible" default="true">
+			If [code]true[/code], the SimpleTerrain3D navigation debug overlay also draws runtime avoidance obstacle footprints from world placement profiles whose navigation obstacle mode includes runtime avoidance.
+		</member>
 		<member name="navigation_enabled" type="bool" setter="set_navigation_enabled" getter="is_navigation_enabled" default="false">
 			If [code]true[/code], the terrain creates one [NavigationMesh] region per chunk and keeps those regions synchronized with terrain edits and node transforms.
 		</member>

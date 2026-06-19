@@ -75,6 +75,7 @@ private:
 	real_t navigation_merge_planar_tolerance = 0.15;
 	int navigation_merge_max_rect_size = 8;
 	bool navigation_debug_visible = true;
+	bool navigation_debug_runtime_obstacles_visible = true;
 
 	// Material priority is:
 	// 1. explicit terrain_material
@@ -185,6 +186,8 @@ public:
 	int get_navigation_merge_max_rect_size() const { return navigation_merge_max_rect_size; }
 	void set_navigation_debug_visible(bool p_visible);
 	bool is_navigation_debug_visible() const { return navigation_debug_visible; }
+	void set_navigation_debug_runtime_obstacles_visible(bool p_visible);
+	bool is_navigation_debug_runtime_obstacles_visible() const { return navigation_debug_runtime_obstacles_visible; }
 	void set_height_data(const PackedFloat32Array &p_height_data);
 	PackedFloat32Array get_height_data() const;
 

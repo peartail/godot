@@ -27,6 +27,12 @@ public:
 		NAVIGATION_OBSTACLE_BAKE_AND_RUNTIME,
 	};
 
+	enum NavigationObstacleShapeSource {
+		NAVIGATION_OBSTACLE_SHAPE_RADIUS,
+		NAVIGATION_OBSTACLE_SHAPE_SCENE_COLLISION,
+		NAVIGATION_OBSTACLE_SHAPE_MESH_AABB,
+	};
+
 private:
 	String id;
 	String display_name;
@@ -52,6 +58,7 @@ private:
 	real_t navigation_obstacle_height = 2.0;
 	bool navigation_obstacle_carve = false;
 	uint32_t navigation_avoidance_layers = 1;
+	NavigationObstacleShapeSource navigation_obstacle_shape_source = NAVIGATION_OBSTACLE_SHAPE_RADIUS;
 
 protected:
 	static void _bind_methods();
@@ -127,7 +134,10 @@ public:
 	bool get_navigation_obstacle_carve() const { return navigation_obstacle_carve; }
 	void set_navigation_avoidance_layers(uint32_t p_layers);
 	uint32_t get_navigation_avoidance_layers() const { return navigation_avoidance_layers; }
+	void set_navigation_obstacle_shape_source(NavigationObstacleShapeSource p_source);
+	NavigationObstacleShapeSource get_navigation_obstacle_shape_source() const { return navigation_obstacle_shape_source; }
 };
 
 VARIANT_ENUM_CAST(SimpleWorldObjectProfile::PlacementType);
 VARIANT_ENUM_CAST(SimpleWorldObjectProfile::NavigationObstacleMode);
+VARIANT_ENUM_CAST(SimpleWorldObjectProfile::NavigationObstacleShapeSource);

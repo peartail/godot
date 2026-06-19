@@ -11,12 +11,222 @@
 #include "core/math/triangle_mesh.h"
 #include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
+#include "scene/3d/physics/collision_shape_3d.h"
 #include "scene/resources/3d/world_3d.h"
+#include "scene/resources/3d/box_shape_3d.h"
+#include "scene/resources/3d/capsule_shape_3d.h"
+#include "scene/resources/3d/cylinder_shape_3d.h"
 #include "scene/resources/3d/navigation_mesh_source_geometry_data_3d.h"
+#include "scene/resources/3d/sphere_shape_3d.h"
 #include "scene/resources/mesh.h"
 #include "scene/resources/shader.h"
 #include "servers/navigation_3d/navigation_server_3d.h"
 #include "servers/rendering/rendering_server.h"
+
+namespace {
+struct SimpleTerrainNavigationObstruction {
+	Vector<Vector3> vertices;
+	real_t elevation = 0.0;
+	real_t height = 0.0;
+};
+
+void _append_circle_obstruction(Vector<SimpleTerrainNavigationObstruction> &r_obstructions, const Transform3D &p_transform, real_t p_radius, real_t p_half_height) {
+	if (p_radius <= 0.0) {
+		return;
+	}
+
+	static const int circle_points = 12;
+	const real_t circle_step = Math::TAU / circle_points;
+
+	SimpleTerrainNavigationObstruction obstruction;
+	obstruction.vertices.resize(circle_points);
+	Vector3 *vertices_w = obstruction.vertices.ptrw();
+	for (int i = 0; i < circle_points; i++) {
+		const real_t angle = i * circle_step;
+		vertices_w[i] = p_transform.xform(Vector3(Math::cos(angle) * p_radius, 0.0, Math::sin(angle) * p_radius));
+	}
+
+	const Vector3 top = p_transform.xform(Vector3(0.0, p_half_height, 0.0));
+	const Vector3 bottom = p_transform.xform(Vector3(0.0, -p_half_height, 0.0));
+	obstruction.elevation = MIN(top.y, bottom.y);
+	obstruction.height = MAX((real_t)0.0, Math::abs(top.y - bottom.y));
+	r_obstructions.push_back(obstruction);
+}
+
+void _append_box_obstruction(Vector<SimpleTerrainNavigationObstruction> &r_obstructions, const Transform3D &p_transform, const Vector3 &p_size) {
+	if (p_size.x <= 0.0 || p_size.z <= 0.0) {
+		return;
+	}
+
+	const Vector3 half_size = p_size * 0.5;
+	const Vector3 local_corners[4] = {
+		Vector3(-half_size.x, 0.0, -half_size.z),
+		Vector3(half_size.x, 0.0, -half_size.z),
+		Vector3(half_size.x, 0.0, half_size.z),
+		Vector3(-half_size.x, 0.0, half_size.z),
+	};
+
+	SimpleTerrainNavigationObstruction obstruction;
+	obstruction.vertices.resize(4);
+	Vector3 *vertices_w = obstruction.vertices.ptrw();
+	for (int i = 0; i < 4; i++) {
+		vertices_w[i] = p_transform.xform(local_corners[i]);
+	}
+
+	real_t min_y = Math::INF;
+	real_t max_y = -Math::INF;
+	for (int y_index = 0; y_index < 2; y_index++) {
+		const real_t y = y_index == 0 ? -half_size.y : half_size.y;
+		for (int z_index = 0; z_index < 2; z_index++) {
+			const real_t z = z_index == 0 ? -half_size.z : half_size.z;
+			for (int x_index = 0; x_index < 2; x_index++) {
+				const real_t x = x_index == 0 ? -half_size.x : half_size.x;
+				const real_t world_y = p_transform.xform(Vector3(x, y, z)).y;
+				min_y = MIN(min_y, world_y);
+				max_y = MAX(max_y, world_y);
+			}
+		}
+	}
+	obstruction.elevation = min_y;
+	obstruction.height = MAX((real_t)0.0, max_y - min_y);
+	r_obstructions.push_back(obstruction);
+}
+
+void _append_aabb_obstruction(Vector<SimpleTerrainNavigationObstruction> &r_obstructions, const Transform3D &p_transform, const AABB &p_aabb) {
+	if (p_aabb.size.x <= 0.0 || p_aabb.size.z <= 0.0) {
+		return;
+	}
+
+	const Vector3 min = p_aabb.position;
+	const Vector3 max = p_aabb.position + p_aabb.size;
+	const real_t center_y = min.y + p_aabb.size.y * 0.5;
+	const Vector3 local_corners[4] = {
+		Vector3(min.x, center_y, min.z),
+		Vector3(max.x, center_y, min.z),
+		Vector3(max.x, center_y, max.z),
+		Vector3(min.x, center_y, max.z),
+	};
+
+	SimpleTerrainNavigationObstruction obstruction;
+	obstruction.vertices.resize(4);
+	Vector3 *vertices_w = obstruction.vertices.ptrw();
+	for (int i = 0; i < 4; i++) {
+		vertices_w[i] = p_transform.xform(local_corners[i]);
+	}
+
+	real_t min_y = Math::INF;
+	real_t max_y = -Math::INF;
+	for (int i = 0; i < 8; i++) {
+		const real_t world_y = p_transform.xform(p_aabb.get_endpoint(i)).y;
+		min_y = MIN(min_y, world_y);
+		max_y = MAX(max_y, world_y);
+	}
+	obstruction.elevation = min_y;
+	obstruction.height = MAX((real_t)0.0, max_y - min_y);
+	r_obstructions.push_back(obstruction);
+}
+
+void _collect_collision_obstructions(Node *p_node, const Transform3D &p_root_to_target, Vector<SimpleTerrainNavigationObstruction> &r_obstructions) {
+	CollisionShape3D *collision_shape = Object::cast_to<CollisionShape3D>(p_node);
+	if (collision_shape != nullptr && !collision_shape->is_disabled()) {
+		Ref<Shape3D> shape = collision_shape->get_shape();
+		if (shape.is_valid()) {
+			const Transform3D shape_transform = p_root_to_target * collision_shape->get_global_transform();
+			Ref<BoxShape3D> box = shape;
+			Ref<SphereShape3D> sphere = shape;
+			Ref<CapsuleShape3D> capsule = shape;
+			Ref<CylinderShape3D> cylinder = shape;
+
+			if (box.is_valid()) {
+				_append_box_obstruction(r_obstructions, shape_transform, box->get_size());
+			} else if (sphere.is_valid()) {
+				_append_circle_obstruction(r_obstructions, shape_transform, sphere->get_radius(), sphere->get_radius());
+			} else if (capsule.is_valid()) {
+				_append_circle_obstruction(r_obstructions, shape_transform, capsule->get_radius(), capsule->get_height() * 0.5);
+			} else if (cylinder.is_valid()) {
+				_append_circle_obstruction(r_obstructions, shape_transform, cylinder->get_radius(), cylinder->get_height() * 0.5);
+			}
+		}
+	}
+
+	for (int i = 0; i < p_node->get_child_count(); i++) {
+		_collect_collision_obstructions(p_node->get_child(i), p_root_to_target, r_obstructions);
+	}
+}
+
+void _collect_mesh_aabb_obstructions(Node *p_node, const Transform3D &p_root_to_target, Vector<SimpleTerrainNavigationObstruction> &r_obstructions) {
+	MeshInstance3D *mesh_instance = Object::cast_to<MeshInstance3D>(p_node);
+	if (mesh_instance != nullptr && mesh_instance->get_mesh().is_valid()) {
+		_append_aabb_obstruction(r_obstructions, p_root_to_target * mesh_instance->get_global_transform(), mesh_instance->get_mesh()->get_aabb());
+	}
+
+	for (int i = 0; i < p_node->get_child_count(); i++) {
+		_collect_mesh_aabb_obstructions(p_node->get_child(i), p_root_to_target, r_obstructions);
+	}
+}
+
+Transform3D _build_profile_placement_transform(const Vector3 &p_local_position, const Vector3 &p_rotation, const Vector3 &p_scale, const Vector3 &p_local_normal, bool p_align_to_terrain_normal) {
+	Transform3D placement_transform;
+	placement_transform.origin = p_local_position;
+	if (p_align_to_terrain_normal) {
+		Vector3 local_y = p_local_normal.is_zero_approx() ? Vector3(0.0, 1.0, 0.0) : p_local_normal;
+		Vector3 local_z = Vector3(Math::sin(p_rotation.y), 0.0, Math::cos(p_rotation.y));
+		local_z = (local_z - local_y * local_y.dot(local_z));
+		if (local_z.is_zero_approx()) {
+			local_z = local_y.cross(Vector3(1.0, 0.0, 0.0));
+		}
+		if (local_z.is_zero_approx()) {
+			local_z = local_y.cross(Vector3(0.0, 0.0, 1.0));
+		}
+		local_z.normalize();
+		Vector3 local_x = local_y.cross(local_z).normalized();
+		local_z = local_x.cross(local_y).normalized();
+		placement_transform.basis = Basis(local_x, local_y, local_z);
+	} else {
+		placement_transform.basis = Basis::from_euler(p_rotation);
+	}
+	placement_transform.basis.scale(p_scale);
+	return placement_transform;
+}
+
+void _append_profile_placement_obstructions(const Ref<SimpleWorldObjectProfile> &p_profile, const Transform3D &p_placement_transform, Vector<SimpleTerrainNavigationObstruction> &r_obstructions) {
+	if (p_profile.is_null()) {
+		return;
+	}
+
+	if ((p_profile->get_navigation_obstacle_shape_source() == SimpleWorldObjectProfile::NAVIGATION_OBSTACLE_SHAPE_SCENE_COLLISION ||
+				p_profile->get_navigation_obstacle_shape_source() == SimpleWorldObjectProfile::NAVIGATION_OBSTACLE_SHAPE_MESH_AABB) &&
+			p_profile->get_scene().is_valid()) {
+		Node *scene_instance = p_profile->get_scene()->instantiate();
+		Node3D *instance_3d = Object::cast_to<Node3D>(scene_instance);
+		if (instance_3d != nullptr) {
+			const Transform3D root_to_terrain = p_placement_transform * instance_3d->get_global_transform().affine_inverse();
+			if (p_profile->get_navigation_obstacle_shape_source() == SimpleWorldObjectProfile::NAVIGATION_OBSTACLE_SHAPE_MESH_AABB) {
+				_collect_mesh_aabb_obstructions(instance_3d, root_to_terrain, r_obstructions);
+			} else {
+				_collect_collision_obstructions(instance_3d, root_to_terrain, r_obstructions);
+			}
+		}
+		if (scene_instance != nullptr) {
+			memdelete(scene_instance);
+		}
+		return;
+	}
+
+	const real_t base_radius = p_profile->get_navigation_obstacle_radius();
+	if (base_radius <= 0.0) {
+		return;
+	}
+	const Vector3 safe_scale = p_placement_transform.basis.get_scale().abs().maxf((real_t)0.001);
+	const real_t horizontal_scale = MAX(safe_scale.x, safe_scale.z);
+	const real_t radius = base_radius * horizontal_scale;
+	const real_t height = p_profile->get_navigation_obstacle_height() * safe_scale.y;
+
+	Transform3D circle_transform;
+	circle_transform.origin = p_placement_transform.origin;
+	_append_circle_obstruction(r_obstructions, circle_transform, radius, height * 0.5);
+}
+} // namespace
 
 void SimpleTerrain3D::_simple_terrain_data_changed() {
 	if (syncing_data) {
@@ -484,7 +694,30 @@ void SimpleTerrain3D::_update_navigation_debug_mesh() {
 		}
 	}
 
-	if (navigation_meshes.is_empty()) {
+	Vector<SimpleTerrainNavigationObstruction> runtime_obstructions;
+	if (navigation_debug_runtime_obstacles_visible && world_placement_library.is_valid() && world_placement_data.is_valid()) {
+		const PackedStringArray profile_ids = world_placement_data->get_profile_ids();
+		const PackedVector3Array positions = world_placement_data->get_positions();
+		const PackedVector3Array rotations = world_placement_data->get_rotations();
+		const PackedVector3Array scales = world_placement_data->get_scales();
+		const PackedVector3Array normals = world_placement_data->get_terrain_normals();
+		const int placement_count = MIN(profile_ids.size(), MIN(positions.size(), MIN(rotations.size(), MIN(scales.size(), normals.size()))));
+		const Transform3D terrain_inverse = get_global_transform().affine_inverse();
+
+		for (int i = 0; i < placement_count; i++) {
+			Ref<SimpleWorldObjectProfile> profile = world_placement_library->get_profile_by_id(profile_ids[i]);
+			if (profile.is_null() || !profile->uses_runtime_navigation_obstacle()) {
+				continue;
+			}
+
+			const Vector3 local_position = terrain_inverse.xform(positions[i]);
+			const Vector3 local_normal = terrain_inverse.basis.xform(normals[i]).normalized();
+			const Transform3D placement_transform = _build_profile_placement_transform(local_position, rotations[i], scales[i], local_normal, profile->is_aligning_to_terrain_normal());
+			_append_profile_placement_obstructions(profile, placement_transform, runtime_obstructions);
+		}
+	}
+
+	if (navigation_meshes.is_empty() && runtime_obstructions.is_empty()) {
 		if (navigation_debug_instance.is_valid()) {
 			rs->instance_set_visible(navigation_debug_instance, false);
 		}
@@ -506,7 +739,18 @@ void SimpleTerrain3D::_update_navigation_debug_mesh() {
 		}
 	}
 
-	if (face_vertex_count == 0) {
+	int obstacle_face_vertex_count = 0;
+	int obstacle_line_vertex_count = 0;
+	for (const SimpleTerrainNavigationObstruction &obstruction : runtime_obstructions) {
+		const int vertex_count = obstruction.vertices.size();
+		if (vertex_count < 3) {
+			continue;
+		}
+		obstacle_face_vertex_count += (vertex_count - 2) * 3;
+		obstacle_line_vertex_count += vertex_count * 2;
+	}
+
+	if (face_vertex_count == 0 && obstacle_face_vertex_count == 0) {
 		if (navigation_debug_instance.is_valid()) {
 			rs->instance_set_visible(navigation_debug_instance, false);
 		}
@@ -526,12 +770,24 @@ void SimpleTerrain3D::_update_navigation_debug_mesh() {
 	if (enabled_edge_lines) {
 		line_vertices.resize(line_vertex_count);
 	}
+	Vector<Vector3> obstacle_face_vertices;
+	if (obstacle_face_vertex_count > 0) {
+		obstacle_face_vertices.resize(obstacle_face_vertex_count);
+	}
+	Vector<Vector3> obstacle_line_vertices;
+	if (enabled_edge_lines && obstacle_line_vertex_count > 0) {
+		obstacle_line_vertices.resize(obstacle_line_vertex_count);
+	}
 
 	Vector3 *face_vertices_w = face_vertices.ptrw();
 	Color *face_colors_w = face_colors.ptrw();
 	Vector3 *line_vertices_w = line_vertices.ptrw();
+	Vector3 *obstacle_face_vertices_w = obstacle_face_vertices.ptrw();
+	Vector3 *obstacle_line_vertices_w = obstacle_line_vertices.ptrw();
 	int face_vertex_index = 0;
 	int line_vertex_index = 0;
+	int obstacle_face_vertex_index = 0;
+	int obstacle_line_vertex_index = 0;
 
 	const Color debug_face_color = ns->get_debug_navigation_geometry_face_color();
 	Color polygon_color = debug_face_color;
@@ -577,6 +833,27 @@ void SimpleTerrain3D::_update_navigation_debug_mesh() {
 		}
 	}
 
+	for (const SimpleTerrainNavigationObstruction &obstruction : runtime_obstructions) {
+		const Vector<Vector3> &vertices = obstruction.vertices;
+		const int vertex_count = vertices.size();
+		if (vertex_count < 3) {
+			continue;
+		}
+
+		for (int vertex_index = 0; vertex_index < vertex_count - 2; vertex_index++) {
+			obstacle_face_vertices_w[obstacle_face_vertex_index++] = vertices[0];
+			obstacle_face_vertices_w[obstacle_face_vertex_index++] = vertices[vertex_index + 1];
+			obstacle_face_vertices_w[obstacle_face_vertex_index++] = vertices[vertex_index + 2];
+		}
+
+		if (enabled_edge_lines) {
+			for (int vertex_index = 0; vertex_index < vertex_count; vertex_index++) {
+				obstacle_line_vertices_w[obstacle_line_vertex_index++] = vertices[vertex_index];
+				obstacle_line_vertices_w[obstacle_line_vertex_index++] = vertices[(vertex_index + 1) % vertex_count];
+			}
+		}
+	}
+
 	if (!navigation_debug_instance.is_valid()) {
 		navigation_debug_instance = rs->instance_create();
 	}
@@ -585,14 +862,22 @@ void SimpleTerrain3D::_update_navigation_debug_mesh() {
 	}
 	navigation_debug_mesh->clear_surfaces();
 
-	Array face_mesh_array;
-	face_mesh_array.resize(Mesh::ARRAY_MAX);
-	face_mesh_array[Mesh::ARRAY_VERTEX] = face_vertices;
-	if (enabled_geometry_face_random_color) {
-		face_mesh_array[Mesh::ARRAY_COLOR] = face_colors;
+	if (face_vertex_index > 0) {
+		if (face_vertex_index != face_vertices.size()) {
+			face_vertices.resize(face_vertex_index);
+		}
+		Array face_mesh_array;
+		face_mesh_array.resize(Mesh::ARRAY_MAX);
+		face_mesh_array[Mesh::ARRAY_VERTEX] = face_vertices;
+		if (enabled_geometry_face_random_color) {
+			if (face_vertex_index != face_colors.size()) {
+				face_colors.resize(face_vertex_index);
+			}
+			face_mesh_array[Mesh::ARRAY_COLOR] = face_colors;
+		}
+		navigation_debug_mesh->add_surface_from_arrays(Mesh::PRIMITIVE_TRIANGLES, face_mesh_array);
+		navigation_debug_mesh->surface_set_material(navigation_debug_mesh->get_surface_count() - 1, ns->get_debug_navigation_geometry_face_material());
 	}
-	navigation_debug_mesh->add_surface_from_arrays(Mesh::PRIMITIVE_TRIANGLES, face_mesh_array);
-	navigation_debug_mesh->surface_set_material(0, ns->get_debug_navigation_geometry_face_material());
 
 	if (enabled_edge_lines && line_vertex_index > 0) {
 		if (line_vertex_index != line_vertices.size()) {
@@ -602,7 +887,29 @@ void SimpleTerrain3D::_update_navigation_debug_mesh() {
 		line_mesh_array.resize(Mesh::ARRAY_MAX);
 		line_mesh_array[Mesh::ARRAY_VERTEX] = line_vertices;
 		navigation_debug_mesh->add_surface_from_arrays(Mesh::PRIMITIVE_LINES, line_mesh_array);
-		navigation_debug_mesh->surface_set_material(1, ns->get_debug_navigation_geometry_edge_material());
+		navigation_debug_mesh->surface_set_material(navigation_debug_mesh->get_surface_count() - 1, ns->get_debug_navigation_geometry_edge_material());
+	}
+
+	if (obstacle_face_vertex_index > 0) {
+		if (obstacle_face_vertex_index != obstacle_face_vertices.size()) {
+			obstacle_face_vertices.resize(obstacle_face_vertex_index);
+		}
+		Array obstacle_face_mesh_array;
+		obstacle_face_mesh_array.resize(Mesh::ARRAY_MAX);
+		obstacle_face_mesh_array[Mesh::ARRAY_VERTEX] = obstacle_face_vertices;
+		navigation_debug_mesh->add_surface_from_arrays(Mesh::PRIMITIVE_TRIANGLES, obstacle_face_mesh_array);
+		navigation_debug_mesh->surface_set_material(navigation_debug_mesh->get_surface_count() - 1, ns->get_debug_navigation_avoidance_obstacles_radius_material());
+	}
+
+	if (enabled_edge_lines && obstacle_line_vertex_index > 0) {
+		if (obstacle_line_vertex_index != obstacle_line_vertices.size()) {
+			obstacle_line_vertices.resize(obstacle_line_vertex_index);
+		}
+		Array obstacle_line_mesh_array;
+		obstacle_line_mesh_array.resize(Mesh::ARRAY_MAX);
+		obstacle_line_mesh_array[Mesh::ARRAY_VERTEX] = obstacle_line_vertices;
+		navigation_debug_mesh->add_surface_from_arrays(Mesh::PRIMITIVE_LINES, obstacle_line_mesh_array);
+		navigation_debug_mesh->surface_set_material(navigation_debug_mesh->get_surface_count() - 1, ns->get_debug_navigation_avoidance_static_obstacle_pushout_edge_material());
 	}
 
 	rs->instance_set_base(navigation_debug_instance, navigation_debug_mesh->get_rid());
@@ -1048,6 +1355,19 @@ void SimpleTerrain3D::set_navigation_debug_visible(bool p_visible) {
 	notify_property_list_changed();
 }
 
+void SimpleTerrain3D::set_navigation_debug_runtime_obstacles_visible(bool p_visible) {
+	if (navigation_debug_runtime_obstacles_visible == p_visible) {
+		return;
+	}
+	navigation_debug_runtime_obstacles_visible = p_visible;
+#ifdef DEBUG_ENABLED
+	if (is_inside_tree()) {
+		_update_navigation_debug_mesh();
+	}
+#endif // DEBUG_ENABLED
+	notify_property_list_changed();
+}
+
 void SimpleTerrain3D::set_height_data(const PackedFloat32Array &p_height_data) {
 	_ensure_data();
 	syncing_data = true;
@@ -1300,11 +1620,11 @@ void SimpleTerrain3D::bake_navigation(bool p_on_thread) {
 	if (world_placement_library.is_valid() && world_placement_data.is_valid()) {
 		const PackedStringArray profile_ids = world_placement_data->get_profile_ids();
 		const PackedVector3Array positions = world_placement_data->get_positions();
+		const PackedVector3Array rotations = world_placement_data->get_rotations();
 		const PackedVector3Array scales = world_placement_data->get_scales();
-		const int placement_count = MIN(profile_ids.size(), MIN(positions.size(), scales.size()));
+		const PackedVector3Array normals = world_placement_data->get_terrain_normals();
+		const int placement_count = MIN(profile_ids.size(), MIN(positions.size(), MIN(rotations.size(), MIN(scales.size(), normals.size()))));
 		const Transform3D terrain_inverse = get_global_transform().affine_inverse();
-		static const int obstruction_circle_points = 12;
-		const real_t circle_step = Math::TAU / obstruction_circle_points;
 
 		for (int i = 0; i < placement_count; i++) {
 			Ref<SimpleWorldObjectProfile> profile = world_placement_library->get_profile_by_id(profile_ids[i]);
@@ -1312,29 +1632,14 @@ void SimpleTerrain3D::bake_navigation(bool p_on_thread) {
 				continue;
 			}
 
-			const real_t base_radius = profile->get_navigation_obstacle_radius();
-			if (base_radius <= 0.0) {
-				continue;
-			}
-
 			const Vector3 local_position = terrain_inverse.xform(positions[i]);
-			const Vector3 safe_scale = scales[i].abs().maxf((real_t)0.001);
-			const real_t horizontal_scale = MAX(safe_scale.x, safe_scale.z);
-			const real_t radius = base_radius * horizontal_scale;
-			const real_t height = profile->get_navigation_obstacle_height() * safe_scale.y;
-
-			Vector<Vector3> obstruction_vertices;
-			obstruction_vertices.resize(obstruction_circle_points);
-			Vector3 *vertices_w = obstruction_vertices.ptrw();
-			for (int point = 0; point < obstruction_circle_points; point++) {
-				const real_t angle = point * circle_step;
-				vertices_w[point] = Vector3(
-						local_position.x + Math::cos(angle) * radius,
-						0.0,
-						local_position.z + Math::sin(angle) * radius);
+			const Vector3 local_normal = terrain_inverse.basis.xform(normals[i]).normalized();
+			const Transform3D placement_transform = _build_profile_placement_transform(local_position, rotations[i], scales[i], local_normal, profile->is_aligning_to_terrain_normal());
+			Vector<SimpleTerrainNavigationObstruction> obstructions;
+			_append_profile_placement_obstructions(profile, placement_transform, obstructions);
+			for (const SimpleTerrainNavigationObstruction &obstruction : obstructions) {
+				source_geometry_data->add_projected_obstruction(obstruction.vertices, obstruction.elevation, obstruction.height, profile->get_navigation_obstacle_carve());
 			}
-
-			source_geometry_data->add_projected_obstruction(obstruction_vertices, local_position.y, height, profile->get_navigation_obstacle_carve());
 		}
 	}
 
@@ -1712,6 +2017,8 @@ void SimpleTerrain3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_navigation_merge_max_rect_size"), &SimpleTerrain3D::get_navigation_merge_max_rect_size);
 	ClassDB::bind_method(D_METHOD("set_navigation_debug_visible", "visible"), &SimpleTerrain3D::set_navigation_debug_visible);
 	ClassDB::bind_method(D_METHOD("is_navigation_debug_visible"), &SimpleTerrain3D::is_navigation_debug_visible);
+	ClassDB::bind_method(D_METHOD("set_navigation_debug_runtime_obstacles_visible", "visible"), &SimpleTerrain3D::set_navigation_debug_runtime_obstacles_visible);
+	ClassDB::bind_method(D_METHOD("is_navigation_debug_runtime_obstacles_visible"), &SimpleTerrain3D::is_navigation_debug_runtime_obstacles_visible);
 	ClassDB::bind_method(D_METHOD("set_height_data", "height_data"), &SimpleTerrain3D::set_height_data);
 	ClassDB::bind_method(D_METHOD("get_height_data"), &SimpleTerrain3D::get_height_data);
 	ClassDB::bind_method(D_METHOD("set_terrain_material", "material"), &SimpleTerrain3D::set_terrain_material);
@@ -1786,6 +2093,7 @@ void SimpleTerrain3D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "navigation_merge_planar_tolerance", PROPERTY_HINT_RANGE, "0,10,0.001,or_greater,suffix:m"), "set_navigation_merge_planar_tolerance", "get_navigation_merge_planar_tolerance");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "navigation_merge_max_rect_size", PROPERTY_HINT_RANGE, "1,128,1,or_greater"), "set_navigation_merge_max_rect_size", "get_navigation_merge_max_rect_size");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "navigation_debug_visible"), "set_navigation_debug_visible", "is_navigation_debug_visible");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "navigation_debug_runtime_obstacles_visible"), "set_navigation_debug_runtime_obstacles_visible", "is_navigation_debug_runtime_obstacles_visible");
 	ADD_GROUP("", "");
 
 	// Material controls are exposed as node properties so game projects can

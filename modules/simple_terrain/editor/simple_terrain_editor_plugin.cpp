@@ -20,7 +20,9 @@
 #include "editor/inspector/editor_resource_picker.h"
 #include "editor/scene/3d/node_3d_editor_plugin.h"
 #include "editor/themes/editor_scale.h"
+#include "scene/3d/mesh_instance_3d.h"
 #include "scene/3d/navigation/navigation_obstacle_3d.h"
+#include "scene/3d/physics/collision_shape_3d.h"
 #include "scene/gui/box_container.h"
 #include "scene/gui/button.h"
 #include "scene/gui/item_list.h"
@@ -30,6 +32,93 @@
 #include "scene/gui/panel_container.h"
 #include "scene/gui/split_container.h"
 #include "scene/main/window.h"
+#include "scene/resources/3d/box_shape_3d.h"
+#include "scene/resources/3d/capsule_shape_3d.h"
+#include "scene/resources/3d/cylinder_shape_3d.h"
+#include "scene/resources/3d/sphere_shape_3d.h"
+
+namespace {
+struct SimpleTerrainRuntimeObstacleSpec {
+	Transform3D transform;
+	Vector<Vector3> vertices;
+	real_t radius = 0.0;
+	real_t height = 0.0;
+	bool use_vertices = false;
+};
+
+void _collect_runtime_collision_obstacle_specs(Node *p_node, const Transform3D &p_root_inverse, Vector<SimpleTerrainRuntimeObstacleSpec> &r_specs) {
+	CollisionShape3D *collision_shape = Object::cast_to<CollisionShape3D>(p_node);
+	if (collision_shape != nullptr && !collision_shape->is_disabled()) {
+		Ref<Shape3D> shape = collision_shape->get_shape();
+		if (shape.is_valid()) {
+			SimpleTerrainRuntimeObstacleSpec spec;
+			spec.transform = p_root_inverse * collision_shape->get_global_transform();
+
+			Ref<BoxShape3D> box = shape;
+			Ref<SphereShape3D> sphere = shape;
+			Ref<CapsuleShape3D> capsule = shape;
+			Ref<CylinderShape3D> cylinder = shape;
+
+			if (box.is_valid()) {
+				const Vector3 half_size = box->get_size() * 0.5;
+				spec.vertices.resize(4);
+				Vector3 *vertices_w = spec.vertices.ptrw();
+				vertices_w[0] = Vector3(-half_size.x, 0.0, -half_size.z);
+				vertices_w[1] = Vector3(half_size.x, 0.0, -half_size.z);
+				vertices_w[2] = Vector3(half_size.x, 0.0, half_size.z);
+				vertices_w[3] = Vector3(-half_size.x, 0.0, half_size.z);
+				spec.height = box->get_size().y;
+				spec.use_vertices = true;
+				r_specs.push_back(spec);
+			} else if (sphere.is_valid()) {
+				spec.radius = sphere->get_radius();
+				spec.height = sphere->get_radius() * 2.0;
+				r_specs.push_back(spec);
+			} else if (capsule.is_valid()) {
+				spec.radius = capsule->get_radius();
+				spec.height = capsule->get_height();
+				r_specs.push_back(spec);
+			} else if (cylinder.is_valid()) {
+				spec.radius = cylinder->get_radius();
+				spec.height = cylinder->get_height();
+				r_specs.push_back(spec);
+			}
+		}
+	}
+
+	for (int i = 0; i < p_node->get_child_count(); i++) {
+		_collect_runtime_collision_obstacle_specs(p_node->get_child(i), p_root_inverse, r_specs);
+	}
+}
+
+void _collect_runtime_mesh_aabb_obstacle_specs(Node *p_node, const Transform3D &p_root_inverse, Vector<SimpleTerrainRuntimeObstacleSpec> &r_specs) {
+	MeshInstance3D *mesh_instance = Object::cast_to<MeshInstance3D>(p_node);
+	if (mesh_instance != nullptr && mesh_instance->get_mesh().is_valid()) {
+		const AABB aabb = mesh_instance->get_mesh()->get_aabb();
+		if (aabb.size.x > 0.0 && aabb.size.z > 0.0) {
+			const Vector3 min = aabb.position;
+			const Vector3 max = aabb.position + aabb.size;
+			const real_t center_y = min.y + aabb.size.y * 0.5;
+
+			SimpleTerrainRuntimeObstacleSpec spec;
+			spec.transform = p_root_inverse * mesh_instance->get_global_transform();
+			spec.vertices.resize(4);
+			Vector3 *vertices_w = spec.vertices.ptrw();
+			vertices_w[0] = Vector3(min.x, center_y, min.z);
+			vertices_w[1] = Vector3(max.x, center_y, min.z);
+			vertices_w[2] = Vector3(max.x, center_y, max.z);
+			vertices_w[3] = Vector3(min.x, center_y, max.z);
+			spec.height = aabb.size.y;
+			spec.use_vertices = true;
+			r_specs.push_back(spec);
+		}
+	}
+
+	for (int i = 0; i < p_node->get_child_count(); i++) {
+		_collect_runtime_mesh_aabb_obstacle_specs(p_node->get_child(i), p_root_inverse, r_specs);
+	}
+}
+} // namespace
 
 void SimpleWorldPlacementDock::_library_resource_changed(const Ref<Resource> &p_resource) {
 	_debug_log(vformat("library_resource_changed resource=%s updating=%s", p_resource.is_valid() ? p_resource->get_path() : String("<null>"), updating ? "true" : "false"));
@@ -159,6 +248,7 @@ void SimpleWorldPlacementDock::_duplicate_profile_pressed() {
 	duplicate->set_navigation_obstacle_height(source->get_navigation_obstacle_height());
 	duplicate->set_navigation_obstacle_carve(source->get_navigation_obstacle_carve());
 	duplicate->set_navigation_avoidance_layers(source->get_navigation_avoidance_layers());
+	duplicate->set_navigation_obstacle_shape_source(source->get_navigation_obstacle_shape_source());
 
 	Ref<SimpleWorldPlacementLibrary> library = terrain->get_world_placement_library();
 	Array before = library->get_profiles().duplicate();
@@ -1137,17 +1227,45 @@ void SimpleTerrainEditorPlugin::_place_selected_profile(Camera3D *p_camera, cons
 	instance_3d->set_transform(local_transform);
 	instance_3d->set_name(profile->get_id().is_empty() ? String("WorldObject") : profile->get_id());
 
-	NavigationObstacle3D *runtime_obstacle = nullptr;
-	if (profile->uses_runtime_navigation_obstacle() && profile->get_navigation_obstacle_radius() > 0.0) {
-		runtime_obstacle = memnew(NavigationObstacle3D);
-		runtime_obstacle->set_name("NavigationObstacle3D");
-		runtime_obstacle->set_radius(profile->get_navigation_obstacle_radius());
-		runtime_obstacle->set_height(profile->get_navigation_obstacle_height());
-		runtime_obstacle->set_avoidance_layers(profile->get_navigation_avoidance_layers());
-		runtime_obstacle->set_avoidance_enabled(true);
-		runtime_obstacle->set_affect_navigation_mesh(false);
-		runtime_obstacle->set_carve_navigation_mesh(profile->get_navigation_obstacle_carve());
-		instance_3d->add_child(runtime_obstacle);
+	Vector<NavigationObstacle3D *> runtime_obstacles;
+	if (profile->uses_runtime_navigation_obstacle()) {
+		if (profile->get_navigation_obstacle_shape_source() == SimpleWorldObjectProfile::NAVIGATION_OBSTACLE_SHAPE_SCENE_COLLISION ||
+				profile->get_navigation_obstacle_shape_source() == SimpleWorldObjectProfile::NAVIGATION_OBSTACLE_SHAPE_MESH_AABB) {
+			Vector<SimpleTerrainRuntimeObstacleSpec> specs;
+			if (profile->get_navigation_obstacle_shape_source() == SimpleWorldObjectProfile::NAVIGATION_OBSTACLE_SHAPE_MESH_AABB) {
+				_collect_runtime_mesh_aabb_obstacle_specs(instance_3d, instance_3d->get_global_transform().affine_inverse(), specs);
+			} else {
+				_collect_runtime_collision_obstacle_specs(instance_3d, instance_3d->get_global_transform().affine_inverse(), specs);
+			}
+			for (const SimpleTerrainRuntimeObstacleSpec &spec : specs) {
+				NavigationObstacle3D *runtime_obstacle = memnew(NavigationObstacle3D);
+				runtime_obstacle->set_name("NavigationObstacle3D");
+				runtime_obstacle->set_transform(spec.transform);
+				runtime_obstacle->set_height(spec.height);
+				if (spec.use_vertices) {
+					runtime_obstacle->set_vertices(spec.vertices);
+				} else {
+					runtime_obstacle->set_radius(spec.radius);
+				}
+				runtime_obstacle->set_avoidance_layers(profile->get_navigation_avoidance_layers());
+				runtime_obstacle->set_avoidance_enabled(true);
+				runtime_obstacle->set_affect_navigation_mesh(false);
+				runtime_obstacle->set_carve_navigation_mesh(profile->get_navigation_obstacle_carve());
+				instance_3d->add_child(runtime_obstacle);
+				runtime_obstacles.push_back(runtime_obstacle);
+			}
+		} else if (profile->get_navigation_obstacle_radius() > 0.0) {
+			NavigationObstacle3D *runtime_obstacle = memnew(NavigationObstacle3D);
+			runtime_obstacle->set_name("NavigationObstacle3D");
+			runtime_obstacle->set_radius(profile->get_navigation_obstacle_radius());
+			runtime_obstacle->set_height(profile->get_navigation_obstacle_height());
+			runtime_obstacle->set_avoidance_layers(profile->get_navigation_avoidance_layers());
+			runtime_obstacle->set_avoidance_enabled(true);
+			runtime_obstacle->set_affect_navigation_mesh(false);
+			runtime_obstacle->set_carve_navigation_mesh(profile->get_navigation_obstacle_carve());
+			instance_3d->add_child(runtime_obstacle);
+			runtime_obstacles.push_back(runtime_obstacle);
+		}
 	}
 
 	Ref<SimpleWorldPlacementData> placement_data = terrain->get_world_placement_data();
@@ -1198,7 +1316,7 @@ void SimpleTerrainEditorPlugin::_place_selected_profile(Camera3D *p_camera, cons
 	Node *edited_scene = EditorNode::get_singleton()->get_edited_scene();
 	if (edited_scene != nullptr) {
 		undo_redo->add_do_method(instance_3d, "set_owner", edited_scene);
-		if (runtime_obstacle != nullptr) {
+		for (NavigationObstacle3D *runtime_obstacle : runtime_obstacles) {
 			undo_redo->add_do_method(runtime_obstacle, "set_owner", edited_scene);
 		}
 	}

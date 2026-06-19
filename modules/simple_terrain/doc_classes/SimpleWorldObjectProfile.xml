@@ -54,6 +54,9 @@
 		<member name="navigation_obstacle_radius" type="float" setter="set_navigation_obstacle_radius" getter="get_navigation_obstacle_radius" default="0.5">
 			Radius of the circular navigation obstruction generated for this profile.
 		</member>
+		<member name="navigation_obstacle_shape_source" type="int" setter="set_navigation_obstacle_shape_source" getter="get_navigation_obstacle_shape_source" enum="SimpleWorldObjectProfile.NavigationObstacleShapeSource" default="0">
+			Controls how the navigation obstacle shape is generated. [constant NAVIGATION_OBSTACLE_SHAPE_RADIUS] uses [member navigation_obstacle_radius] and [member navigation_obstacle_height]. [constant NAVIGATION_OBSTACLE_SHAPE_SCENE_COLLISION] reads supported [CollisionShape3D] nodes from [member scene], using box shapes as rectangular obstacles and sphere, capsule, or cylinder shapes as circular obstacles. [constant NAVIGATION_OBSTACLE_SHAPE_MESH_AABB] reads [MeshInstance3D] mesh bounds and uses each mesh AABB as a rectangular obstacle.
+		</member>
 		<member name="placement_type" type="int" setter="set_placement_type" getter="get_placement_type" enum="SimpleWorldObjectProfile.PlacementType" default="0">
 			Preferred placement mode for this profile.
 		</member>
@@ -106,6 +109,15 @@
 		</constant>
 		<constant name="NAVIGATION_OBSTACLE_BAKE_AND_RUNTIME" value="3" enum="NavigationObstacleMode">
 			Placed objects from this profile are included in baked navigation and may also create runtime avoidance obstacles.
+		</constant>
+		<constant name="NAVIGATION_OBSTACLE_SHAPE_RADIUS" value="0" enum="NavigationObstacleShapeSource">
+			Uses the profile's radius and height fields to generate a simple circular obstacle.
+		</constant>
+		<constant name="NAVIGATION_OBSTACLE_SHAPE_SCENE_COLLISION" value="1" enum="NavigationObstacleShapeSource">
+			Uses supported [CollisionShape3D] nodes in the profile scene to generate obstacle footprints.
+		</constant>
+		<constant name="NAVIGATION_OBSTACLE_SHAPE_MESH_AABB" value="2" enum="NavigationObstacleShapeSource">
+			Uses [MeshInstance3D] mesh AABBs in the profile scene to generate rectangular obstacle footprints.
 		</constant>
 	</constants>
 </class>

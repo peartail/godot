@@ -210,6 +210,14 @@ void SimpleWorldObjectProfile::set_navigation_avoidance_layers(uint32_t p_layers
 	emit_changed();
 }
 
+void SimpleWorldObjectProfile::set_navigation_obstacle_shape_source(NavigationObstacleShapeSource p_source) {
+	if (navigation_obstacle_shape_source == p_source) {
+		return;
+	}
+	navigation_obstacle_shape_source = p_source;
+	emit_changed();
+}
+
 void SimpleWorldObjectProfile::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_id", "id"), &SimpleWorldObjectProfile::set_id);
 	ClassDB::bind_method(D_METHOD("get_id"), &SimpleWorldObjectProfile::get_id);
@@ -261,6 +269,8 @@ void SimpleWorldObjectProfile::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_navigation_obstacle_carve"), &SimpleWorldObjectProfile::get_navigation_obstacle_carve);
 	ClassDB::bind_method(D_METHOD("set_navigation_avoidance_layers", "layers"), &SimpleWorldObjectProfile::set_navigation_avoidance_layers);
 	ClassDB::bind_method(D_METHOD("get_navigation_avoidance_layers"), &SimpleWorldObjectProfile::get_navigation_avoidance_layers);
+	ClassDB::bind_method(D_METHOD("set_navigation_obstacle_shape_source", "source"), &SimpleWorldObjectProfile::set_navigation_obstacle_shape_source);
+	ClassDB::bind_method(D_METHOD("get_navigation_obstacle_shape_source"), &SimpleWorldObjectProfile::get_navigation_obstacle_shape_source);
 
 	BIND_ENUM_CONSTANT(PLACEMENT_SINGLE);
 	BIND_ENUM_CONSTANT(PLACEMENT_BRUSH);
@@ -270,6 +280,9 @@ void SimpleWorldObjectProfile::_bind_methods() {
 	BIND_ENUM_CONSTANT(NAVIGATION_OBSTACLE_BAKE_STATIC);
 	BIND_ENUM_CONSTANT(NAVIGATION_OBSTACLE_RUNTIME_AVOIDANCE);
 	BIND_ENUM_CONSTANT(NAVIGATION_OBSTACLE_BAKE_AND_RUNTIME);
+	BIND_ENUM_CONSTANT(NAVIGATION_OBSTACLE_SHAPE_RADIUS);
+	BIND_ENUM_CONSTANT(NAVIGATION_OBSTACLE_SHAPE_SCENE_COLLISION);
+	BIND_ENUM_CONSTANT(NAVIGATION_OBSTACLE_SHAPE_MESH_AABB);
 
 	ADD_PROPERTY(PropertyInfo(Variant::STRING, "id"), "set_id", "get_id");
 	ADD_PROPERTY(PropertyInfo(Variant::STRING, "display_name"), "set_display_name", "get_display_name");
@@ -296,4 +309,5 @@ void SimpleWorldObjectProfile::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "navigation_obstacle_height", PROPERTY_HINT_RANGE, "0,1000,0.01,or_greater,suffix:m"), "set_navigation_obstacle_height", "get_navigation_obstacle_height");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "navigation_obstacle_carve"), "set_navigation_obstacle_carve", "get_navigation_obstacle_carve");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "navigation_avoidance_layers", PROPERTY_HINT_LAYERS_3D_NAVIGATION), "set_navigation_avoidance_layers", "get_navigation_avoidance_layers");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "navigation_obstacle_shape_source", PROPERTY_HINT_ENUM, "Radius,Scene Collision,Mesh AABB"), "set_navigation_obstacle_shape_source", "get_navigation_obstacle_shape_source");
 }
