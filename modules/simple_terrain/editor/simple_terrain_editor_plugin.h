@@ -75,6 +75,7 @@ class SimpleWorldPlacementDock : public EditorDock {
 	void _duplicate_profile_pressed();
 	void _remove_profile_pressed();
 	void _profile_list_item_selected(int p_index);
+	void _profile_list_item_activated(int p_index);
 	void _search_text_changed(const String &p_text);
 	void _category_selected(int p_index);
 	void _editor_selection_changed();
@@ -154,6 +155,7 @@ class SimpleTerrainEditorPlugin : public EditorPlugin {
 	Button *flat_button = nullptr;
 	Button *random_button = nullptr;
 	Button *bake_navigation_button = nullptr;
+	Button *bake_dynamic_navigation_button = nullptr;
 	Ref<SimpleTerrain3DGizmoPlugin> gizmo_plugin;
 	Ref<SimpleTerrainInspectorPlugin> inspector_plugin;
 	SimpleWorldPlacementDock *placement_dock = nullptr;
@@ -186,6 +188,7 @@ class SimpleTerrainEditorPlugin : public EditorPlugin {
 	void _flat_pressed();
 	void _random_pressed();
 	void _bake_navigation_pressed();
+	void _bake_dynamic_navigation_pressed();
 	void _update_toolbar();
 	void _update_placement_overlay();
 	Node3D *_get_or_create_placement_root(EditorUndoRedoManager *p_undo_redo);

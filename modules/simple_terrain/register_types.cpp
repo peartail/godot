@@ -6,6 +6,7 @@
 
 #include "register_types.h"
 
+#include "modules/simple_terrain/simple_navigation_blocker_3d.h"
 #include "modules/simple_terrain/simple_terrain_3d.h"
 #include "modules/simple_terrain/simple_terrain_data.h"
 #include "modules/simple_terrain/simple_world_object_profile.h"
@@ -25,6 +26,7 @@ void initialize_simple_terrain_module(ModuleInitializationLevel p_level) {
 		// editor class database.
 		GDREGISTER_CLASS(SimpleTerrainData);
 		GDREGISTER_CLASS(SimpleTerrain3D);
+		GDREGISTER_CLASS(SimpleNavigationBlocker3D);
 		GDREGISTER_CLASS(SimpleWorldObjectProfile);
 		GDREGISTER_CLASS(SimpleWorldPlacementLibrary);
 		GDREGISTER_CLASS(SimpleWorldPlacementData);

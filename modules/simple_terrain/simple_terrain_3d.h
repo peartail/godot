@@ -7,10 +7,15 @@
 #include "simple_terrain_data.h"
 #include "simple_world_placement_data.h"
 #include "simple_world_placement_library.h"
+#include "core/object/object_id.h"
 #include "scene/3d/mesh_instance_3d.h"
 #include "scene/resources/material.h"
 #include "scene/resources/navigation_mesh.h"
 #include "scene/resources/texture.h"
+
+class SimpleNavigationBlocker3D;
+class NavigationObstacle3D;
+class NavigationMeshSourceGeometryData3D;
 
 class SimpleTerrain3D : public MeshInstance3D {
 	GDCLASS(SimpleTerrain3D, MeshInstance3D);
@@ -68,6 +73,12 @@ private:
 	Ref<NavigationMesh> navigation_baked_mesh;
 	RID navigation_baked_region;
 	bool navigation_bake_dirty = true;
+	bool navigation_dynamic_enabled = false;
+	uint32_t navigation_dynamic_layers = 2;
+	Ref<NavigationMesh> navigation_dynamic_baked_mesh;
+	RID navigation_dynamic_baked_region;
+	bool navigation_dynamic_bake_dirty = true;
+	Vector<ObjectID> dynamic_navigation_blockers;
 	real_t navigation_quad_max_normal_angle = 5.0;
 	real_t navigation_quad_planar_tolerance = 0.05;
 	real_t navigation_merge_max_normal_angle = 8.0;
@@ -76,6 +87,7 @@ private:
 	int navigation_merge_max_rect_size = 8;
 	bool navigation_debug_visible = true;
 	bool navigation_debug_runtime_obstacles_visible = true;
+	Vector<NavigationObstacle3D *> runtime_navigation_obstacles;
 
 	// Material priority is:
 	// 1. explicit terrain_material
@@ -122,8 +134,14 @@ private:
 	// uploaded again.
 	Ref<ArrayMesh> _build_chunk_mesh(int p_origin_x, int p_origin_z, int p_quad_width, int p_quad_depth) const;
 	Ref<NavigationMesh> _build_chunk_navigation_mesh(int p_origin_x, int p_origin_z, int p_quad_width, int p_quad_depth) const;
+	Ref<NavigationMeshSourceGeometryData3D> _build_bake_source_geometry(bool p_include_runtime_obstacles) const;
 	void _mark_navigation_bake_dirty();
+	void _mark_navigation_dynamic_bake_dirty();
 	void _navigation_bake_finished();
+	void _navigation_dynamic_bake_finished();
+	void _world_placement_navigation_source_changed();
+	void _clear_runtime_navigation_obstacles();
+	void _sync_runtime_navigation_obstacles();
 #ifdef DEBUG_ENABLED
 	void _navigation_debug_changed();
 	void _update_navigation_debug_mesh();
@@ -132,6 +150,7 @@ private:
 	void _sync_chunk_instances();
 	void _sync_chunk_materials();
 	void _sync_chunk_navigation();
+	void _sync_dynamic_navigation_region(RID p_navigation_map, const Transform3D &p_global_transform);
 	void _rebuild_chunks_for_region(int p_min_x, int p_min_z, int p_max_x, int p_max_z);
 	Ref<Material> _get_active_chunk_material();
 	void _update_builtin_triplanar_material();
@@ -172,6 +191,14 @@ public:
 	void set_navigation_baked_mesh(const Ref<NavigationMesh> &p_navigation_mesh);
 	Ref<NavigationMesh> get_navigation_baked_mesh() const { return navigation_baked_mesh; }
 	bool is_navigation_bake_dirty() const { return navigation_bake_dirty; }
+	void set_navigation_dynamic_enabled(bool p_enabled);
+	bool is_navigation_dynamic_enabled() const { return navigation_dynamic_enabled; }
+	void set_navigation_dynamic_layers(uint32_t p_layers);
+	uint32_t get_navigation_dynamic_layers() const { return navigation_dynamic_layers; }
+	void set_navigation_dynamic_baked_mesh(const Ref<NavigationMesh> &p_navigation_mesh);
+	Ref<NavigationMesh> get_navigation_dynamic_baked_mesh() const { return navigation_dynamic_baked_mesh; }
+	bool is_navigation_dynamic_bake_dirty() const { return navigation_dynamic_bake_dirty; }
+	void mark_dynamic_navigation_bake_dirty();
 	void set_navigation_quad_max_normal_angle(real_t p_angle);
 	real_t get_navigation_quad_max_normal_angle() const { return navigation_quad_max_normal_angle; }
 	void set_navigation_quad_planar_tolerance(real_t p_tolerance);
@@ -239,6 +266,10 @@ public:
 	void rebuild_mesh();
 	void rebuild_navigation();
 	void bake_navigation(bool p_on_thread = false);
+	void bake_dynamic_navigation(bool p_on_thread = false);
+	void register_dynamic_navigation_blocker(SimpleNavigationBlocker3D *p_blocker);
+	void unregister_dynamic_navigation_blocker(SimpleNavigationBlocker3D *p_blocker);
+	void clear_dynamic_navigation_blockers();
 
 	// Editing and diagnostics. apply_brush() is runtime-safe; the editor plugin
 	// builds undo/redo and viewport input behavior on top of this low-level API.

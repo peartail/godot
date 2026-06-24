@@ -56,6 +56,19 @@
 				Bakes the terrain height field into [member navigation_baked_mesh] using Godot's navigation mesh baker and switches [member navigation_build_mode] to [constant NAVIGATION_BUILD_BAKED]. This is intended as a manual step after terrain editing, not as an automatic brush-stroke update.
 			</description>
 		</method>
+		<method name="bake_dynamic_navigation">
+			<return type="void" />
+			<param index="0" name="on_thread" type="bool" default="false" />
+			<description>
+				Bakes [member navigation_dynamic_baked_mesh] from the terrain, baked static obstacles, and runtime obstacle profiles from the current world placement data. The result is registered on [member navigation_dynamic_layers] when [member navigation_dynamic_enabled] is [code]true[/code]. Agents should query either the static layers or the dynamic layers, not both, when dynamic obstacles must block pathfinding.
+			</description>
+		</method>
+		<method name="clear_dynamic_navigation_blockers">
+			<return type="void" />
+			<description>
+				Clears blockers registered through [method register_dynamic_navigation_blocker] and marks [member navigation_dynamic_baked_mesh] dirty.
+			</description>
+		</method>
 		<method name="generate_random_terrain">
 			<return type="void" />
 			<description>
@@ -82,6 +95,13 @@
 				Chooses a new random seed and calls [method generate_random_terrain].
 			</description>
 		</method>
+		<method name="register_dynamic_navigation_blocker">
+			<return type="void" />
+			<param index="0" name="blocker" type="SimpleNavigationBlocker3D" />
+			<description>
+				Registers an instanced [SimpleNavigationBlocker3D] so it is included by [method bake_dynamic_navigation]. Registration marks the dynamic navigation bake dirty but does not rebake immediately.
+			</description>
+		</method>
 		<method name="rebuild_mesh">
 			<return type="void" />
 			<description>
@@ -94,10 +114,23 @@
 				Rebuilds all terrain navigation meshes from [member simple_terrain_data]. Navigation meshes are generated per chunk and registered on the world's default 3D navigation map when [member navigation_enabled] is [code]true[/code].
 			</description>
 		</method>
+		<method name="mark_dynamic_navigation_bake_dirty">
+			<return type="void" />
+			<description>
+				Marks [member navigation_dynamic_baked_mesh] out of date.
+			</description>
+		</method>
 		<method name="reset_flat_terrain">
 			<return type="void" />
 			<description>
 				Fills [member simple_terrain_data] using [member flat_height] and rebuilds the terrain. This is the default recommended initialization path for a blank editable terrain.
+			</description>
+		</method>
+		<method name="unregister_dynamic_navigation_blocker">
+			<return type="void" />
+			<param index="0" name="blocker" type="SimpleNavigationBlocker3D" />
+			<description>
+				Removes a blocker previously added with [method register_dynamic_navigation_blocker] and marks the dynamic navigation bake dirty.
 			</description>
 		</method>
 	</methods>
@@ -122,6 +155,15 @@
 		</member>
 		<member name="navigation_baked_mesh" type="NavigationMesh" setter="set_navigation_baked_mesh" getter="get_navigation_baked_mesh">
 			Navigation mesh resource produced by [method bake_navigation]. Assign a saved [NavigationMesh] resource here to keep baked navigation data outside the scene file, or leave it embedded in the scene.
+		</member>
+		<member name="navigation_dynamic_baked_mesh" type="NavigationMesh" setter="set_navigation_dynamic_baked_mesh" getter="get_navigation_dynamic_baked_mesh">
+			Navigation mesh resource produced by [method bake_dynamic_navigation]. This mesh includes runtime obstacle profiles from the current world placement data and is intended for agents that need pathfinding to route around temporary world objects.
+		</member>
+		<member name="navigation_dynamic_enabled" type="bool" setter="set_navigation_dynamic_enabled" getter="is_navigation_dynamic_enabled" default="false">
+			If [code]true[/code], [member navigation_dynamic_baked_mesh] is registered as an additional navigation region on [member navigation_dynamic_layers].
+		</member>
+		<member name="navigation_dynamic_layers" type="int" setter="set_navigation_dynamic_layers" getter="get_navigation_dynamic_layers" default="2">
+			Navigation layers assigned to [member navigation_dynamic_baked_mesh]. Use a layer separate from [member navigation_layers] so agents can choose between static-only pathfinding and dynamic-obstacle pathfinding.
 		</member>
 		<member name="navigation_debug_visible" type="bool" setter="set_navigation_debug_visible" getter="is_navigation_debug_visible" default="true">
 			If [code]true[/code], SimpleTerrain3D can show its generated navigation debug overlay when Godot's global navigation debug display is enabled. Disable this to hide only the SimpleTerrain overlay while leaving navigation itself active.
@@ -224,6 +266,11 @@
 		<signal name="navigation_bake_finished">
 			<description>
 				Emitted after [method bake_navigation] finishes and [member navigation_baked_mesh] has been synchronized with the terrain navigation region.
+			</description>
+		</signal>
+		<signal name="navigation_dynamic_bake_finished">
+			<description>
+				Emitted after [method bake_dynamic_navigation] finishes and [member navigation_dynamic_baked_mesh] has been synchronized with the dynamic navigation region.
 			</description>
 		</signal>
 	</signals>

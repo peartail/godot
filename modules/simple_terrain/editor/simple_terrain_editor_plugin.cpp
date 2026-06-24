@@ -4,6 +4,8 @@
 
 #include "simple_terrain_editor_plugin.h"
 
+#include "../simple_navigation_blocker_3d.h"
+
 #include "core/io/resource_loader.h"
 #include "core/math/random_pcg.h"
 #include "core/object/callable_mp.h"
@@ -12,6 +14,7 @@
 #include "core/templates/hash_set.h"
 #include "editor/editor_data.h"
 #include "editor/docks/editor_dock_manager.h"
+#include "editor/docks/filesystem_dock.h"
 #include "editor/editor_interface.h"
 #include "editor/editor_node.h"
 #include "editor/editor_undo_redo_manager.h"
@@ -117,6 +120,99 @@ void _collect_runtime_mesh_aabb_obstacle_specs(Node *p_node, const Transform3D &
 	for (int i = 0; i < p_node->get_child_count(); i++) {
 		_collect_runtime_mesh_aabb_obstacle_specs(p_node->get_child(i), p_root_inverse, r_specs);
 	}
+}
+
+void _append_transformed_line(Vector<Vector3> &r_lines, const Transform3D &p_transform, const Vector3 &p_from, const Vector3 &p_to) {
+	r_lines.push_back(p_transform.xform(p_from));
+	r_lines.push_back(p_transform.xform(p_to));
+}
+
+void _append_circle_gizmo_lines(Vector<Vector3> &r_lines, const Transform3D &p_transform, real_t p_radius, real_t p_height) {
+	if (p_radius <= 0.0) {
+		return;
+	}
+
+	const int segments = 48;
+	const real_t half_height = MAX((real_t)0.0, p_height) * 0.5;
+	for (int i = 0; i < segments; i++) {
+		const real_t angle_a = Math::TAU * (real_t)i / (real_t)segments;
+		const real_t angle_b = Math::TAU * (real_t)(i + 1) / (real_t)segments;
+		const Vector3 bottom_a = Vector3(Math::cos(angle_a) * p_radius, -half_height, Math::sin(angle_a) * p_radius);
+		const Vector3 bottom_b = Vector3(Math::cos(angle_b) * p_radius, -half_height, Math::sin(angle_b) * p_radius);
+		const Vector3 top_a = Vector3(bottom_a.x, half_height, bottom_a.z);
+		const Vector3 top_b = Vector3(bottom_b.x, half_height, bottom_b.z);
+		_append_transformed_line(r_lines, p_transform, bottom_a, bottom_b);
+		_append_transformed_line(r_lines, p_transform, top_a, top_b);
+	}
+
+	for (int i = 0; i < 4; i++) {
+		const real_t angle = Math::TAU * (real_t)i / 4.0;
+		const Vector3 bottom = Vector3(Math::cos(angle) * p_radius, -half_height, Math::sin(angle) * p_radius);
+		const Vector3 top = Vector3(bottom.x, half_height, bottom.z);
+		_append_transformed_line(r_lines, p_transform, bottom, top);
+	}
+}
+
+void _append_vertices_gizmo_lines(Vector<Vector3> &r_lines, const Transform3D &p_transform, const Vector<Vector3> &p_vertices, real_t p_height) {
+	const int vertex_count = p_vertices.size();
+	if (vertex_count < 3) {
+		return;
+	}
+
+	const real_t half_height = MAX((real_t)0.0, p_height) * 0.5;
+	for (int i = 0; i < vertex_count; i++) {
+		const Vector3 base_a = p_vertices[i];
+		const Vector3 base_b = p_vertices[(i + 1) % vertex_count];
+		const Vector3 bottom_a = base_a + Vector3(0.0, -half_height, 0.0);
+		const Vector3 bottom_b = base_b + Vector3(0.0, -half_height, 0.0);
+		const Vector3 top_a = base_a + Vector3(0.0, half_height, 0.0);
+		const Vector3 top_b = base_b + Vector3(0.0, half_height, 0.0);
+		_append_transformed_line(r_lines, p_transform, bottom_a, bottom_b);
+		_append_transformed_line(r_lines, p_transform, top_a, top_b);
+		_append_transformed_line(r_lines, p_transform, bottom_a, top_a);
+	}
+}
+
+PackedVector3Array _get_navigation_blocker_gizmo_lines(SimpleNavigationBlocker3D *p_blocker) {
+	PackedVector3Array lines;
+	if (p_blocker == nullptr) {
+		return lines;
+	}
+
+	Vector<SimpleTerrainRuntimeObstacleSpec> specs;
+	const Transform3D root_inverse = p_blocker->get_global_transform().affine_inverse();
+	switch (p_blocker->get_shape_source()) {
+		case SimpleNavigationBlocker3D::SHAPE_RADIUS: {
+			SimpleTerrainRuntimeObstacleSpec spec;
+			spec.radius = p_blocker->get_radius();
+			spec.height = p_blocker->get_height();
+			spec.transform = Transform3D();
+			specs.push_back(spec);
+		} break;
+
+		case SimpleNavigationBlocker3D::SHAPE_SCENE_COLLISION: {
+			_collect_runtime_collision_obstacle_specs(p_blocker, root_inverse, specs);
+		} break;
+
+		case SimpleNavigationBlocker3D::SHAPE_MESH_AABB: {
+			_collect_runtime_mesh_aabb_obstacle_specs(p_blocker, root_inverse, specs);
+		} break;
+	}
+
+	Vector<Vector3> line_vector;
+	for (const SimpleTerrainRuntimeObstacleSpec &spec : specs) {
+		if (spec.use_vertices) {
+			_append_vertices_gizmo_lines(line_vector, spec.transform, spec.vertices, spec.height);
+		} else {
+			_append_circle_gizmo_lines(line_vector, spec.transform, spec.radius, spec.height);
+		}
+	}
+
+	lines.resize(line_vector.size());
+	for (int i = 0; i < line_vector.size(); i++) {
+		lines.set(i, line_vector[i]);
+	}
+	return lines;
 }
 } // namespace
 
@@ -295,6 +391,29 @@ void SimpleWorldPlacementDock::_profile_list_item_selected(int p_index) {
 	_debug_log(vformat("profile_list_item_selected index=%d selected=%d", p_index, profile_id));
 	_refresh_profile_inspector();
 	_update_controls();
+}
+
+void SimpleWorldPlacementDock::_profile_list_item_activated(int p_index) {
+	ERR_FAIL_INDEX(p_index, profile_list->get_item_count());
+	const uint64_t profile_id = profile_list->get_item_metadata(p_index);
+	selected_profile_object_id = ObjectID(profile_id);
+	_refresh_profile_inspector();
+	_update_controls();
+
+	Ref<SimpleWorldObjectProfile> profile = _get_selected_profile();
+	if (profile.is_null() || profile->get_scene().is_null()) {
+		_debug_log(vformat("profile_list_item_activated ignored index=%d: no scene", p_index));
+		return;
+	}
+
+	const String scene_path = profile->get_scene()->get_path();
+	if (!scene_path.is_resource_file()) {
+		_debug_log(vformat("profile_list_item_activated ignored index=%d: scene has no resource path", p_index));
+		return;
+	}
+
+	FileSystemDock::get_singleton()->select_file(scene_path);
+	_debug_log(vformat("profile_list_item_activated selected scene=%s", scene_path));
 }
 
 void SimpleWorldPlacementDock::_search_text_changed(const String &p_text) {
@@ -901,6 +1020,7 @@ SimpleWorldPlacementDock::SimpleWorldPlacementDock() {
 	profile_list->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	profile_list->set_tooltip_text(TTRC("Drop scene files here to add them to the placement library."));
 	profile_list->connect(SceneStringName(item_selected), callable_mp(this, &SimpleWorldPlacementDock::_profile_list_item_selected));
+	profile_list->connect("item_activated", callable_mp(this, &SimpleWorldPlacementDock::_profile_list_item_activated));
 	SET_DRAG_FORWARDING_CD(profile_list, SimpleWorldPlacementDock);
 	list_column->add_child(profile_list);
 
@@ -961,11 +1081,11 @@ void SimpleTerrainInspectorPlugin::set_placement_dock(SimpleWorldPlacementDock *
 }
 
 bool SimpleTerrain3DGizmoPlugin::has_gizmo(Node3D *p_spatial) {
-	return Object::cast_to<SimpleTerrain3D>(p_spatial) != nullptr;
+	return Object::cast_to<SimpleTerrain3D>(p_spatial) != nullptr || Object::cast_to<SimpleNavigationBlocker3D>(p_spatial) != nullptr;
 }
 
 String SimpleTerrain3DGizmoPlugin::get_gizmo_name() const {
-	return "SimpleTerrain3D";
+	return "SimpleTerrain";
 }
 
 int SimpleTerrain3DGizmoPlugin::get_priority() const {
@@ -974,7 +1094,16 @@ int SimpleTerrain3DGizmoPlugin::get_priority() const {
 
 void SimpleTerrain3DGizmoPlugin::redraw(EditorNode3DGizmo *p_gizmo) {
 	SimpleTerrain3D *terrain_node = Object::cast_to<SimpleTerrain3D>(p_gizmo->get_node_3d());
+	SimpleNavigationBlocker3D *navigation_blocker = Object::cast_to<SimpleNavigationBlocker3D>(p_gizmo->get_node_3d());
 	p_gizmo->clear();
+
+	if (navigation_blocker != nullptr) {
+		const PackedVector3Array lines = _get_navigation_blocker_gizmo_lines(navigation_blocker);
+		if (!lines.is_empty()) {
+			p_gizmo->add_lines(lines, get_material("navigation_blocker_lines", p_gizmo));
+		}
+		return;
+	}
 
 	if (terrain_node == nullptr) {
 		return;
@@ -1002,6 +1131,7 @@ void SimpleTerrain3DGizmoPlugin::redraw(EditorNode3DGizmo *p_gizmo) {
 
 SimpleTerrain3DGizmoPlugin::SimpleTerrain3DGizmoPlugin() {
 	create_material("terrain_chunk_lines", Color(0.1, 0.85, 1.0, 0.85), false, true);
+	create_material("navigation_blocker_lines", Color(1.0, 0.45, 0.1, 0.95), false, true);
 }
 
 void SimpleTerrainEditorPlugin::_select_mode_pressed() {
@@ -1066,6 +1196,14 @@ void SimpleTerrainEditorPlugin::_bake_navigation_pressed() {
 	_update_toolbar();
 }
 
+void SimpleTerrainEditorPlugin::_bake_dynamic_navigation_pressed() {
+	if (terrain == nullptr) {
+		return;
+	}
+	terrain->bake_dynamic_navigation(false);
+	_update_toolbar();
+}
+
 void SimpleTerrainEditorPlugin::_update_toolbar() {
 	const bool has_terrain = terrain != nullptr;
 	// The toolbar remains allocated for the lifetime of the plugin, but it is
@@ -1085,12 +1223,20 @@ void SimpleTerrainEditorPlugin::_update_toolbar() {
 	flat_button->set_disabled(!has_terrain);
 	random_button->set_disabled(!has_terrain);
 	bake_navigation_button->set_disabled(!has_terrain);
+	bake_dynamic_navigation_button->set_disabled(!has_terrain);
 	if (has_terrain && terrain->is_navigation_bake_dirty()) {
 		bake_navigation_button->set_text(TTRC("Bake Nav *"));
 		bake_navigation_button->set_tooltip_text(TTRC("Bake SimpleTerrain navigation mesh. The asterisk means the baked mesh is out of date."));
 	} else {
 		bake_navigation_button->set_text(TTRC("Bake Nav"));
 		bake_navigation_button->set_tooltip_text(TTRC("Bake SimpleTerrain navigation mesh."));
+	}
+	if (has_terrain && terrain->is_navigation_dynamic_bake_dirty()) {
+		bake_dynamic_navigation_button->set_text(TTRC("Bake Dyn Nav *"));
+		bake_dynamic_navigation_button->set_tooltip_text(TTRC("Bake dynamic SimpleTerrain navigation mesh including runtime obstacles. The asterisk means the baked mesh is out of date."));
+	} else {
+		bake_dynamic_navigation_button->set_text(TTRC("Bake Dyn Nav"));
+		bake_dynamic_navigation_button->set_tooltip_text(TTRC("Bake dynamic SimpleTerrain navigation mesh including runtime obstacles."));
 	}
 	_update_placement_overlay();
 }
@@ -1834,4 +1980,10 @@ SimpleTerrainEditorPlugin::SimpleTerrainEditorPlugin() {
 	bake_navigation_button->set_tooltip_text(TTRC("Bake SimpleTerrain navigation mesh."));
 	bake_navigation_button->connect(SceneStringName(pressed), callable_mp(this, &SimpleTerrainEditorPlugin::_bake_navigation_pressed));
 	terrain_action_row->add_child(bake_navigation_button);
+
+	bake_dynamic_navigation_button = memnew(Button);
+	bake_dynamic_navigation_button->set_text(TTRC("Bake Dyn Nav"));
+	bake_dynamic_navigation_button->set_tooltip_text(TTRC("Bake dynamic SimpleTerrain navigation mesh including runtime obstacles."));
+	bake_dynamic_navigation_button->connect(SceneStringName(pressed), callable_mp(this, &SimpleTerrainEditorPlugin::_bake_dynamic_navigation_pressed));
+	terrain_action_row->add_child(bake_dynamic_navigation_button);
 }

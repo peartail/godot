@@ -308,6 +308,6 @@ void SimpleWorldObjectProfile::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "navigation_obstacle_radius", PROPERTY_HINT_RANGE, "0,1000,0.01,or_greater,suffix:m"), "set_navigation_obstacle_radius", "get_navigation_obstacle_radius");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "navigation_obstacle_height", PROPERTY_HINT_RANGE, "0,1000,0.01,or_greater,suffix:m"), "set_navigation_obstacle_height", "get_navigation_obstacle_height");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "navigation_obstacle_carve"), "set_navigation_obstacle_carve", "get_navigation_obstacle_carve");
-	ADD_PROPERTY(PropertyInfo(Variant::INT, "navigation_avoidance_layers", PROPERTY_HINT_LAYERS_3D_NAVIGATION), "set_navigation_avoidance_layers", "get_navigation_avoidance_layers");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "navigation_avoidance_layers", PROPERTY_HINT_LAYERS_AVOIDANCE), "set_navigation_avoidance_layers", "get_navigation_avoidance_layers");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "navigation_obstacle_shape_source", PROPERTY_HINT_ENUM, "Radius,Scene Collision,Mesh AABB"), "set_navigation_obstacle_shape_source", "get_navigation_obstacle_shape_source");
 }

@@ -4,6 +4,7 @@
 
 #include "simple_terrain_3d.h"
 
+#include "simple_navigation_blocker_3d.h"
 #include "simple_world_object_profile.h"
 
 #include "core/math/geometry_3d.h"
@@ -11,6 +12,8 @@
 #include "core/math/triangle_mesh.h"
 #include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
+#include "core/object/object.h"
+#include "scene/3d/navigation/navigation_obstacle_3d.h"
 #include "scene/3d/physics/collision_shape_3d.h"
 #include "scene/resources/3d/world_3d.h"
 #include "scene/resources/3d/box_shape_3d.h"
@@ -225,6 +228,37 @@ void _append_profile_placement_obstructions(const Ref<SimpleWorldObjectProfile> 
 	Transform3D circle_transform;
 	circle_transform.origin = p_placement_transform.origin;
 	_append_circle_obstruction(r_obstructions, circle_transform, radius, height * 0.5);
+}
+
+void _append_blocker_obstructions(SimpleNavigationBlocker3D *p_blocker, const Transform3D &p_terrain_inverse, Vector<SimpleTerrainNavigationObstruction> &r_obstructions) {
+	if (p_blocker == nullptr || !p_blocker->is_inside_tree()) {
+		return;
+	}
+
+	switch (p_blocker->get_shape_source()) {
+		case SimpleNavigationBlocker3D::SHAPE_MESH_AABB: {
+			_collect_mesh_aabb_obstructions(p_blocker, p_terrain_inverse, r_obstructions);
+		} break;
+
+		case SimpleNavigationBlocker3D::SHAPE_SCENE_COLLISION: {
+			_collect_collision_obstructions(p_blocker, p_terrain_inverse, r_obstructions);
+		} break;
+
+		case SimpleNavigationBlocker3D::SHAPE_RADIUS: {
+			if (p_blocker->get_radius() <= 0.0) {
+				return;
+			}
+			const Transform3D blocker_transform = p_terrain_inverse * p_blocker->get_global_transform();
+			const Vector3 safe_scale = blocker_transform.basis.get_scale().abs().maxf((real_t)0.001);
+			const real_t horizontal_scale = MAX(safe_scale.x, safe_scale.z);
+			const real_t radius = p_blocker->get_radius() * horizontal_scale;
+			const real_t height = p_blocker->get_height() * safe_scale.y;
+
+			Transform3D circle_transform;
+			circle_transform.origin = blocker_transform.origin;
+			_append_circle_obstruction(r_obstructions, circle_transform, radius, height * 0.5);
+		} break;
+	}
 }
 } // namespace
 
@@ -646,11 +680,99 @@ Ref<NavigationMesh> SimpleTerrain3D::_build_chunk_navigation_mesh(int p_origin_x
 	return navigation_mesh;
 }
 
+Ref<NavigationMeshSourceGeometryData3D> SimpleTerrain3D::_build_bake_source_geometry(bool p_include_runtime_obstacles) const {
+	Ref<NavigationMeshSourceGeometryData3D> source_geometry_data;
+	source_geometry_data.instantiate();
+
+	const int grid_size = simple_terrain_data->get_grid_size();
+	PackedVector3Array faces;
+	faces.resize(grid_size * grid_size * 6);
+	Vector3 *faces_w = faces.ptrw();
+	int face_index = 0;
+
+	for (int z = 0; z < grid_size; z++) {
+		for (int x = 0; x < grid_size; x++) {
+			const Vector3 top_left = _get_vertex_position(x, z);
+			const Vector3 top_right = _get_vertex_position(x + 1, z);
+			const Vector3 bottom_left = _get_vertex_position(x, z + 1);
+			const Vector3 bottom_right = _get_vertex_position(x + 1, z + 1);
+
+			faces_w[face_index++] = top_left;
+			faces_w[face_index++] = top_right;
+			faces_w[face_index++] = bottom_left;
+			faces_w[face_index++] = top_right;
+			faces_w[face_index++] = bottom_right;
+			faces_w[face_index++] = bottom_left;
+		}
+	}
+
+	source_geometry_data->add_faces(faces, Transform3D());
+
+	if (world_placement_library.is_valid() && world_placement_data.is_valid()) {
+		const PackedStringArray profile_ids = world_placement_data->get_profile_ids();
+		const PackedVector3Array positions = world_placement_data->get_positions();
+		const PackedVector3Array rotations = world_placement_data->get_rotations();
+		const PackedVector3Array scales = world_placement_data->get_scales();
+		const PackedVector3Array normals = world_placement_data->get_terrain_normals();
+		const int placement_count = MIN(profile_ids.size(), MIN(positions.size(), MIN(rotations.size(), MIN(scales.size(), normals.size()))));
+		const Transform3D terrain_inverse = get_global_transform().affine_inverse();
+
+		for (int i = 0; i < placement_count; i++) {
+			Ref<SimpleWorldObjectProfile> profile = world_placement_library->get_profile_by_id(profile_ids[i]);
+			if (profile.is_null() || (!profile->uses_baked_navigation_obstacle() && !(p_include_runtime_obstacles && profile->uses_runtime_navigation_obstacle()))) {
+				continue;
+			}
+
+			const Vector3 local_position = terrain_inverse.xform(positions[i]);
+			const Vector3 local_normal = terrain_inverse.basis.xform(normals[i]).normalized();
+			const Transform3D placement_transform = _build_profile_placement_transform(local_position, rotations[i], scales[i], local_normal, profile->is_aligning_to_terrain_normal());
+			Vector<SimpleTerrainNavigationObstruction> obstructions;
+			_append_profile_placement_obstructions(profile, placement_transform, obstructions);
+			for (const SimpleTerrainNavigationObstruction &obstruction : obstructions) {
+				source_geometry_data->add_projected_obstruction(obstruction.vertices, obstruction.elevation, obstruction.height, profile->get_navigation_obstacle_carve());
+			}
+		}
+	}
+
+	if (p_include_runtime_obstacles) {
+		const Transform3D terrain_inverse = get_global_transform().affine_inverse();
+		for (const ObjectID &blocker_id : dynamic_navigation_blockers) {
+			SimpleNavigationBlocker3D *blocker = ObjectDB::get_instance<SimpleNavigationBlocker3D>(blocker_id);
+			if (blocker == nullptr || !blocker->is_inside_tree()) {
+				continue;
+			}
+
+			Vector<SimpleTerrainNavigationObstruction> obstructions;
+			_append_blocker_obstructions(blocker, terrain_inverse, obstructions);
+			for (const SimpleTerrainNavigationObstruction &obstruction : obstructions) {
+				source_geometry_data->add_projected_obstruction(obstruction.vertices, obstruction.elevation, obstruction.height, blocker->get_carve());
+			}
+		}
+	}
+
+	return source_geometry_data;
+}
+
 void SimpleTerrain3D::_mark_navigation_bake_dirty() {
-	if (navigation_bake_dirty) {
+	bool changed = false;
+	if (!navigation_bake_dirty) {
+		navigation_bake_dirty = true;
+		changed = true;
+	}
+	if (!navigation_dynamic_bake_dirty) {
+		navigation_dynamic_bake_dirty = true;
+		changed = true;
+	}
+	if (changed) {
+		notify_property_list_changed();
+	}
+}
+
+void SimpleTerrain3D::_mark_navigation_dynamic_bake_dirty() {
+	if (navigation_dynamic_bake_dirty) {
 		return;
 	}
-	navigation_bake_dirty = true;
+	navigation_dynamic_bake_dirty = true;
 	notify_property_list_changed();
 }
 
@@ -659,6 +781,83 @@ void SimpleTerrain3D::_navigation_bake_finished() {
 	_sync_chunk_navigation();
 	notify_property_list_changed();
 	emit_signal(SNAME("navigation_bake_finished"));
+}
+
+void SimpleTerrain3D::_navigation_dynamic_bake_finished() {
+	navigation_dynamic_bake_dirty = false;
+	_sync_chunk_navigation();
+	notify_property_list_changed();
+	emit_signal(SNAME("navigation_dynamic_bake_finished"));
+}
+
+void SimpleTerrain3D::_world_placement_navigation_source_changed() {
+	_mark_navigation_bake_dirty();
+	_mark_navigation_dynamic_bake_dirty();
+	if (is_inside_tree()) {
+		_sync_runtime_navigation_obstacles();
+#ifdef DEBUG_ENABLED
+		_update_navigation_debug_mesh();
+#endif // DEBUG_ENABLED
+	}
+}
+
+void SimpleTerrain3D::_clear_runtime_navigation_obstacles() {
+	for (NavigationObstacle3D *obstacle : runtime_navigation_obstacles) {
+		if (obstacle == nullptr) {
+			continue;
+		}
+		if (obstacle->get_parent() == this) {
+			remove_child(obstacle);
+		}
+		memdelete(obstacle);
+	}
+	runtime_navigation_obstacles.clear();
+}
+
+void SimpleTerrain3D::_sync_runtime_navigation_obstacles() {
+	_clear_runtime_navigation_obstacles();
+	if (!navigation_enabled || !is_inside_tree() || world_placement_library.is_null() || world_placement_data.is_null()) {
+		return;
+	}
+
+	const PackedStringArray profile_ids = world_placement_data->get_profile_ids();
+	const PackedVector3Array positions = world_placement_data->get_positions();
+	const PackedVector3Array rotations = world_placement_data->get_rotations();
+	const PackedVector3Array scales = world_placement_data->get_scales();
+	const PackedVector3Array normals = world_placement_data->get_terrain_normals();
+	const int placement_count = MIN(profile_ids.size(), MIN(positions.size(), MIN(rotations.size(), MIN(scales.size(), normals.size()))));
+	const Transform3D terrain_inverse = get_global_transform().affine_inverse();
+
+	for (int i = 0; i < placement_count; i++) {
+		Ref<SimpleWorldObjectProfile> profile = world_placement_library->get_profile_by_id(profile_ids[i]);
+		if (profile.is_null() || !profile->uses_runtime_navigation_obstacle()) {
+			continue;
+		}
+
+		const Vector3 local_position = terrain_inverse.xform(positions[i]);
+		const Vector3 local_normal = terrain_inverse.basis.xform(normals[i]).normalized();
+		const Transform3D placement_transform = _build_profile_placement_transform(local_position, rotations[i], scales[i], local_normal, profile->is_aligning_to_terrain_normal());
+		Vector<SimpleTerrainNavigationObstruction> obstructions;
+		_append_profile_placement_obstructions(profile, placement_transform, obstructions);
+
+		for (int obstruction_index = 0; obstruction_index < obstructions.size(); obstruction_index++) {
+			const SimpleTerrainNavigationObstruction &obstruction = obstructions[obstruction_index];
+			if (obstruction.vertices.size() < 3 || obstruction.height <= 0.0) {
+				continue;
+			}
+
+			NavigationObstacle3D *obstacle = memnew(NavigationObstacle3D);
+			obstacle->set_name(vformat("_SimpleTerrainRuntimeObstacle_%d_%d", i, obstruction_index));
+			obstacle->set_transform(Transform3D(Basis(), Vector3(0.0, obstruction.elevation, 0.0)));
+			obstacle->set_vertices(obstruction.vertices);
+			obstacle->set_height(obstruction.height);
+			obstacle->set_avoidance_enabled(true);
+			obstacle->set_avoidance_layers(profile->get_navigation_avoidance_layers());
+			obstacle->set_use_3d_avoidance(false);
+			add_child(obstacle, false, INTERNAL_MODE_BACK);
+			runtime_navigation_obstacles.push_back(obstacle);
+		}
+	}
 }
 
 #ifdef DEBUG_ENABLED
@@ -692,6 +891,9 @@ void SimpleTerrain3D::_update_navigation_debug_mesh() {
 				navigation_meshes.push_back(chunk.navigation_mesh);
 			}
 		}
+	}
+	if (navigation_dynamic_enabled && navigation_dynamic_baked_mesh.is_valid()) {
+		navigation_meshes.push_back(navigation_dynamic_baked_mesh);
 	}
 
 	Vector<SimpleTerrainNavigationObstruction> runtime_obstructions;
@@ -972,6 +1174,7 @@ void SimpleTerrain3D::_sync_chunk_navigation() {
 			if (navigation_baked_region.is_valid()) {
 				ns->region_set_map(navigation_baked_region, RID());
 			}
+			_sync_dynamic_navigation_region(navigation_map, global_transform);
 			return;
 		}
 
@@ -983,6 +1186,7 @@ void SimpleTerrain3D::_sync_chunk_navigation() {
 		ns->region_set_transform(navigation_baked_region, global_transform);
 		ns->region_set_navigation_mesh(navigation_baked_region, navigation_baked_mesh);
 		ns->region_set_map(navigation_baked_region, navigation_map);
+		_sync_dynamic_navigation_region(navigation_map, global_transform);
 #ifdef DEBUG_ENABLED
 		_update_navigation_debug_mesh();
 #endif // DEBUG_ENABLED
@@ -1009,9 +1213,32 @@ void SimpleTerrain3D::_sync_chunk_navigation() {
 		ns->region_set_navigation_mesh(chunk.navigation_region, chunk.navigation_mesh);
 		ns->region_set_map(chunk.navigation_region, navigation_map);
 	}
+	_sync_dynamic_navigation_region(navigation_map, global_transform);
 #ifdef DEBUG_ENABLED
 	_update_navigation_debug_mesh();
 #endif // DEBUG_ENABLED
+}
+
+void SimpleTerrain3D::_sync_dynamic_navigation_region(RID p_navigation_map, const Transform3D &p_global_transform) {
+	NavigationServer3D *ns = NavigationServer3D::get_singleton();
+	ERR_FAIL_NULL(ns);
+
+	if (!navigation_enabled || !navigation_dynamic_enabled || navigation_dynamic_baked_mesh.is_null()) {
+		if (navigation_dynamic_baked_region.is_valid()) {
+			ns->region_set_map(navigation_dynamic_baked_region, RID());
+		}
+		return;
+	}
+
+	if (!navigation_dynamic_baked_region.is_valid()) {
+		navigation_dynamic_baked_region = ns->region_create();
+		ns->region_set_owner_id(navigation_dynamic_baked_region, get_instance_id());
+	}
+
+	ns->region_set_navigation_layers(navigation_dynamic_baked_region, navigation_dynamic_layers);
+	ns->region_set_transform(navigation_dynamic_baked_region, p_global_transform);
+	ns->region_set_navigation_mesh(navigation_dynamic_baked_region, navigation_dynamic_baked_mesh);
+	ns->region_set_map(navigation_dynamic_baked_region, p_navigation_map);
 }
 
 void SimpleTerrain3D::_sync_chunk_materials() {
@@ -1183,8 +1410,15 @@ void SimpleTerrain3D::set_world_placement_library(const Ref<SimpleWorldPlacement
 	if (world_placement_library == p_library) {
 		return;
 	}
+	if (world_placement_library.is_valid()) {
+		world_placement_library->disconnect_changed(callable_mp(this, &SimpleTerrain3D::_world_placement_navigation_source_changed));
+	}
 	world_placement_library = p_library;
+	if (world_placement_library.is_valid()) {
+		world_placement_library->connect_changed(callable_mp(this, &SimpleTerrain3D::_world_placement_navigation_source_changed));
+	}
 	_mark_navigation_bake_dirty();
+	_sync_runtime_navigation_obstacles();
 	notify_property_list_changed();
 }
 
@@ -1192,8 +1426,15 @@ void SimpleTerrain3D::set_world_placement_data(const Ref<SimpleWorldPlacementDat
 	if (world_placement_data == p_data) {
 		return;
 	}
+	if (world_placement_data.is_valid()) {
+		world_placement_data->disconnect_changed(callable_mp(this, &SimpleTerrain3D::_world_placement_navigation_source_changed));
+	}
 	world_placement_data = p_data;
+	if (world_placement_data.is_valid()) {
+		world_placement_data->connect_changed(callable_mp(this, &SimpleTerrain3D::_world_placement_navigation_source_changed));
+	}
 	_mark_navigation_bake_dirty();
+	_sync_runtime_navigation_obstacles();
 	notify_property_list_changed();
 }
 
@@ -1248,6 +1489,7 @@ void SimpleTerrain3D::set_navigation_enabled(bool p_enabled) {
 	} else {
 		_sync_chunk_navigation();
 	}
+	_sync_runtime_navigation_obstacles();
 }
 
 void SimpleTerrain3D::set_navigation_layers(uint32_t p_layers) {
@@ -1264,6 +1506,7 @@ void SimpleTerrain3D::set_navigation_max_slope(real_t p_slope) {
 	if (navigation_build_mode == NAVIGATION_BUILD_BAKED) {
 		_mark_navigation_bake_dirty();
 	} else {
+		_mark_navigation_dynamic_bake_dirty();
 		rebuild_navigation();
 	}
 }
@@ -1284,6 +1527,34 @@ void SimpleTerrain3D::set_navigation_baked_mesh(const Ref<NavigationMesh> &p_nav
 	navigation_bake_dirty = navigation_baked_mesh.is_null();
 	_sync_chunk_navigation();
 	notify_property_list_changed();
+}
+
+void SimpleTerrain3D::set_navigation_dynamic_enabled(bool p_enabled) {
+	if (navigation_dynamic_enabled == p_enabled) {
+		return;
+	}
+	navigation_dynamic_enabled = p_enabled;
+	_sync_chunk_navigation();
+	notify_property_list_changed();
+}
+
+void SimpleTerrain3D::set_navigation_dynamic_layers(uint32_t p_layers) {
+	navigation_dynamic_layers = p_layers;
+	_sync_chunk_navigation();
+}
+
+void SimpleTerrain3D::set_navigation_dynamic_baked_mesh(const Ref<NavigationMesh> &p_navigation_mesh) {
+	if (navigation_dynamic_baked_mesh == p_navigation_mesh) {
+		return;
+	}
+	navigation_dynamic_baked_mesh = p_navigation_mesh;
+	navigation_dynamic_bake_dirty = navigation_dynamic_baked_mesh.is_null();
+	_sync_chunk_navigation();
+	notify_property_list_changed();
+}
+
+void SimpleTerrain3D::mark_dynamic_navigation_bake_dirty() {
+	_mark_navigation_dynamic_bake_dirty();
 }
 
 void SimpleTerrain3D::set_navigation_quad_max_normal_angle(real_t p_angle) {
@@ -1590,66 +1861,76 @@ void SimpleTerrain3D::bake_navigation(bool p_on_thread) {
 		navigation_baked_mesh->set_agent_max_slope((float)navigation_max_slope);
 	}
 
-	Ref<NavigationMeshSourceGeometryData3D> source_geometry_data;
-	source_geometry_data.instantiate();
-
-	const int grid_size = simple_terrain_data->get_grid_size();
-	PackedVector3Array faces;
-	faces.resize(grid_size * grid_size * 6);
-	Vector3 *faces_w = faces.ptrw();
-	int face_index = 0;
-
-	for (int z = 0; z < grid_size; z++) {
-		for (int x = 0; x < grid_size; x++) {
-			const Vector3 top_left = _get_vertex_position(x, z);
-			const Vector3 top_right = _get_vertex_position(x + 1, z);
-			const Vector3 bottom_left = _get_vertex_position(x, z + 1);
-			const Vector3 bottom_right = _get_vertex_position(x + 1, z + 1);
-
-			faces_w[face_index++] = top_left;
-			faces_w[face_index++] = top_right;
-			faces_w[face_index++] = bottom_left;
-			faces_w[face_index++] = top_right;
-			faces_w[face_index++] = bottom_right;
-			faces_w[face_index++] = bottom_left;
-		}
-	}
-
-	source_geometry_data->add_faces(faces, Transform3D());
-
-	if (world_placement_library.is_valid() && world_placement_data.is_valid()) {
-		const PackedStringArray profile_ids = world_placement_data->get_profile_ids();
-		const PackedVector3Array positions = world_placement_data->get_positions();
-		const PackedVector3Array rotations = world_placement_data->get_rotations();
-		const PackedVector3Array scales = world_placement_data->get_scales();
-		const PackedVector3Array normals = world_placement_data->get_terrain_normals();
-		const int placement_count = MIN(profile_ids.size(), MIN(positions.size(), MIN(rotations.size(), MIN(scales.size(), normals.size()))));
-		const Transform3D terrain_inverse = get_global_transform().affine_inverse();
-
-		for (int i = 0; i < placement_count; i++) {
-			Ref<SimpleWorldObjectProfile> profile = world_placement_library->get_profile_by_id(profile_ids[i]);
-			if (profile.is_null() || !profile->uses_baked_navigation_obstacle()) {
-				continue;
-			}
-
-			const Vector3 local_position = terrain_inverse.xform(positions[i]);
-			const Vector3 local_normal = terrain_inverse.basis.xform(normals[i]).normalized();
-			const Transform3D placement_transform = _build_profile_placement_transform(local_position, rotations[i], scales[i], local_normal, profile->is_aligning_to_terrain_normal());
-			Vector<SimpleTerrainNavigationObstruction> obstructions;
-			_append_profile_placement_obstructions(profile, placement_transform, obstructions);
-			for (const SimpleTerrainNavigationObstruction &obstruction : obstructions) {
-				source_geometry_data->add_projected_obstruction(obstruction.vertices, obstruction.elevation, obstruction.height, profile->get_navigation_obstacle_carve());
-			}
-		}
-	}
-
 	navigation_baked_mesh->set_agent_max_slope((float)navigation_max_slope);
+	Ref<NavigationMeshSourceGeometryData3D> source_geometry_data = _build_bake_source_geometry(false);
 
 	if (p_on_thread) {
 		NavigationServer3D::get_singleton()->bake_from_source_geometry_data_async(navigation_baked_mesh, source_geometry_data, callable_mp(this, &SimpleTerrain3D::_navigation_bake_finished));
 	} else {
 		NavigationServer3D::get_singleton()->bake_from_source_geometry_data(navigation_baked_mesh, source_geometry_data, callable_mp(this, &SimpleTerrain3D::_navigation_bake_finished));
 	}
+}
+
+void SimpleTerrain3D::bake_dynamic_navigation(bool p_on_thread) {
+	_ensure_data();
+	ERR_FAIL_COND(simple_terrain_data.is_null());
+	ERR_FAIL_NULL(NavigationServer3D::get_singleton());
+
+	if (navigation_dynamic_baked_mesh.is_null()) {
+		navigation_dynamic_baked_mesh.instantiate();
+		navigation_dynamic_baked_mesh->set_cell_size(MIN((float)simple_terrain_data->get_cell_size(), navigation_dynamic_baked_mesh->get_cell_size()));
+		navigation_dynamic_baked_mesh->set_cell_height(MIN((float)simple_terrain_data->get_cell_size() * 0.5f, navigation_dynamic_baked_mesh->get_cell_height()));
+		navigation_dynamic_baked_mesh->set_agent_max_slope((float)navigation_max_slope);
+	}
+
+	navigation_dynamic_enabled = true;
+	navigation_dynamic_baked_mesh->set_agent_max_slope((float)navigation_max_slope);
+	Ref<NavigationMeshSourceGeometryData3D> source_geometry_data = _build_bake_source_geometry(true);
+
+	if (p_on_thread) {
+		NavigationServer3D::get_singleton()->bake_from_source_geometry_data_async(navigation_dynamic_baked_mesh, source_geometry_data, callable_mp(this, &SimpleTerrain3D::_navigation_dynamic_bake_finished));
+	} else {
+		NavigationServer3D::get_singleton()->bake_from_source_geometry_data(navigation_dynamic_baked_mesh, source_geometry_data, callable_mp(this, &SimpleTerrain3D::_navigation_dynamic_bake_finished));
+	}
+}
+
+void SimpleTerrain3D::register_dynamic_navigation_blocker(SimpleNavigationBlocker3D *p_blocker) {
+	ERR_FAIL_NULL(p_blocker);
+	const ObjectID blocker_id = p_blocker->get_instance_id();
+	for (const ObjectID &registered_id : dynamic_navigation_blockers) {
+		if (registered_id == blocker_id) {
+			return;
+		}
+	}
+	dynamic_navigation_blockers.push_back(blocker_id);
+	_mark_navigation_dynamic_bake_dirty();
+}
+
+void SimpleTerrain3D::unregister_dynamic_navigation_blocker(SimpleNavigationBlocker3D *p_blocker) {
+	ERR_FAIL_NULL(p_blocker);
+	const ObjectID blocker_id = p_blocker->get_instance_id();
+	for (int i = dynamic_navigation_blockers.size() - 1; i >= 0; i--) {
+		if (dynamic_navigation_blockers[i] == blocker_id) {
+			dynamic_navigation_blockers.remove_at(i);
+			_mark_navigation_dynamic_bake_dirty();
+			return;
+		}
+	}
+}
+
+void SimpleTerrain3D::clear_dynamic_navigation_blockers() {
+	if (dynamic_navigation_blockers.is_empty()) {
+		return;
+	}
+	const Vector<ObjectID> blockers = dynamic_navigation_blockers;
+	dynamic_navigation_blockers.clear();
+	for (const ObjectID &blocker_id : blockers) {
+		SimpleNavigationBlocker3D *blocker = ObjectDB::get_instance<SimpleNavigationBlocker3D>(blocker_id);
+		if (blocker != nullptr && blocker->is_registered()) {
+			blocker->unregister_from_terrain();
+		}
+	}
+	_mark_navigation_dynamic_bake_dirty();
 }
 
 void SimpleTerrain3D::apply_brush(const Vector3 &p_world_position, real_t p_radius, real_t p_strength, BrushOperation p_operation) {
@@ -1935,6 +2216,7 @@ void SimpleTerrain3D::_notification(int p_what) {
 			}
 			_sync_chunk_instances();
 			_sync_chunk_navigation();
+			_sync_runtime_navigation_obstacles();
 #ifdef DEBUG_ENABLED
 			_update_navigation_debug_mesh();
 #endif // DEBUG_ENABLED
@@ -1954,6 +2236,10 @@ void SimpleTerrain3D::_notification(int p_what) {
 			if (ns && navigation_baked_region.is_valid()) {
 				ns->region_set_map(navigation_baked_region, RID());
 			}
+			if (ns && navigation_dynamic_baked_region.is_valid()) {
+				ns->region_set_map(navigation_dynamic_baked_region, RID());
+			}
+			_clear_runtime_navigation_obstacles();
 #ifdef DEBUG_ENABLED
 			if (navigation_debug_instance.is_valid()) {
 				RenderingServer::get_singleton()->instance_set_visible(navigation_debug_instance, false);
@@ -2003,6 +2289,14 @@ void SimpleTerrain3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_navigation_baked_mesh", "navigation_mesh"), &SimpleTerrain3D::set_navigation_baked_mesh);
 	ClassDB::bind_method(D_METHOD("get_navigation_baked_mesh"), &SimpleTerrain3D::get_navigation_baked_mesh);
 	ClassDB::bind_method(D_METHOD("is_navigation_bake_dirty"), &SimpleTerrain3D::is_navigation_bake_dirty);
+	ClassDB::bind_method(D_METHOD("set_navigation_dynamic_enabled", "enabled"), &SimpleTerrain3D::set_navigation_dynamic_enabled);
+	ClassDB::bind_method(D_METHOD("is_navigation_dynamic_enabled"), &SimpleTerrain3D::is_navigation_dynamic_enabled);
+	ClassDB::bind_method(D_METHOD("set_navigation_dynamic_layers", "layers"), &SimpleTerrain3D::set_navigation_dynamic_layers);
+	ClassDB::bind_method(D_METHOD("get_navigation_dynamic_layers"), &SimpleTerrain3D::get_navigation_dynamic_layers);
+	ClassDB::bind_method(D_METHOD("set_navigation_dynamic_baked_mesh", "navigation_mesh"), &SimpleTerrain3D::set_navigation_dynamic_baked_mesh);
+	ClassDB::bind_method(D_METHOD("get_navigation_dynamic_baked_mesh"), &SimpleTerrain3D::get_navigation_dynamic_baked_mesh);
+	ClassDB::bind_method(D_METHOD("is_navigation_dynamic_bake_dirty"), &SimpleTerrain3D::is_navigation_dynamic_bake_dirty);
+	ClassDB::bind_method(D_METHOD("mark_dynamic_navigation_bake_dirty"), &SimpleTerrain3D::mark_dynamic_navigation_bake_dirty);
 	ClassDB::bind_method(D_METHOD("set_navigation_quad_max_normal_angle", "angle"), &SimpleTerrain3D::set_navigation_quad_max_normal_angle);
 	ClassDB::bind_method(D_METHOD("get_navigation_quad_max_normal_angle"), &SimpleTerrain3D::get_navigation_quad_max_normal_angle);
 	ClassDB::bind_method(D_METHOD("set_navigation_quad_planar_tolerance", "tolerance"), &SimpleTerrain3D::set_navigation_quad_planar_tolerance);
@@ -2063,6 +2357,10 @@ void SimpleTerrain3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("rebuild_mesh"), &SimpleTerrain3D::rebuild_mesh);
 	ClassDB::bind_method(D_METHOD("rebuild_navigation"), &SimpleTerrain3D::rebuild_navigation);
 	ClassDB::bind_method(D_METHOD("bake_navigation", "on_thread"), &SimpleTerrain3D::bake_navigation, DEFVAL(false));
+	ClassDB::bind_method(D_METHOD("bake_dynamic_navigation", "on_thread"), &SimpleTerrain3D::bake_dynamic_navigation, DEFVAL(false));
+	ClassDB::bind_method(D_METHOD("register_dynamic_navigation_blocker", "blocker"), &SimpleTerrain3D::register_dynamic_navigation_blocker);
+	ClassDB::bind_method(D_METHOD("unregister_dynamic_navigation_blocker", "blocker"), &SimpleTerrain3D::unregister_dynamic_navigation_blocker);
+	ClassDB::bind_method(D_METHOD("clear_dynamic_navigation_blockers"), &SimpleTerrain3D::clear_dynamic_navigation_blockers);
 	ClassDB::bind_method(D_METHOD("apply_brush", "world_position", "radius", "strength", "operation"), &SimpleTerrain3D::apply_brush);
 	ClassDB::bind_method(D_METHOD("apply_brush_with_delta", "world_position", "radius", "strength", "operation"), &SimpleTerrain3D::apply_brush_with_delta);
 	ClassDB::bind_method(D_METHOD("apply_height_patch", "indices", "heights"), &SimpleTerrain3D::apply_height_patch);
@@ -2086,6 +2384,9 @@ void SimpleTerrain3D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "navigation_max_slope", PROPERTY_HINT_RANGE, "0,89.9,0.1,suffix:deg"), "set_navigation_max_slope", "get_navigation_max_slope");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "navigation_build_mode", PROPERTY_HINT_ENUM, "Triangles,Quads,Merged Rectangles,Baked"), "set_navigation_build_mode", "get_navigation_build_mode");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "navigation_baked_mesh", PROPERTY_HINT_RESOURCE_TYPE, NavigationMesh::get_class_static()), "set_navigation_baked_mesh", "get_navigation_baked_mesh");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "navigation_dynamic_enabled"), "set_navigation_dynamic_enabled", "is_navigation_dynamic_enabled");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "navigation_dynamic_layers", PROPERTY_HINT_LAYERS_3D_NAVIGATION), "set_navigation_dynamic_layers", "get_navigation_dynamic_layers");
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "navigation_dynamic_baked_mesh", PROPERTY_HINT_RESOURCE_TYPE, NavigationMesh::get_class_static()), "set_navigation_dynamic_baked_mesh", "get_navigation_dynamic_baked_mesh");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "navigation_quad_max_normal_angle", PROPERTY_HINT_RANGE, "0,89.9,0.1,suffix:deg"), "set_navigation_quad_max_normal_angle", "get_navigation_quad_max_normal_angle");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "navigation_quad_planar_tolerance", PROPERTY_HINT_RANGE, "0,10,0.001,or_greater,suffix:m"), "set_navigation_quad_planar_tolerance", "get_navigation_quad_planar_tolerance");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "navigation_merge_max_normal_angle", PROPERTY_HINT_RANGE, "0,89.9,0.1,suffix:deg"), "set_navigation_merge_max_normal_angle", "get_navigation_merge_max_normal_angle");
@@ -2133,6 +2434,7 @@ void SimpleTerrain3D::_bind_methods() {
 	BIND_ENUM_CONSTANT(NAVIGATION_BUILD_BAKED);
 
 	ADD_SIGNAL(MethodInfo("navigation_bake_finished"));
+	ADD_SIGNAL(MethodInfo("navigation_dynamic_bake_finished"));
 }
 
 SimpleTerrain3D::SimpleTerrain3D() {
@@ -2197,10 +2499,20 @@ PackedStringArray SimpleTerrain3D::get_configuration_warnings() const {
 }
 
 SimpleTerrain3D::~SimpleTerrain3D() {
+	if (world_placement_library.is_valid()) {
+		world_placement_library->disconnect_changed(callable_mp(this, &SimpleTerrain3D::_world_placement_navigation_source_changed));
+	}
+	if (world_placement_data.is_valid()) {
+		world_placement_data->disconnect_changed(callable_mp(this, &SimpleTerrain3D::_world_placement_navigation_source_changed));
+	}
+	_clear_runtime_navigation_obstacles();
 	_clear_chunks();
 	NavigationServer3D *ns = NavigationServer3D::get_singleton();
 	if (ns && navigation_baked_region.is_valid()) {
 		ns->free_rid(navigation_baked_region);
+	}
+	if (ns && navigation_dynamic_baked_region.is_valid()) {
+		ns->free_rid(navigation_dynamic_baked_region);
 	}
 #ifdef DEBUG_ENABLED
 	if (ns) {

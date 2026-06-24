@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="SimpleNavigationBlocker3D" inherits="Node3D" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>
+		Runtime navigation blocking component for SimpleTerrain3D.
+	</brief_description>
+	<description>
+		[SimpleNavigationBlocker3D] marks an instanced scene object as a dynamic blocker for [SimpleTerrain3D]'s dynamic navigation bake. Add this node to objects that are created by gameplay scripts and should be included when [method SimpleTerrain3D.bake_dynamic_navigation] is called.
+		This node does not physically block movement by itself. Use physics collision for immediate blocking, and use this component to make future pathfinding route around the object after the dynamic navigation mesh is baked.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="is_registered" qualifiers="const">
+			<return type="bool" />
+			<description>
+				Returns whether this blocker is currently registered with a [SimpleTerrain3D].
+			</description>
+		</method>
+		<method name="register_to_terrain">
+			<return type="void" />
+			<param index="0" name="terrain" type="SimpleTerrain3D" />
+			<description>
+				Registers this blocker with [param terrain]. This is called automatically when [member auto_register] is enabled and a terrain can be found.
+			</description>
+		</method>
+		<method name="unregister_from_terrain">
+			<return type="void" />
+			<description>
+				Unregisters this blocker from its current [SimpleTerrain3D].
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="auto_register" type="bool" setter="set_auto_register" getter="is_auto_registering" default="true">
+			If [code]true[/code], the blocker registers itself when it enters the scene tree. [member terrain_path] is used first; if empty, the blocker searches its parents and then the current scene for a [SimpleTerrain3D].
+		</member>
+		<member name="bake_on_register" type="bool" setter="set_bake_on_register" getter="is_baking_on_register" default="false">
+			If [code]true[/code], calls [method SimpleTerrain3D.bake_dynamic_navigation] asynchronously after registering. Leave this disabled when many blockers are spawned together and bake once after the batch.
+		</member>
+		<member name="bake_on_unregister" type="bool" setter="set_bake_on_unregister" getter="is_baking_on_unregister" default="false">
+			If [code]true[/code], calls [method SimpleTerrain3D.bake_dynamic_navigation] asynchronously after unregistering.
+		</member>
+		<member name="carve" type="bool" setter="set_carve" getter="get_carve" default="false">
+			Passed to the dynamic navigation bake obstruction. When enabled, the blocker shape is carved without additional navigation mesh agent-radius offsets.
+		</member>
+		<member name="height" type="float" setter="set_height" getter="get_height" default="2.0">
+			Height used by [constant SHAPE_RADIUS].
+		</member>
+		<member name="radius" type="float" setter="set_radius" getter="get_radius" default="0.5">
+			Radius used by [constant SHAPE_RADIUS].
+		</member>
+		<member name="shape_source" type="int" setter="set_shape_source" getter="get_shape_source" enum="SimpleNavigationBlocker3D.ShapeSource" default="1">
+			Source used to create the blocker footprint for dynamic navigation baking.
+		</member>
+		<member name="terrain_path" type="NodePath" setter="set_terrain_path" getter="get_terrain_path" default="NodePath(&quot;&quot;)">
+			Optional path to the [SimpleTerrain3D] that should receive this blocker.
+		</member>
+	</members>
+	<constants>
+		<constant name="SHAPE_RADIUS" value="0" enum="ShapeSource">
+			Uses [member radius] and [member height] around this node's transform.
+		</constant>
+		<constant name="SHAPE_SCENE_COLLISION" value="1" enum="ShapeSource">
+			Uses supported [CollisionShape3D] children such as boxes, spheres, capsules, and cylinders.
+		</constant>
+		<constant name="SHAPE_MESH_AABB" value="2" enum="ShapeSource">
+			Uses [MeshInstance3D] mesh AABBs under this node.
+		</constant>
+	</constants>
+</class>
