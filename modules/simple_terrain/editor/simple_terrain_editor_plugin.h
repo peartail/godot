@@ -165,12 +165,17 @@ class SimpleTerrainEditorPlugin : public EditorPlugin {
 	bool placement_mode = false;
 	bool painting = false;
 	bool has_cursor_hit = false;
+	bool has_pending_create_cell = false;
 
 	// Brush strokes can generate many height edits. Store only changed indices
 	// and their before/after values so releasing the mouse does not copy the
 	// whole height field for undo.
 	bool has_last_brush_position = false;
 	Vector3 last_brush_position;
+	Vector2i pending_create_cell;
+	Vector3 pending_create_world_position;
+	Rect2 pending_create_button_rect;
+	ObjectID last_view_camera_id;
 	PackedVector2Array cursor_points;
 	Color cursor_color;
 	HashMap<int, int> stroke_index_map;
@@ -201,12 +206,15 @@ class SimpleTerrainEditorPlugin : public EditorPlugin {
 	void _apply_brush(const Vector3 &p_world_position);
 	void _record_brush_delta(const Dictionary &p_delta);
 	Dictionary _get_hit(Camera3D *p_camera, const Vector2 &p_mouse_position) const;
-	Dictionary _get_cursor_hit(Camera3D *p_camera, const Vector2 &p_mouse_position) const;
+	bool _get_tile_cell_at_mouse(Camera3D *p_camera, const Vector2 &p_mouse_position, Vector2i &r_cell, Vector3 &r_world_position) const;
+	void _set_pending_create_cell(const Vector2i &p_cell, const Vector3 &p_world_position);
+	void _clear_pending_create_cell();
+	void _create_pending_tile();
 	Color _get_cursor_color() const;
 	void _update_cursor_preview(Camera3D *p_camera, const Dictionary &p_hit);
 	void _clear_cursor_preview();
 	void _draw_over_viewport(Control *p_overlay);
-	void _commit_height_undo(const String &p_action_name, const PackedFloat32Array &p_before_heights);
+	void _commit_tile_height_undo(const String &p_action_name, const Array &p_before_tiles);
 	void _commit_stroke_undo();
 
 protected:

@@ -139,9 +139,16 @@ void SceneTreeEditor::_cell_button_pressed(Object *p_item, int p_column, int p_i
 		}
 		undo_redo->commit_action();
 	} else if (p_id == BUTTON_LOCK) {
-		undo_redo->create_action(TTR("Unlock Node"));
-		undo_redo->add_do_method(n, "remove_meta", "_edit_lock_");
-		undo_redo->add_undo_method(n, "set_meta", "_edit_lock_", true);
+		bool currently_locked = n->get_meta("_edit_lock_", false);
+		if (currently_locked) {
+			undo_redo->create_action(TTR("Unlock Node"));
+			undo_redo->add_do_method(n, "remove_meta", "_edit_lock_");
+			undo_redo->add_undo_method(n, "set_meta", "_edit_lock_", true);
+		} else {
+			undo_redo->create_action(TTR("Lock Node"));
+			undo_redo->add_do_method(n, "set_meta", "_edit_lock_", true);
+			undo_redo->add_undo_method(n, "remove_meta", "_edit_lock_");
+		}
 		undo_redo->add_do_method(this, "emit_signal", "node_changed");
 		undo_redo->add_undo_method(this, "emit_signal", "node_changed");
 		undo_redo->add_do_method(CanvasItemEditor::get_singleton(), "emit_signal", "item_lock_status_changed");
@@ -606,8 +613,13 @@ void SceneTreeEditor::_update_node(Node *p_node, TreeItem *p_item, bool p_part_o
 			p_item->set_button_color(0, p_item->get_button_count(0) - 1, button_color);
 		}
 
-		if (p_node->has_meta("_edit_lock_")) {
-			p_item->add_button(0, get_editor_theme_icon(SNAME("Lock")), BUTTON_LOCK, false, TTR("Node is locked.\nClick to unlock it."));
+		// Always show a lock button for nodes that can be locked (2D/3D items).
+		if (p_node->is_class("CanvasItem") || p_node->is_class("Node3D")) {
+			String tooltip = p_node->has_meta("_edit_lock_") ? TTR("Node is locked.\nClick to unlock it.") : TTR("Node is unlocked.\nClick to lock it.");
+			p_item->add_button(0, get_editor_theme_icon(SNAME("Lock")), BUTTON_LOCK, false, tooltip);
+			int lock_idx = p_item->get_button_count(0) - 1;
+			Color lock_color = Color(1, 1, 1, p_node->has_meta("_edit_lock_") ? 1.0 : 0.45);
+			p_item->set_button_color(0, lock_idx, lock_color);
 		}
 		if (p_node->has_meta("_edit_group_")) {
 			p_item->add_button(0, get_editor_theme_icon(SNAME("Group")), BUTTON_GROUP, false, TTR("Children are not selectable.\nClick to make them selectable."));

@@ -49,13 +49,32 @@ struct SimpleTerrainRuntimeObstacleSpec {
 	bool use_vertices = false;
 };
 
+Transform3D _get_node_3d_scene_transform(Node3D *p_node) {
+	ERR_FAIL_NULL_V(p_node, Transform3D());
+	if (p_node->is_inside_tree()) {
+		return p_node->get_global_transform();
+	}
+
+	Transform3D transform = p_node->get_transform();
+	Node *parent = p_node->get_parent();
+	while (parent != nullptr) {
+		Node3D *parent_3d = Object::cast_to<Node3D>(parent);
+		if (parent_3d == nullptr) {
+			break;
+		}
+		transform = parent_3d->get_transform() * transform;
+		parent = parent_3d->get_parent();
+	}
+	return transform;
+}
+
 void _collect_runtime_collision_obstacle_specs(Node *p_node, const Transform3D &p_root_inverse, Vector<SimpleTerrainRuntimeObstacleSpec> &r_specs) {
 	CollisionShape3D *collision_shape = Object::cast_to<CollisionShape3D>(p_node);
 	if (collision_shape != nullptr && !collision_shape->is_disabled()) {
 		Ref<Shape3D> shape = collision_shape->get_shape();
 		if (shape.is_valid()) {
 			SimpleTerrainRuntimeObstacleSpec spec;
-			spec.transform = p_root_inverse * collision_shape->get_global_transform();
+			spec.transform = p_root_inverse * _get_node_3d_scene_transform(collision_shape);
 
 			Ref<BoxShape3D> box = shape;
 			Ref<SphereShape3D> sphere = shape;
@@ -104,7 +123,7 @@ void _collect_runtime_mesh_aabb_obstacle_specs(Node *p_node, const Transform3D &
 			const real_t center_y = min.y + aabb.size.y * 0.5;
 
 			SimpleTerrainRuntimeObstacleSpec spec;
-			spec.transform = p_root_inverse * mesh_instance->get_global_transform();
+			spec.transform = p_root_inverse * _get_node_3d_scene_transform(mesh_instance);
 			spec.vertices.resize(4);
 			Vector3 *vertices_w = spec.vertices.ptrw();
 			vertices_w[0] = Vector3(min.x, center_y, min.z);
@@ -180,7 +199,7 @@ PackedVector3Array _get_navigation_blocker_gizmo_lines(SimpleNavigationBlocker3D
 	}
 
 	Vector<SimpleTerrainRuntimeObstacleSpec> specs;
-	const Transform3D root_inverse = p_blocker->get_global_transform().affine_inverse();
+	const Transform3D root_inverse = _get_node_3d_scene_transform(p_blocker).affine_inverse();
 	switch (p_blocker->get_shape_source()) {
 		case SimpleNavigationBlocker3D::SHAPE_RADIUS: {
 			SimpleTerrainRuntimeObstacleSpec spec;
@@ -1139,6 +1158,7 @@ void SimpleTerrainEditorPlugin::_select_mode_pressed() {
 	placement_mode = false;
 	painting = false;
 	has_last_brush_position = false;
+	_clear_pending_create_cell();
 	_clear_cursor_preview();
 	_update_toolbar();
 }
@@ -1146,6 +1166,8 @@ void SimpleTerrainEditorPlugin::_select_mode_pressed() {
 void SimpleTerrainEditorPlugin::_edit_mode_pressed() {
 	terrain_mode = terrain != nullptr;
 	placement_mode = false;
+	painting = false;
+	has_last_brush_position = false;
 	_update_toolbar();
 }
 
@@ -1154,6 +1176,7 @@ void SimpleTerrainEditorPlugin::_placement_mode_pressed() {
 	placement_mode = terrain != nullptr;
 	painting = false;
 	has_last_brush_position = false;
+	_clear_pending_create_cell();
 	_clear_cursor_preview();
 	if (placement_mode) {
 		placement_dock->edit(terrain);
@@ -1167,24 +1190,22 @@ void SimpleTerrainEditorPlugin::_operation_selected(int p_index) {
 }
 
 void SimpleTerrainEditorPlugin::_flat_pressed() {
-	if (terrain == nullptr) {
+	if (terrain == nullptr || terrain->get_simple_terrain_data().is_null()) {
 		return;
 	}
-	// Buttons use the same height_data undo path as brush strokes so Flat,
-	// Random, paint, undo, and redo all exercise one SimpleTerrain3D public API.
-	const PackedFloat32Array before_heights = terrain->get_height_data();
+	const Array before_tiles = terrain->get_simple_terrain_data()->get_tile_height_data_array();
 	terrain->reset_flat_terrain();
-	_commit_height_undo(TTR("Reset Terrain"), before_heights);
+	_commit_tile_height_undo(TTR("Reset Terrain"), before_tiles);
 	_update_toolbar();
 }
 
 void SimpleTerrainEditorPlugin::_random_pressed() {
-	if (terrain == nullptr) {
+	if (terrain == nullptr || terrain->get_simple_terrain_data().is_null()) {
 		return;
 	}
-	const PackedFloat32Array before_heights = terrain->get_height_data();
+	const Array before_tiles = terrain->get_simple_terrain_data()->get_tile_height_data_array();
 	terrain->randomize_seed();
-	_commit_height_undo(TTR("Generate Random Terrain"), before_heights);
+	_commit_tile_height_undo(TTR("Generate Random Terrain"), before_tiles);
 	_update_toolbar();
 }
 
@@ -1294,7 +1315,7 @@ void SimpleTerrainEditorPlugin::_set_placement_arrays(SimpleWorldPlacementData *
 }
 
 void SimpleTerrainEditorPlugin::_place_selected_profile(Camera3D *p_camera, const Vector2 &p_mouse_position) {
-	if (terrain == nullptr || p_camera == nullptr) {
+	if (terrain == nullptr || !terrain->is_inside_tree() || p_camera == nullptr) {
 		return;
 	}
 
@@ -1379,9 +1400,9 @@ void SimpleTerrainEditorPlugin::_place_selected_profile(Camera3D *p_camera, cons
 				profile->get_navigation_obstacle_shape_source() == SimpleWorldObjectProfile::NAVIGATION_OBSTACLE_SHAPE_MESH_AABB) {
 			Vector<SimpleTerrainRuntimeObstacleSpec> specs;
 			if (profile->get_navigation_obstacle_shape_source() == SimpleWorldObjectProfile::NAVIGATION_OBSTACLE_SHAPE_MESH_AABB) {
-				_collect_runtime_mesh_aabb_obstacle_specs(instance_3d, instance_3d->get_global_transform().affine_inverse(), specs);
+				_collect_runtime_mesh_aabb_obstacle_specs(instance_3d, _get_node_3d_scene_transform(instance_3d).affine_inverse(), specs);
 			} else {
-				_collect_runtime_collision_obstacle_specs(instance_3d, instance_3d->get_global_transform().affine_inverse(), specs);
+				_collect_runtime_collision_obstacle_specs(instance_3d, _get_node_3d_scene_transform(instance_3d).affine_inverse(), specs);
 			}
 			for (const SimpleTerrainRuntimeObstacleSpec &spec : specs) {
 				NavigationObstacle3D *runtime_obstacle = memnew(NavigationObstacle3D);
@@ -1448,10 +1469,9 @@ void SimpleTerrainEditorPlugin::_place_selected_profile(Camera3D *p_camera, cons
 	Ref<SimpleTerrainData> terrain_data = terrain->get_simple_terrain_data();
 	Vector2 chunk_coord;
 	if (terrain_data.is_valid()) {
-		const real_t half_size = (real_t)terrain_data->get_grid_size() * terrain_data->get_cell_size() * 0.5;
 		const real_t chunk_world_size = (real_t)terrain->get_chunk_size() * terrain_data->get_cell_size();
-		chunk_coord.x = Math::floor((local_position.x + half_size) / chunk_world_size);
-		chunk_coord.y = Math::floor((local_position.z + half_size) / chunk_world_size);
+		chunk_coord.x = Math::floor(local_position.x / chunk_world_size);
+		chunk_coord.y = Math::floor(local_position.z / chunk_world_size);
 	}
 	after_chunk_coords.push_back(chunk_coord);
 
@@ -1579,39 +1599,73 @@ Dictionary SimpleTerrainEditorPlugin::_get_hit(Camera3D *p_camera, const Vector2
 	return terrain->get_brush_hit(ray_origin, ray_direction);
 }
 
-Dictionary SimpleTerrainEditorPlugin::_get_cursor_hit(Camera3D *p_camera, const Vector2 &p_mouse_position) const {
-	Dictionary result;
-	if (terrain == nullptr || p_camera == nullptr || terrain->get_simple_terrain_data().is_null()) {
-		return result;
+bool SimpleTerrainEditorPlugin::_get_tile_cell_at_mouse(Camera3D *p_camera, const Vector2 &p_mouse_position, Vector2i &r_cell, Vector3 &r_world_position) const {
+	if (terrain == nullptr || terrain->get_simple_terrain_data().is_null() || p_camera == nullptr) {
+		return false;
 	}
 
-	const Ref<SimpleTerrainData> terrain_data = terrain->get_simple_terrain_data();
 	const Transform3D inverse_transform = terrain->get_global_transform().affine_inverse();
 	const Vector3 local_origin = inverse_transform.xform(p_camera->project_ray_origin(p_mouse_position));
 	const Vector3 local_direction = inverse_transform.basis.xform(p_camera->project_ray_normal(p_mouse_position)).normalized();
 	if (Math::is_zero_approx(local_direction.y)) {
-		return result;
+		return false;
 	}
 
 	const real_t t = -local_origin.y / local_direction.y;
 	if (t < 0.0) {
-		return result;
+		return false;
 	}
 
-	Vector3 local_position = local_origin + local_direction * t;
-	const real_t half_size = (real_t)terrain_data->get_grid_size() * terrain_data->get_cell_size() * 0.5;
-	if (local_position.x < -half_size || local_position.x > half_size || local_position.z < -half_size || local_position.z > half_size) {
-		return result;
+	const Ref<SimpleTerrainData> terrain_data = terrain->get_simple_terrain_data();
+	const real_t tile_world_size = (real_t)terrain_data->get_tile_size() * terrain_data->get_cell_size();
+	if (tile_world_size <= 0.0) {
+		return false;
 	}
 
-	const int vertex_count = terrain_data->get_vertex_count();
-	const int height_x = CLAMP(Math::round((local_position.x + half_size) / terrain_data->get_cell_size()), 0, vertex_count - 1);
-	const int height_z = CLAMP(Math::round((local_position.z + half_size) / terrain_data->get_cell_size()), 0, vertex_count - 1);
-	local_position.y = terrain_data->get_height(height_x, height_z);
+	const Vector3 local_position = local_origin + local_direction * t;
+	const int cell_x = Math::floor(local_position.x / tile_world_size);
+	const int cell_y = Math::floor(local_position.z / tile_world_size);
+	const Vector3 local_center(
+			((real_t)cell_x + 0.5) * tile_world_size,
+			0.0,
+			((real_t)cell_y + 0.5) * tile_world_size);
 
-	result["local_position"] = local_position;
-	result["position"] = terrain->get_global_transform().xform(local_position);
-	return result;
+	r_cell = Vector2i(cell_x, cell_y);
+	r_world_position = terrain->get_global_transform().xform(local_center);
+	return true;
+}
+
+void SimpleTerrainEditorPlugin::_set_pending_create_cell(const Vector2i &p_cell, const Vector3 &p_world_position) {
+	pending_create_cell = p_cell;
+	pending_create_world_position = p_world_position;
+	has_pending_create_cell = true;
+	update_overlays();
+}
+
+void SimpleTerrainEditorPlugin::_clear_pending_create_cell() {
+	if (!has_pending_create_cell) {
+		return;
+	}
+	has_pending_create_cell = false;
+	pending_create_button_rect = Rect2();
+	update_overlays();
+}
+
+void SimpleTerrainEditorPlugin::_create_pending_tile() {
+	if (!has_pending_create_cell || terrain == nullptr) {
+		return;
+	}
+	if (terrain->has_tile(pending_create_cell)) {
+		_clear_pending_create_cell();
+		return;
+	}
+
+	EditorUndoRedoManager *undo_redo = get_undo_redo();
+	undo_redo->create_action(TTR("Create SimpleTerrain Tile"));
+	undo_redo->add_do_method(terrain, "create_tile", pending_create_cell);
+	undo_redo->add_undo_method(terrain, "remove_tile", pending_create_cell);
+	undo_redo->commit_action();
+	_clear_pending_create_cell();
 }
 
 Color SimpleTerrainEditorPlugin::_get_cursor_color() const {
@@ -1624,6 +1678,8 @@ Color SimpleTerrainEditorPlugin::_get_cursor_color() const {
 			return Color(0.25, 0.55, 1.0, 0.9);
 		case SimpleTerrain3D::BRUSH_FLATTEN:
 			return Color(1.0, 0.85, 0.2, 0.9);
+		case SimpleTerrain3D::BRUSH_AVERAGE:
+			return Color(0.35, 0.95, 0.9, 0.9);
 	}
 	return Color(1.0, 1.0, 1.0, 0.9);
 }
@@ -1631,7 +1687,7 @@ Color SimpleTerrainEditorPlugin::_get_cursor_color() const {
 void SimpleTerrainEditorPlugin::_update_cursor_preview(Camera3D *p_camera, const Dictionary &p_hit) {
 	cursor_points.clear();
 	has_cursor_hit = false;
-	if (!terrain_mode || terrain == nullptr || p_camera == nullptr || p_hit.is_empty()) {
+	if (!terrain_mode || terrain == nullptr || !terrain->is_inside_tree() || p_camera == nullptr || p_hit.is_empty()) {
 		update_overlays();
 		return;
 	}
@@ -1644,20 +1700,28 @@ void SimpleTerrainEditorPlugin::_update_cursor_preview(Camera3D *p_camera, const
 
 	const Vector3 local_center = p_hit["local_position"];
 	const real_t radius = radius_slider->get_value();
-	const int grid_size = terrain_data->get_grid_size();
-	const int vertex_count = terrain_data->get_vertex_count();
+	const int tile_size = terrain_data->get_tile_size();
+	const int vertex_count = terrain_data->get_tile_vertex_count();
 	const real_t cell_size = terrain_data->get_cell_size();
-	const real_t half_size = (real_t)grid_size * cell_size * 0.5;
+	const real_t tile_world_size = (real_t)tile_size * cell_size;
 	const Transform3D terrain_transform = terrain->get_global_transform();
 	const int segments = 64;
 
 	for (int i = 0; i <= segments; i++) {
 		const real_t angle = Math::TAU * (real_t)i / (real_t)segments;
-		const real_t local_x = CLAMP(local_center.x + Math::cos(angle) * radius, -half_size, half_size);
-		const real_t local_z = CLAMP(local_center.z + Math::sin(angle) * radius, -half_size, half_size);
-		const int height_x = CLAMP(Math::round((local_x + half_size) / cell_size), 0, vertex_count - 1);
-		const int height_z = CLAMP(Math::round((local_z + half_size) / cell_size), 0, vertex_count - 1);
-		const real_t local_y = terrain_data->get_height(height_x, height_z) + 0.05;
+		const real_t local_x = local_center.x + Math::cos(angle) * radius;
+		const real_t local_z = local_center.z + Math::sin(angle) * radius;
+		const Vector2i cell(Math::floor(local_x / tile_world_size), Math::floor(local_z / tile_world_size));
+		if (!terrain_data->has_tile(cell)) {
+			cursor_points.clear();
+			update_overlays();
+			return;
+		}
+		const real_t tile_origin_x = (real_t)cell.x * tile_world_size;
+		const real_t tile_origin_z = (real_t)cell.y * tile_world_size;
+		const int height_x = CLAMP(Math::round((local_x - tile_origin_x) / cell_size), 0, vertex_count - 1);
+		const int height_z = CLAMP(Math::round((local_z - tile_origin_z) / cell_size), 0, vertex_count - 1);
+		const real_t local_y = terrain_data->get_tile_height(cell, height_x, height_z) + 0.05;
 		const Vector3 world_point = terrain_transform.xform(Vector3(local_x, local_y, local_z));
 		if (p_camera->is_position_behind(world_point)) {
 			cursor_points.clear();
@@ -1682,7 +1746,33 @@ void SimpleTerrainEditorPlugin::_clear_cursor_preview() {
 }
 
 void SimpleTerrainEditorPlugin::_draw_over_viewport(Control *p_overlay) {
-	if (!terrain_mode || !has_cursor_hit || cursor_points.size() < 2) {
+	if (!terrain_mode) {
+		return;
+	}
+
+	if (has_pending_create_cell && terrain != nullptr) {
+		Camera3D *camera = Object::cast_to<Camera3D>(ObjectDB::get_instance(last_view_camera_id));
+		if (camera == nullptr) {
+			camera = Object::cast_to<Camera3D>(p_overlay->get_viewport()->get_camera_3d());
+		}
+		if (camera != nullptr && !camera->is_position_behind(pending_create_world_position)) {
+			const Vector2 screen_position = camera->unproject_position(pending_create_world_position);
+			const Size2 button_size = Size2(112, 34) * EDSCALE;
+			pending_create_button_rect = Rect2((screen_position - button_size * 0.5).round(), button_size);
+			p_overlay->draw_rect(pending_create_button_rect.grow(2 * EDSCALE), Color(0, 0, 0, 0.7), true);
+			p_overlay->draw_rect(pending_create_button_rect, Color(0.14, 0.58, 0.95, 0.96), true);
+			p_overlay->draw_rect(pending_create_button_rect, Color(1, 1, 1, 0.85), false, Math::round(1 * EDSCALE));
+
+			const Ref<Font> font = p_overlay->get_theme_font(SceneStringName(font), SNAME("Button"));
+			const int font_size = p_overlay->get_theme_font_size(SceneStringName(font_size), SNAME("Button"));
+			const String label = TTR("[Create]");
+			const Size2 text_size = font->get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size);
+			const Vector2 text_position = pending_create_button_rect.position + Vector2((pending_create_button_rect.size.x - text_size.x) * 0.5, (pending_create_button_rect.size.y + text_size.y) * 0.5 - 4 * EDSCALE);
+			p_overlay->draw_string(font, text_position, label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(1, 1, 1));
+		}
+	}
+
+	if (!has_cursor_hit || cursor_points.size() < 2) {
 		return;
 	}
 
@@ -1694,23 +1784,21 @@ void SimpleTerrainEditorPlugin::_draw_over_viewport(Control *p_overlay) {
 	}
 }
 
-void SimpleTerrainEditorPlugin::_commit_height_undo(const String &p_action_name, const PackedFloat32Array &p_before_heights) {
-	if (terrain == nullptr) {
+void SimpleTerrainEditorPlugin::_commit_tile_height_undo(const String &p_action_name, const Array &p_before_tiles) {
+	if (terrain == nullptr || terrain->get_simple_terrain_data().is_null()) {
 		return;
 	}
-	const PackedFloat32Array after_heights = terrain->get_height_data();
-	if (after_heights == p_before_heights) {
+	Ref<SimpleTerrainData> terrain_data = terrain->get_simple_terrain_data();
+	const Array after_tiles = terrain_data->get_tile_height_data_array();
+	if (after_tiles == p_before_tiles) {
 		return;
 	}
 
 	EditorUndoRedoManager *undo_redo = get_undo_redo();
 	undo_redo->create_action(p_action_name);
-	// Height arrays are stored as properties instead of replaying each brush
-	// sample. This makes undo deterministic even if brush spacing or algorithms
-	// change later.
-	undo_redo->add_do_property(terrain, "height_data", after_heights);
+	undo_redo->add_do_method(terrain_data.ptr(), "set_tile_height_data_array", after_tiles);
 	undo_redo->add_do_method(terrain, "rebuild_mesh");
-	undo_redo->add_undo_property(terrain, "height_data", p_before_heights);
+	undo_redo->add_undo_method(terrain_data.ptr(), "set_tile_height_data_array", p_before_tiles);
 	undo_redo->add_undo_method(terrain, "rebuild_mesh");
 	undo_redo->commit_action();
 }
@@ -1772,6 +1860,7 @@ void SimpleTerrainEditorPlugin::edit(Object *p_object) {
 		terrain_mode = false;
 		placement_mode = false;
 		painting = false;
+		_clear_pending_create_cell();
 		_clear_cursor_preview();
 	}
 	placement_dock->edit(terrain);
@@ -1783,6 +1872,7 @@ void SimpleTerrainEditorPlugin::clear() {
 	terrain_mode = false;
 	placement_mode = false;
 	painting = false;
+	_clear_pending_create_cell();
 	_clear_cursor_preview();
 	placement_dock->edit(nullptr);
 	_update_toolbar();
@@ -1790,6 +1880,7 @@ void SimpleTerrainEditorPlugin::clear() {
 
 EditorPlugin::AfterGUIInput SimpleTerrainEditorPlugin::forward_3d_gui_input(Camera3D *p_camera, const Ref<InputEvent> &p_event) {
 	if (placement_mode) {
+		_clear_pending_create_cell();
 		_clear_cursor_preview();
 		if (terrain == nullptr) {
 			return AFTER_GUI_INPUT_PASS;
@@ -1803,18 +1894,42 @@ EditorPlugin::AfterGUIInput SimpleTerrainEditorPlugin::forward_3d_gui_input(Came
 	}
 
 	if (!terrain_mode || terrain == nullptr) {
+		_clear_pending_create_cell();
 		_clear_cursor_preview();
 		return AFTER_GUI_INPUT_PASS;
 	}
 
+	if (p_camera != nullptr) {
+		last_view_camera_id = p_camera->get_instance_id();
+	}
+
 	Ref<InputEventMouseButton> mouse_button = p_event;
 	if (mouse_button.is_valid() && mouse_button->get_button_index() == MouseButton::LEFT) {
-		const Dictionary hit = _get_hit(p_camera, mouse_button->get_position());
-		_update_cursor_preview(p_camera, hit.is_empty() ? _get_cursor_hit(p_camera, mouse_button->get_position()) : hit);
+		const Vector2 mouse_position = mouse_button->get_position();
+		if (mouse_button->is_pressed() && has_pending_create_cell && pending_create_button_rect.has_point(mouse_position)) {
+			_create_pending_tile();
+			return AFTER_GUI_INPUT_STOP;
+		}
+
+		const Dictionary hit = _get_hit(p_camera, mouse_position);
+		_update_cursor_preview(p_camera, hit);
 		if (mouse_button->is_pressed()) {
 			if (hit.is_empty()) {
-				return AFTER_GUI_INPUT_PASS;
+				Vector2i tile_cell;
+				Vector3 tile_world_position;
+				if (_get_tile_cell_at_mouse(p_camera, mouse_position, tile_cell, tile_world_position)) {
+					if (!terrain->has_tile(tile_cell)) {
+						_set_pending_create_cell(tile_cell, tile_world_position);
+					} else {
+						_clear_pending_create_cell();
+					}
+				} else {
+					_clear_pending_create_cell();
+				}
+				return AFTER_GUI_INPUT_STOP;
 			}
+
+			_clear_pending_create_cell();
 			// Start collecting per-vertex deltas. Mouse motion edits until release
 			// become one undoable action without copying the full height field.
 			painting = true;
@@ -1843,7 +1958,7 @@ EditorPlugin::AfterGUIInput SimpleTerrainEditorPlugin::forward_3d_gui_input(Came
 	Ref<InputEventMouseMotion> mouse_motion = p_event;
 	if (mouse_motion.is_valid()) {
 		const Dictionary hit = _get_hit(p_camera, mouse_motion->get_position());
-		_update_cursor_preview(p_camera, hit.is_empty() ? _get_cursor_hit(p_camera, mouse_motion->get_position()) : hit);
+		_update_cursor_preview(p_camera, hit);
 		// While painting, consume mouse motion only when it actually hits the
 		// terrain. Other viewport behavior can continue when the ray misses.
 		if (painting && !hit.is_empty()) {
@@ -1938,6 +2053,7 @@ SimpleTerrainEditorPlugin::SimpleTerrainEditorPlugin() {
 	operation_button->add_item(TTRC("Lower"), SimpleTerrain3D::BRUSH_LOWER);
 	operation_button->add_item(TTRC("Smooth"), SimpleTerrain3D::BRUSH_SMOOTH);
 	operation_button->add_item(TTRC("Flatten"), SimpleTerrain3D::BRUSH_FLATTEN);
+	operation_button->add_item(TTRC("Average"), SimpleTerrain3D::BRUSH_AVERAGE);
 	operation_button->connect(SceneStringName(item_selected), callable_mp(this, &SimpleTerrainEditorPlugin::_operation_selected));
 	brush_options_vbox->add_child(operation_button);
 

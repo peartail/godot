@@ -280,7 +280,22 @@ void OpenWorldTerrain3D::_sync_tile_instances() {
 		rs->instance_set_scenario(tile.instance, scenario);
 		rs->instance_set_transform(tile.instance, tile_transform);
 	}
+	_update_tile_visibility();
 	_sync_tile_materials();
+}
+
+void OpenWorldTerrain3D::_update_tile_visibility() {
+	if (!is_inside_tree()) {
+		return;
+	}
+
+	RenderingServer *rs = RenderingServer::get_singleton();
+	const bool visible = is_visible_in_tree();
+	for (TerrainTile &tile : tiles) {
+		if (tile.instance.is_valid()) {
+			rs->instance_set_visible(tile.instance, visible);
+		}
+	}
 }
 
 void OpenWorldTerrain3D::_sync_tile_materials() {
@@ -2126,6 +2141,10 @@ void OpenWorldTerrain3D::_notification(int p_what) {
 		case NOTIFICATION_TRANSFORM_CHANGED: {
 			_sync_tile_instances();
 		} break;
+
+		case NOTIFICATION_VISIBILITY_CHANGED: {
+			_update_tile_visibility();
+		} break;
 	}
 }
 
@@ -2262,6 +2281,7 @@ void OpenWorldTerrain3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_debug_lines"), &OpenWorldTerrain3D::get_debug_lines);
 	ClassDB::bind_method(D_METHOD("get_height_texture"), &OpenWorldTerrain3D::get_height_texture);
 
+	ADD_GROUP("Terrain", "");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "terrain_data", PROPERTY_HINT_RESOURCE_TYPE, "OpenWorldTerrainData"), "set_terrain_data", "get_terrain_data");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "tile_world_size", PROPERTY_HINT_RANGE, "0.001,1000000,0.001,or_greater,suffix:m"), "set_tile_world_size", "get_tile_world_size");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "tile_resolution", PROPERTY_HINT_RANGE, "2,16384,1,or_greater"), "set_tile_resolution", "get_tile_resolution");
@@ -2270,10 +2290,12 @@ void OpenWorldTerrain3D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::PACKED_VECTOR2_ARRAY, "active_grid_cells", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE | PROPERTY_USAGE_INTERNAL), "set_active_grid_cells", "get_active_grid_cells");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "world_size", PROPERTY_HINT_RANGE, "0.001,1000000,0.001,or_greater,suffix:m", PROPERTY_USAGE_STORAGE | PROPERTY_USAGE_INTERNAL), "set_world_size", "get_world_size");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "height_scale", PROPERTY_HINT_RANGE, "-1000000,1000000,0.001,suffix:m"), "set_height_scale", "get_height_scale");
+	ADD_GROUP("Material", "");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "use_builtin_displacement_material"), "set_use_builtin_displacement_material", "is_using_builtin_displacement_material");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "terrain_material", PROPERTY_HINT_RESOURCE_TYPE, "Material"), "set_terrain_material", "get_terrain_material");
 	ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "terrain_layers", PROPERTY_HINT_ARRAY_TYPE, MAKE_RESOURCE_TYPE_HINT("OpenWorldTerrainLayer")), "set_terrain_layers", "get_terrain_layers");
 	ADD_GROUP("Height Splatting", "");
+	ADD_SUBGROUP("Textures", "");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "low_texture", PROPERTY_HINT_RESOURCE_TYPE, Texture2D::get_class_static()), "set_low_texture", "get_low_texture");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "mid_texture", PROPERTY_HINT_RESOURCE_TYPE, Texture2D::get_class_static()), "set_mid_texture", "get_mid_texture");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "high_texture", PROPERTY_HINT_RESOURCE_TYPE, Texture2D::get_class_static()), "set_high_texture", "get_high_texture");
@@ -2290,34 +2312,42 @@ void OpenWorldTerrain3D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "mid_parallax_texture", PROPERTY_HINT_RESOURCE_TYPE, Texture2D::get_class_static()), "set_mid_parallax_texture", "get_mid_parallax_texture");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "high_parallax_texture", PROPERTY_HINT_RESOURCE_TYPE, Texture2D::get_class_static()), "set_high_parallax_texture", "get_high_parallax_texture");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "macro_variation_texture", PROPERTY_HINT_RESOURCE_TYPE, Texture2D::get_class_static()), "set_macro_variation_texture", "get_macro_variation_texture");
+	ADD_SUBGROUP("Colors and Heights", "");
 	ADD_PROPERTY(PropertyInfo(Variant::COLOR, "low_color"), "set_low_color", "get_low_color");
 	ADD_PROPERTY(PropertyInfo(Variant::COLOR, "mid_color"), "set_mid_color", "get_mid_color");
 	ADD_PROPERTY(PropertyInfo(Variant::COLOR, "high_color"), "set_high_color", "get_high_color");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "low_height", PROPERTY_HINT_RANGE, "0,1,0.001"), "set_low_height", "get_low_height");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "high_height", PROPERTY_HINT_RANGE, "0,1,0.001"), "set_high_height", "get_high_height");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "blend_width", PROPERTY_HINT_RANGE, "0.001,1,0.001"), "set_blend_width", "get_blend_width");
+	ADD_SUBGROUP("Mapping", "");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "texture_scale", PROPERTY_HINT_RANGE, "0.0001,10,0.0001,or_greater"), "set_texture_scale", "get_texture_scale");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "low_texture_scale", PROPERTY_HINT_RANGE, "0.0001,10,0.0001,or_greater"), "set_low_texture_scale", "get_low_texture_scale");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "mid_texture_scale", PROPERTY_HINT_RANGE, "0.0001,10,0.0001,or_greater"), "set_mid_texture_scale", "get_mid_texture_scale");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "high_texture_scale", PROPERTY_HINT_RANGE, "0.0001,10,0.0001,or_greater"), "set_high_texture_scale", "get_high_texture_scale");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "triplanar_sharpness", PROPERTY_HINT_RANGE, "0.001,32,0.001,or_greater"), "set_triplanar_sharpness", "get_triplanar_sharpness");
+	ADD_SUBGROUP("Slope", "");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "slope_start", PROPERTY_HINT_RANGE, "0,1,0.001"), "set_slope_start", "get_slope_start");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "slope_end", PROPERTY_HINT_RANGE, "0,1,0.001"), "set_slope_end", "get_slope_end");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "slope_high_strength", PROPERTY_HINT_RANGE, "0,1,0.001"), "set_slope_high_strength", "get_slope_high_strength");
+	ADD_SUBGROUP("Surface Response", "");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "low_roughness", PROPERTY_HINT_RANGE, "0,1,0.001"), "set_low_roughness", "get_low_roughness");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "mid_roughness", PROPERTY_HINT_RANGE, "0,1,0.001"), "set_mid_roughness", "get_mid_roughness");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "high_roughness", PROPERTY_HINT_RANGE, "0,1,0.001"), "set_high_roughness", "get_high_roughness");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "ao_strength", PROPERTY_HINT_RANGE, "0,1,0.001"), "set_ao_strength", "get_ao_strength");
+	ADD_SUBGROUP("Parallax", "");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "parallax_enabled"), "set_parallax_enabled", "is_parallax_enabled");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "parallax_scale", PROPERTY_HINT_RANGE, "-1,1,0.001"), "set_parallax_scale", "get_parallax_scale");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "parallax_flip"), "set_parallax_flip", "is_parallax_flipped");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "parallax_fade_start", PROPERTY_HINT_RANGE, "0,1000000,0.001,or_greater,suffix:m"), "set_parallax_fade_start", "get_parallax_fade_start");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "parallax_fade_end", PROPERTY_HINT_RANGE, "0,1000000,0.001,or_greater,suffix:m"), "set_parallax_fade_end", "get_parallax_fade_end");
+	ADD_SUBGROUP("Anti Tiling", "");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "anti_tiling_enabled"), "set_anti_tiling_enabled", "is_anti_tiling_enabled");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "anti_tiling_strength", PROPERTY_HINT_RANGE, "0,2,0.001"), "set_anti_tiling_strength", "get_anti_tiling_strength");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "macro_variation_scale", PROPERTY_HINT_RANGE, "0.000001,10,0.000001,or_greater"), "set_macro_variation_scale", "get_macro_variation_scale");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "macro_variation_strength", PROPERTY_HINT_RANGE, "0,1,0.001"), "set_macro_variation_strength", "get_macro_variation_strength");
+	ADD_SUBGROUP("Debug", "");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "splat_debug_mode", PROPERTY_HINT_ENUM, "None,Height,Slope,Weights,Painted Layers"), "set_splat_debug_mode", "get_splat_debug_mode");
+	ADD_GROUP("Brush", "");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "flatten_height", PROPERTY_HINT_RANGE, "0,1,0.001"), "set_flatten_height", "get_flatten_height");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "brush_falloff", PROPERTY_HINT_RANGE, "0,8,0.001"), "set_brush_falloff", "get_brush_falloff");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "show_debug_gizmo"), "set_show_debug_gizmo", "is_showing_debug_gizmo");

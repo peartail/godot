@@ -1302,6 +1302,12 @@ void SceneTreeDock::_tool_selected(int p_tool, bool p_confirm_override) {
 				}
 			}
 		} break;
+		case TOOL_COPY_SCENE_PATH: {
+			Node *scene = EditorNode::get_singleton()->get_edited_scene();
+			if (scene && !scene->get_scene_file_path().is_empty()) {
+				DisplayServer::get_singleton()->clipboard_set(scene->get_scene_file_path());
+			}
+		} break;
 		case TOOL_SHOW_IN_FILE_SYSTEM: {
 			const List<Node *> selection = editor_selection->get_top_selected_node_list();
 			const List<Node *>::Element *e = selection.front();
@@ -4181,6 +4187,13 @@ void SceneTreeDock::_update_tree_menu() {
 	resource_list->connect("about_to_popup", callable_mp(this, &SceneTreeDock::_list_all_subresources).bind(resource_list));
 	resource_list->connect("index_pressed", callable_mp(this, &SceneTreeDock::_edit_subresource).bind(resource_list));
 	tree_menu->add_submenu_node_item(TTR("All Scene Sub-Resources"), resource_list);
+
+	tree_menu->add_separator();
+	tree_menu->add_icon_item(get_editor_theme_icon(SNAME("ActionCopy")), TTR("Copy Scene Path"), TOOL_COPY_SCENE_PATH);
+	Node *current_scene = EditorNode::get_singleton()->get_edited_scene();
+	if (!current_scene || current_scene->get_scene_file_path().is_empty()) {
+		tree_menu->set_item_disabled(tree_menu->get_item_index(TOOL_COPY_SCENE_PATH), true);
+	}
 
 	_append_filter_options_to(tree_menu);
 }

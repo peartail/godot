@@ -134,6 +134,7 @@ private:
 	Ref<Image> _build_tile_layer_image(const Vector2i &p_cell) const;
 	void _clear_tiles();
 	void _sync_tile_instances();
+	void _update_tile_visibility();
 	void _sync_tile_materials();
 	void _rebuild_tiles();
 	bool _is_grid_cell_active(const Vector2i &p_cell) const;

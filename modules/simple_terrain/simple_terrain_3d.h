@@ -26,6 +26,7 @@ public:
 		BRUSH_LOWER,
 		BRUSH_SMOOTH,
 		BRUSH_FLATTEN,
+		BRUSH_AVERAGE,
 	};
 
 	enum NavigationBuildMode {
@@ -40,6 +41,8 @@ private:
 		// Chunk coordinates are measured in terrain quad indices, not world
 		// units. quad_width/quad_depth can be smaller than chunk_size at the
 		// terrain edge. The mesh itself stores local-space vertex positions.
+		Vector2i tile_cell;
+		bool uses_tile = false;
 		int origin_x = 0;
 		int origin_z = 0;
 		int quad_width = 0;
@@ -69,6 +72,8 @@ private:
 	bool navigation_enabled = false;
 	uint32_t navigation_layers = 1;
 	real_t navigation_max_slope = 45.0;
+	real_t navigation_min_height = -1000000.0;
+	real_t navigation_max_height = 1000000.0;
 	NavigationBuildMode navigation_build_mode = NAVIGATION_BUILD_QUADS;
 	Ref<NavigationMesh> navigation_baked_mesh;
 	RID navigation_baked_region;
@@ -86,7 +91,10 @@ private:
 	real_t navigation_merge_planar_tolerance = 0.15;
 	int navigation_merge_max_rect_size = 8;
 	bool navigation_debug_visible = true;
+	bool navigation_debug_navigation_mesh_visible = true;
 	bool navigation_debug_runtime_obstacles_visible = true;
+	bool navigation_debug_height_range_visible = false;
+	bool navigation_debug_steep_slopes_visible = false;
 	Vector<NavigationObstacle3D *> runtime_navigation_obstacles;
 
 	// Material priority is:
@@ -113,6 +121,8 @@ private:
 #ifdef DEBUG_ENABLED
 	RID navigation_debug_instance;
 	Ref<ArrayMesh> navigation_debug_mesh;
+	Ref<StandardMaterial3D> navigation_debug_height_range_material;
+	Ref<StandardMaterial3D> navigation_debug_steep_slope_material;
 #endif // DEBUG_ENABLED
 
 	// SimpleTerrainData emits "changed" when edited from the inspector, scripts, or
@@ -121,19 +131,19 @@ private:
 	void _simple_terrain_data_changed();
 	void _ensure_data();
 
-	// Height-space helpers. X/Z parameters use terrain vertex coordinates unless
+	// Height-space helpers. X/Z parameters use tile-local vertex coordinates unless
 	// a method explicitly says it receives a world or local position.
-	Vector3 _get_vertex_position(int p_x, int p_z) const;
-	Vector3 _get_vertex_normal(int p_x, int p_z) const;
-	real_t _sample_nearest_height(real_t p_center_x, real_t p_center_z) const;
-	real_t _get_average_neighbor_height(const PackedFloat32Array &p_source_heights, int p_x, int p_z) const;
+	bool _has_created_tiles() const;
+	Vector3 _get_tile_vertex_position(const Vector2i &p_cell, int p_x, int p_z) const;
+	Vector3 _get_tile_vertex_normal(const Vector2i &p_cell, int p_x, int p_z) const;
+	bool _is_navigation_height_allowed(real_t p_height) const;
 	real_t _sample_value_noise(real_t p_x, real_t p_z, int p_seed) const;
 
-	// Mesh rebuild helpers. A full rebuild recreates the chunk list; brush
-	// strokes call _rebuild_chunks_for_region() so only touched chunks are
+	// Mesh rebuild helpers. A full rebuild recreates the tile chunk list; brush
+	// strokes call _rebuild_tile_chunks_for_region() so only touched chunks are
 	// uploaded again.
-	Ref<ArrayMesh> _build_chunk_mesh(int p_origin_x, int p_origin_z, int p_quad_width, int p_quad_depth) const;
-	Ref<NavigationMesh> _build_chunk_navigation_mesh(int p_origin_x, int p_origin_z, int p_quad_width, int p_quad_depth) const;
+	Ref<ArrayMesh> _build_tile_chunk_mesh(const Vector2i &p_cell, int p_origin_x, int p_origin_z, int p_quad_width, int p_quad_depth) const;
+	Ref<NavigationMesh> _build_tile_chunk_navigation_mesh(const Vector2i &p_cell, int p_origin_x, int p_origin_z, int p_quad_width, int p_quad_depth) const;
 	Ref<NavigationMeshSourceGeometryData3D> _build_bake_source_geometry(bool p_include_runtime_obstacles) const;
 	void _mark_navigation_bake_dirty();
 	void _mark_navigation_dynamic_bake_dirty();
@@ -148,10 +158,11 @@ private:
 #endif // DEBUG_ENABLED
 	void _clear_chunks();
 	void _sync_chunk_instances();
+	void _update_chunk_visibility();
 	void _sync_chunk_materials();
 	void _sync_chunk_navigation();
 	void _sync_dynamic_navigation_region(RID p_navigation_map, const Transform3D &p_global_transform);
-	void _rebuild_chunks_for_region(int p_min_x, int p_min_z, int p_max_x, int p_max_z);
+	void _rebuild_tile_chunks_for_region(const Vector2i &p_cell, int p_min_x, int p_min_z, int p_max_x, int p_max_z);
 	Ref<Material> _get_active_chunk_material();
 	void _update_builtin_triplanar_material();
 	static String _get_builtin_triplanar_shader_code();
@@ -170,14 +181,17 @@ public:
 	void set_world_placement_data(const Ref<SimpleWorldPlacementData> &p_data);
 	Ref<SimpleWorldPlacementData> get_world_placement_data() const { return world_placement_data; }
 
-	// Grid controls proxy to SimpleTerrainData so the node remains convenient in the
-	// Inspector while the data can still be saved as a separate resource.
-	void set_grid_size(int p_grid_size);
-	int get_grid_size() const;
 	void set_cell_size(real_t p_cell_size);
 	real_t get_cell_size() const;
 	void set_chunk_size(int p_chunk_size);
 	int get_chunk_size() const { return chunk_size; }
+	void set_tile_size(int p_tile_size);
+	int get_tile_size() const;
+	void set_created_tile_cells(const PackedVector2Array &p_cells);
+	PackedVector2Array get_created_tile_cells() const;
+	bool has_tile(const Vector2i &p_cell) const;
+	void create_tile(const Vector2i &p_cell);
+	void remove_tile(const Vector2i &p_cell);
 	void set_show_chunk_gizmos(bool p_show);
 	bool is_showing_chunk_gizmos() const { return show_chunk_gizmos; }
 	void set_navigation_enabled(bool p_enabled);
@@ -186,6 +200,10 @@ public:
 	uint32_t get_navigation_layers() const { return navigation_layers; }
 	void set_navigation_max_slope(real_t p_slope);
 	real_t get_navigation_max_slope() const { return navigation_max_slope; }
+	void set_navigation_min_height(real_t p_height);
+	real_t get_navigation_min_height() const { return navigation_min_height; }
+	void set_navigation_max_height(real_t p_height);
+	real_t get_navigation_max_height() const { return navigation_max_height; }
 	void set_navigation_build_mode(NavigationBuildMode p_mode);
 	NavigationBuildMode get_navigation_build_mode() const { return navigation_build_mode; }
 	void set_navigation_baked_mesh(const Ref<NavigationMesh> &p_navigation_mesh);
@@ -213,11 +231,14 @@ public:
 	int get_navigation_merge_max_rect_size() const { return navigation_merge_max_rect_size; }
 	void set_navigation_debug_visible(bool p_visible);
 	bool is_navigation_debug_visible() const { return navigation_debug_visible; }
+	void set_navigation_debug_navigation_mesh_visible(bool p_visible);
+	bool is_navigation_debug_navigation_mesh_visible() const { return navigation_debug_navigation_mesh_visible; }
 	void set_navigation_debug_runtime_obstacles_visible(bool p_visible);
 	bool is_navigation_debug_runtime_obstacles_visible() const { return navigation_debug_runtime_obstacles_visible; }
-	void set_height_data(const PackedFloat32Array &p_height_data);
-	PackedFloat32Array get_height_data() const;
-
+	void set_navigation_debug_height_range_visible(bool p_visible);
+	bool is_navigation_debug_height_range_visible() const { return navigation_debug_height_range_visible; }
+	void set_navigation_debug_steep_slopes_visible(bool p_visible);
+	bool is_navigation_debug_steep_slopes_visible() const { return navigation_debug_steep_slopes_visible; }
 	// Runtime material API. These properties are safe for scripts to change at
 	// runtime; they update existing chunk instances without rebuilding geometry.
 	void set_terrain_material(const Ref<Material> &p_material);

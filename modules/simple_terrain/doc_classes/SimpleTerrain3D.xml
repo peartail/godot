@@ -4,15 +4,16 @@
 		Editable chunked terrain node.
 	</brief_description>
 	<description>
-		[SimpleTerrain3D] renders and edits a [SimpleTerrainData] height field. The node splits terrain geometry into chunks so renderer culling and brush mesh rebuilds can operate on smaller regions.
+		[SimpleTerrain3D] renders and edits tile-based [SimpleTerrainData] height fields. The node splits each tile into chunks so renderer culling and brush mesh rebuilds can operate on smaller regions.
 		The inherited [member MeshInstance3D.mesh] is kept empty; terrain chunks are submitted as internal [RenderingServer] instances.
-		All methods and properties listed in this class are registered through ClassDB, so they can be used from GDScript, C#, editor tools, and the Inspector. A typical runtime setup creates a [SimpleTerrain3D], adjusts [member grid_size], [member cell_size], and [member chunk_size], then calls [method reset_flat_terrain] or [method generate_random_terrain].
+		All methods and properties listed in this class are registered through ClassDB, so they can be used from GDScript, C#, editor tools, and the Inspector. A typical runtime setup creates a [SimpleTerrain3D], adjusts [member tile_size], [member cell_size], and [member chunk_size], creates one or more tiles, then calls [method reset_flat_terrain] or [method generate_random_terrain].
 		[codeblock]
 		var terrain := SimpleTerrain3D.new()
-		terrain.grid_size = 128
+		terrain.tile_size = 128
 		terrain.cell_size = 1.0
 		terrain.chunk_size = 32
 		terrain.use_builtin_triplanar_material = true
+		terrain.create_tile(Vector2i.ZERO)
 		terrain.reset_flat_terrain()
 		add_child(terrain)
 		[/codeblock]
@@ -21,6 +22,28 @@
 	<tutorials>
 	</tutorials>
 	<methods>
+
+		<method name="create_tile">
+			<return type="void" />
+			<param index="0" name="cell" type="Vector2i" />
+			<description>
+				Creates a terrain tile in [member simple_terrain_data] and rebuilds the terrain meshes.
+			</description>
+		</method>
+		<method name="has_tile" qualifiers="const">
+			<return type="bool" />
+			<param index="0" name="cell" type="Vector2i" />
+			<description>
+				Returns whether [member simple_terrain_data] contains tile [param cell].
+			</description>
+		</method>
+		<method name="remove_tile">
+			<return type="void" />
+			<param index="0" name="cell" type="Vector2i" />
+			<description>
+				Removes tile [param cell] from [member simple_terrain_data] and rebuilds the terrain meshes.
+			</description>
+		</method>
 		<method name="apply_brush">
 			<return type="void" />
 			<param index="0" name="world_position" type="Vector3" />
@@ -72,7 +95,7 @@
 		<method name="generate_random_terrain">
 			<return type="void" />
 			<description>
-				Generates a deterministic random height field using [member random_seed], [member random_frequency], [member random_octaves], and [member random_height_scale]. Use [method randomize_seed] when a new seed is desired.
+				Generates deterministic random height values for existing tiles using [member random_seed], [member random_frequency], [member random_octaves], and [member random_height_scale]. Use [method randomize_seed] when a new seed is desired.
 			</description>
 		</method>
 		<method name="get_brush_hit" qualifiers="const">
@@ -80,7 +103,7 @@
 			<param index="0" name="ray_origin" type="Vector3" />
 			<param index="1" name="ray_direction" type="Vector3" />
 			<description>
-				Intersects a ray against the terrain surface. The returned dictionary contains [code]position[/code] and [code]distance[/code] when a hit is found. The ray is tested with a grid traversal algorithm instead of checking every terrain triangle.
+				Intersects a ray against generated terrain tiles. The returned dictionary contains [code]position[/code], [code]local_position[/code], [code]normal[/code], and [code]distance[/code] when a hit is found.
 			</description>
 		</method>
 		<method name="get_chunk_debug_lines" qualifiers="const">
@@ -105,7 +128,7 @@
 		<method name="rebuild_mesh">
 			<return type="void" />
 			<description>
-				Rebuilds all terrain chunk meshes from [member simple_terrain_data]. Call this after making many direct changes to [member SimpleTerrainData.height_data] if those changes did not go through [SimpleTerrain3D]'s setters.
+				Rebuilds all terrain tile chunk meshes from [member simple_terrain_data]. Call this after making many direct changes to [member SimpleTerrainData.tile_height_data] if those changes did not go through [SimpleTerrain3D]'s setters.
 			</description>
 		</method>
 		<method name="rebuild_navigation">
@@ -123,7 +146,7 @@
 		<method name="reset_flat_terrain">
 			<return type="void" />
 			<description>
-				Fills [member simple_terrain_data] using [member flat_height] and rebuilds the terrain. This is the default recommended initialization path for a blank editable terrain.
+				Fills existing tiles in [member simple_terrain_data] using [member flat_height] and rebuilds the terrain. This does not create new tiles.
 			</description>
 		</method>
 		<method name="unregister_dynamic_navigation_blocker">
@@ -144,11 +167,9 @@
 		<member name="flat_height" type="float" setter="set_flat_height" getter="get_flat_height" default="0.0">
 			Height used by [method reset_flat_terrain].
 		</member>
-		<member name="grid_size" type="int" setter="set_grid_size" getter="get_grid_size" default="64">
-			Number of terrain quads per axis. The terrain stores [member grid_size] + [code]1[/code] vertices per axis.
-		</member>
-		<member name="height_data" type="PackedFloat32Array" setter="set_height_data" getter="get_height_data" default="PackedFloat32Array()">
-			Convenience proxy to [member SimpleTerrainData.height_data]. Setting this property normalizes the array size and rebuilds terrain chunks.
+
+		<member name="created_tile_cells" type="PackedVector2Array" setter="set_created_tile_cells" getter="get_created_tile_cells" default="PackedVector2Array()">
+			Tile coordinates rendered by SimpleTerrain3D. This property proxies [member SimpleTerrainData.created_tile_cells].
 		</member>
 		<member name="navigation_build_mode" type="int" setter="set_navigation_build_mode" getter="get_navigation_build_mode" enum="SimpleTerrain3D.NavigationBuildMode" default="1">
 			Controls how generated terrain navigation polygons are emitted. [constant NAVIGATION_BUILD_TRIANGLES] preserves the legacy two-triangles-per-cell output, [constant NAVIGATION_BUILD_QUADS] emits planar terrain cells as quads, [constant NAVIGATION_BUILD_MERGED_RECTS] merges compatible cells into larger rectangular polygons inside each chunk, and [constant NAVIGATION_BUILD_BAKED] uses [member navigation_baked_mesh].
@@ -166,10 +187,19 @@
 			Navigation layers assigned to [member navigation_dynamic_baked_mesh]. Use a layer separate from [member navigation_layers] so agents can choose between static-only pathfinding and dynamic-obstacle pathfinding.
 		</member>
 		<member name="navigation_debug_visible" type="bool" setter="set_navigation_debug_visible" getter="is_navigation_debug_visible" default="true">
-			If [code]true[/code], SimpleTerrain3D can show its generated navigation debug overlay when Godot's global navigation debug display is enabled. Disable this to hide only the SimpleTerrain overlay while leaving navigation itself active.
+			If [code]true[/code], SimpleTerrain3D can show its navigation debug overlay when Godot's global navigation debug display is enabled. Disable this to hide only the SimpleTerrain overlay while leaving navigation itself active.
+		</member>
+		<member name="navigation_debug_navigation_mesh_visible" type="bool" setter="set_navigation_debug_navigation_mesh_visible" getter="is_navigation_debug_navigation_mesh_visible" default="true">
+			If [code]true[/code], the SimpleTerrain3D navigation debug overlay draws the generated or baked navigation mesh surface and edge lines.
 		</member>
 		<member name="navigation_debug_runtime_obstacles_visible" type="bool" setter="set_navigation_debug_runtime_obstacles_visible" getter="is_navigation_debug_runtime_obstacles_visible" default="true">
 			If [code]true[/code], the SimpleTerrain3D navigation debug overlay also draws runtime avoidance obstacle footprints from world placement profiles whose navigation obstacle mode includes runtime avoidance.
+		</member>
+		<member name="navigation_debug_height_range_visible" type="bool" setter="set_navigation_debug_height_range_visible" getter="is_navigation_debug_height_range_visible" default="false">
+			If [code]true[/code], the SimpleTerrain3D navigation debug overlay draws a green wire box over the terrain bounds between [member navigation_min_height] and [member navigation_max_height]. Godot's global navigation debug display and [member navigation_debug_visible] must also be enabled.
+		</member>
+		<member name="navigation_debug_steep_slopes_visible" type="bool" setter="set_navigation_debug_steep_slopes_visible" getter="is_navigation_debug_steep_slopes_visible" default="false">
+			If [code]true[/code], the SimpleTerrain3D navigation debug overlay also highlights terrain triangles that are inside the navigation height range but rejected because they are steeper than [member navigation_max_slope]. Godot's global navigation debug display and [member navigation_debug_visible] must also be enabled.
 		</member>
 		<member name="navigation_enabled" type="bool" setter="set_navigation_enabled" getter="is_navigation_enabled" default="false">
 			If [code]true[/code], the terrain creates one [NavigationMesh] region per chunk and keeps those regions synchronized with terrain edits and node transforms.
@@ -179,6 +209,12 @@
 		</member>
 		<member name="navigation_max_slope" type="float" setter="set_navigation_max_slope" getter="get_navigation_max_slope" default="45.0">
 			Maximum terrain slope, in degrees, that is included in generated navigation meshes.
+		</member>
+		<member name="navigation_min_height" type="float" setter="set_navigation_min_height" getter="get_navigation_min_height" default="-1000000.0">
+			Minimum local terrain vertex height included in generated navigation meshes. Terrain triangles with any vertex below this height are excluded.
+		</member>
+		<member name="navigation_max_height" type="float" setter="set_navigation_max_height" getter="get_navigation_max_height" default="1000000.0">
+			Maximum local terrain vertex height included in generated navigation meshes. Terrain triangles with any vertex above this height are excluded.
 		</member>
 		<member name="navigation_quad_max_normal_angle" type="float" setter="set_navigation_quad_max_normal_angle" getter="get_navigation_quad_max_normal_angle" default="5.0">
 			Maximum angle, in degrees, allowed between a terrain cell's two triangle normals before quad generation falls back to triangle polygons.
@@ -261,6 +297,10 @@
 		<member name="world_placement_library" type="SimpleWorldPlacementLibrary" setter="set_world_placement_library" getter="get_world_placement_library">
 			Optional library of registered [SimpleWorldObjectProfile] resources available to world placement tools for this terrain.
 		</member>
+
+		<member name="tile_size" type="int" setter="set_tile_size" getter="get_tile_size" default="128">
+			Number of terrain quads per tile axis. This property proxies [member SimpleTerrainData.tile_size].
+		</member>
 	</members>
 	<signals>
 		<signal name="navigation_bake_finished">
@@ -286,6 +326,9 @@
 		</constant>
 		<constant name="BRUSH_FLATTEN" value="3" enum="BrushOperation">
 			Moves terrain under the brush toward the sampled center height.
+		</constant>
+		<constant name="BRUSH_AVERAGE" value="4" enum="BrushOperation">
+			Moves terrain under the brush toward the average height of vertices inside the brush radius.
 		</constant>
 		<constant name="NAVIGATION_BUILD_TRIANGLES" value="0" enum="NavigationBuildMode">
 			Builds navigation meshes with two triangle polygons per walkable terrain cell. This matches the legacy SimpleTerrain3D behavior.

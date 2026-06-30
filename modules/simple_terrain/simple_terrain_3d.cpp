@@ -10,6 +10,7 @@
 #include "core/math/geometry_3d.h"
 #include "core/math/random_pcg.h"
 #include "core/math/triangle_mesh.h"
+#include "core/templates/hash_set.h"
 #include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
 #include "core/object/object.h"
@@ -32,6 +33,25 @@ struct SimpleTerrainNavigationObstruction {
 	real_t elevation = 0.0;
 	real_t height = 0.0;
 };
+
+Transform3D _get_node_3d_scene_transform(Node3D *p_node) {
+	ERR_FAIL_NULL_V(p_node, Transform3D());
+	if (p_node->is_inside_tree()) {
+		return p_node->get_global_transform();
+	}
+
+	Transform3D transform = p_node->get_transform();
+	Node *parent = p_node->get_parent();
+	while (parent != nullptr) {
+		Node3D *parent_3d = Object::cast_to<Node3D>(parent);
+		if (parent_3d == nullptr) {
+			break;
+		}
+		transform = parent_3d->get_transform() * transform;
+		parent = parent_3d->get_parent();
+	}
+	return transform;
+}
 
 void _append_circle_obstruction(Vector<SimpleTerrainNavigationObstruction> &r_obstructions, const Transform3D &p_transform, real_t p_radius, real_t p_half_height) {
 	if (p_radius <= 0.0) {
@@ -134,7 +154,7 @@ void _collect_collision_obstructions(Node *p_node, const Transform3D &p_root_to_
 	if (collision_shape != nullptr && !collision_shape->is_disabled()) {
 		Ref<Shape3D> shape = collision_shape->get_shape();
 		if (shape.is_valid()) {
-			const Transform3D shape_transform = p_root_to_target * collision_shape->get_global_transform();
+			const Transform3D shape_transform = p_root_to_target * _get_node_3d_scene_transform(collision_shape);
 			Ref<BoxShape3D> box = shape;
 			Ref<SphereShape3D> sphere = shape;
 			Ref<CapsuleShape3D> capsule = shape;
@@ -160,7 +180,7 @@ void _collect_collision_obstructions(Node *p_node, const Transform3D &p_root_to_
 void _collect_mesh_aabb_obstructions(Node *p_node, const Transform3D &p_root_to_target, Vector<SimpleTerrainNavigationObstruction> &r_obstructions) {
 	MeshInstance3D *mesh_instance = Object::cast_to<MeshInstance3D>(p_node);
 	if (mesh_instance != nullptr && mesh_instance->get_mesh().is_valid()) {
-		_append_aabb_obstruction(r_obstructions, p_root_to_target * mesh_instance->get_global_transform(), mesh_instance->get_mesh()->get_aabb());
+		_append_aabb_obstruction(r_obstructions, p_root_to_target * _get_node_3d_scene_transform(mesh_instance), mesh_instance->get_mesh()->get_aabb());
 	}
 
 	for (int i = 0; i < p_node->get_child_count(); i++) {
@@ -203,7 +223,7 @@ void _append_profile_placement_obstructions(const Ref<SimpleWorldObjectProfile> 
 		Node *scene_instance = p_profile->get_scene()->instantiate();
 		Node3D *instance_3d = Object::cast_to<Node3D>(scene_instance);
 		if (instance_3d != nullptr) {
-			const Transform3D root_to_terrain = p_placement_transform * instance_3d->get_global_transform().affine_inverse();
+			const Transform3D root_to_terrain = p_placement_transform * _get_node_3d_scene_transform(instance_3d).affine_inverse();
 			if (p_profile->get_navigation_obstacle_shape_source() == SimpleWorldObjectProfile::NAVIGATION_OBSTACLE_SHAPE_MESH_AABB) {
 				_collect_mesh_aabb_obstructions(instance_3d, root_to_terrain, r_obstructions);
 			} else {
@@ -248,7 +268,7 @@ void _append_blocker_obstructions(SimpleNavigationBlocker3D *p_blocker, const Tr
 			if (p_blocker->get_radius() <= 0.0) {
 				return;
 			}
-			const Transform3D blocker_transform = p_terrain_inverse * p_blocker->get_global_transform();
+			const Transform3D blocker_transform = p_terrain_inverse * _get_node_3d_scene_transform(p_blocker);
 			const Vector3 safe_scale = blocker_transform.basis.get_scale().abs().maxf((real_t)0.001);
 			const real_t horizontal_scale = MAX(safe_scale.x, safe_scale.z);
 			const real_t radius = p_blocker->get_radius() * horizontal_scale;
@@ -271,7 +291,6 @@ void SimpleTerrain3D::_simple_terrain_data_changed() {
 
 void SimpleTerrain3D::_ensure_data() {
 	if (simple_terrain_data.is_valid()) {
-		simple_terrain_data->ensure_height_data_size(false);
 		return;
 	}
 
@@ -283,29 +302,30 @@ void SimpleTerrain3D::_ensure_data() {
 	simple_terrain_data->connect_changed(callable_mp(this, &SimpleTerrain3D::_simple_terrain_data_changed));
 }
 
-Vector3 SimpleTerrain3D::_get_vertex_position(int p_x, int p_z) const {
-	ERR_FAIL_COND_V(simple_terrain_data.is_null(), Vector3());
-	const real_t half_size = (real_t)simple_terrain_data->get_grid_size() * simple_terrain_data->get_cell_size() * 0.5;
-	// SimpleTerrainData stores only height values; X/Z are derived from grid indices.
-	// Keeping this conversion centralized avoids subtle mismatches between mesh
-	// building, picking, debug gizmos, and bounds calculation.
-	return Vector3(
-			(real_t)p_x * simple_terrain_data->get_cell_size() - half_size,
-			simple_terrain_data->get_height(p_x, p_z),
-			(real_t)p_z * simple_terrain_data->get_cell_size() - half_size);
+bool SimpleTerrain3D::_has_created_tiles() const {
+	return simple_terrain_data.is_valid() && !simple_terrain_data->get_created_tile_cells().is_empty();
 }
 
-Vector3 SimpleTerrain3D::_get_vertex_normal(int p_x, int p_z) const {
+Vector3 SimpleTerrain3D::_get_tile_vertex_position(const Vector2i &p_cell, int p_x, int p_z) const {
+	ERR_FAIL_COND_V(simple_terrain_data.is_null(), Vector3());
+	const real_t tile_world_size = (real_t)simple_terrain_data->get_tile_size() * simple_terrain_data->get_cell_size();
+	return Vector3(
+			(real_t)p_cell.x * tile_world_size + (real_t)p_x * simple_terrain_data->get_cell_size(),
+			simple_terrain_data->get_tile_height(p_cell, p_x, p_z),
+			(real_t)p_cell.y * tile_world_size + (real_t)p_z * simple_terrain_data->get_cell_size());
+}
+
+Vector3 SimpleTerrain3D::_get_tile_vertex_normal(const Vector2i &p_cell, int p_x, int p_z) const {
 	ERR_FAIL_COND_V(simple_terrain_data.is_null(), Vector3(0, 1, 0));
 
-	const int vertex_count = simple_terrain_data->get_vertex_count();
+	const int vertex_count = simple_terrain_data->get_tile_vertex_count();
 	const int left_x = MAX(0, p_x - 1);
 	const int right_x = MIN(vertex_count - 1, p_x + 1);
 	const int up_z = MAX(0, p_z - 1);
 	const int down_z = MIN(vertex_count - 1, p_z + 1);
 
-	const Vector3 tangent_x = _get_vertex_position(right_x, p_z) - _get_vertex_position(left_x, p_z);
-	const Vector3 tangent_z = _get_vertex_position(p_x, down_z) - _get_vertex_position(p_x, up_z);
+	const Vector3 tangent_x = _get_tile_vertex_position(p_cell, right_x, p_z) - _get_tile_vertex_position(p_cell, left_x, p_z);
+	const Vector3 tangent_z = _get_tile_vertex_position(p_cell, p_x, down_z) - _get_tile_vertex_position(p_cell, p_x, up_z);
 	Vector3 normal = tangent_z.cross(tangent_x);
 	if (normal.is_zero_approx()) {
 		return Vector3(0, 1, 0);
@@ -317,29 +337,8 @@ Vector3 SimpleTerrain3D::_get_vertex_normal(int p_x, int p_z) const {
 	return normal;
 }
 
-real_t SimpleTerrain3D::_sample_nearest_height(real_t p_center_x, real_t p_center_z) const {
-	// Flatten uses the closest existing vertex height as its target. This makes
-	// the operation predictable when painting on slopes because it preserves the
-	// clicked height instead of using a global flat_height setting.
-	const int x = CLAMP(Math::round(p_center_x), 0, simple_terrain_data->get_vertex_count() - 1);
-	const int z = CLAMP(Math::round(p_center_z), 0, simple_terrain_data->get_vertex_count() - 1);
-	return simple_terrain_data->get_height(x, z);
-}
-
-real_t SimpleTerrain3D::_get_average_neighbor_height(const PackedFloat32Array &p_source_heights, int p_x, int p_z) const {
-	// Smooth reads from a snapshot taken before the brush pass. Without this,
-	// earlier edits in the same brush step would bias later vertices and create
-	// directional smearing.
-	const int vertex_count = simple_terrain_data->get_vertex_count();
-	real_t total = 0.0;
-	int count = 0;
-	for (int z = MAX(0, p_z - 1); z <= MIN(vertex_count - 1, p_z + 1); z++) {
-		for (int x = MAX(0, p_x - 1); x <= MIN(vertex_count - 1, p_x + 1); x++) {
-			total += p_source_heights[simple_terrain_data->get_height_index(x, z)];
-			count++;
-		}
-	}
-	return total / (real_t)count;
+bool SimpleTerrain3D::_is_navigation_height_allowed(real_t p_height) const {
+	return p_height >= navigation_min_height && p_height <= navigation_max_height;
 }
 
 real_t SimpleTerrain3D::_sample_value_noise(real_t p_x, real_t p_z, int p_seed) const {
@@ -349,10 +348,10 @@ real_t SimpleTerrain3D::_sample_value_noise(real_t p_x, real_t p_z, int p_seed) 
 	return Math::fposmod(value, (real_t)1.0) * 2.0 - 1.0;
 }
 
-Ref<ArrayMesh> SimpleTerrain3D::_build_chunk_mesh(int p_origin_x, int p_origin_z, int p_quad_width, int p_quad_depth) const {
+Ref<ArrayMesh> SimpleTerrain3D::_build_tile_chunk_mesh(const Vector2i &p_cell, int p_origin_x, int p_origin_z, int p_quad_width, int p_quad_depth) const {
 	ERR_FAIL_COND_V(simple_terrain_data.is_null(), Ref<ArrayMesh>());
 
-	const int grid_size = simple_terrain_data->get_grid_size();
+	const int tile_size = simple_terrain_data->get_tile_size();
 	const int vertex_width = p_quad_width + 1;
 	const int vertex_depth = p_quad_depth + 1;
 	const int vertex_total = vertex_width * vertex_depth;
@@ -365,25 +364,18 @@ Ref<ArrayMesh> SimpleTerrain3D::_build_chunk_mesh(int p_origin_x, int p_origin_z
 	normals.resize(vertex_total);
 	uvs.resize(vertex_total);
 
-	// Chunks intentionally share edge vertices by sampling the same SimpleTerrainData
-	// coordinates. This prevents cracks; normals are also sampled from the global
-	// height field so adjacent chunks shade smoothly across shared borders.
 	Vector3 *vertices_w = vertices.ptrw();
 	Vector3 *normals_w = normals.ptrw();
 	Vector2 *uvs_w = uvs.ptrw();
 
-	const real_t half_size = (real_t)grid_size * simple_terrain_data->get_cell_size() * 0.5;
 	for (int local_z = 0; local_z < vertex_depth; local_z++) {
 		for (int local_x = 0; local_x < vertex_width; local_x++) {
-			const int terrain_x = p_origin_x + local_x;
-			const int terrain_z = p_origin_z + local_z;
+			const int tile_x = p_origin_x + local_x;
+			const int tile_z = p_origin_z + local_z;
 			const int local_index = local_z * vertex_width + local_x;
-			vertices_w[local_index] = Vector3(
-					(real_t)terrain_x * simple_terrain_data->get_cell_size() - half_size,
-					simple_terrain_data->get_height(terrain_x, terrain_z),
-					(real_t)terrain_z * simple_terrain_data->get_cell_size() - half_size);
-			normals_w[local_index] = _get_vertex_normal(terrain_x, terrain_z);
-			uvs_w[local_index] = Vector2((real_t)terrain_x / (real_t)grid_size, (real_t)terrain_z / (real_t)grid_size);
+			vertices_w[local_index] = _get_tile_vertex_position(p_cell, tile_x, tile_z);
+			normals_w[local_index] = _get_tile_vertex_normal(p_cell, tile_x, tile_z);
+			uvs_w[local_index] = Vector2((real_t)tile_x / (real_t)tile_size, (real_t)tile_z / (real_t)tile_size);
 		}
 	}
 
@@ -421,15 +413,8 @@ Ref<ArrayMesh> SimpleTerrain3D::_build_chunk_mesh(int p_origin_x, int p_origin_z
 	return array_mesh;
 }
 
-Ref<NavigationMesh> SimpleTerrain3D::_build_chunk_navigation_mesh(int p_origin_x, int p_origin_z, int p_quad_width, int p_quad_depth) const {
+Ref<NavigationMesh> SimpleTerrain3D::_build_tile_chunk_navigation_mesh(const Vector2i &p_cell, int p_origin_x, int p_origin_z, int p_quad_width, int p_quad_depth) const {
 	ERR_FAIL_COND_V(simple_terrain_data.is_null(), Ref<NavigationMesh>());
-
-	struct NavigationCell {
-		bool walkable = false;
-		bool used = false;
-		Vector3 normal = Vector3(0.0, 1.0, 0.0);
-		Plane plane;
-	};
 
 	Vector<Vector3> vertices;
 	Vector<Vector<int>> polygons;
@@ -442,234 +427,38 @@ Ref<NavigationMesh> SimpleTerrain3D::_build_chunk_navigation_mesh(int p_origin_x
 
 	for (int local_z = 0; local_z <= p_quad_depth; local_z++) {
 		for (int local_x = 0; local_x <= p_quad_width; local_x++) {
-			vertices_w[get_local_index(local_x, local_z)] = _get_vertex_position(p_origin_x + local_x, p_origin_z + local_z);
+			vertices_w[get_local_index(local_x, local_z)] = _get_tile_vertex_position(p_cell, p_origin_x + local_x, p_origin_z + local_z);
 		}
 	}
 
 	const real_t min_walkable_y = Math::cos(Math::deg_to_rad(navigation_max_slope));
 	auto get_triangle_normal = [&](int p_a, int p_b, int p_c) {
 		const Vector3 normal = (vertices[p_b] - vertices[p_a]).cross(vertices[p_c] - vertices[p_a]);
-		if (normal.is_zero_approx()) {
-			return Vector3();
-		}
-		return normal.normalized();
+		return normal.is_zero_approx() ? Vector3() : normal.normalized();
 	};
-
-	auto is_walkable_normal = [&](const Vector3 &p_normal) {
-		return !p_normal.is_zero_approx() && Math::abs(p_normal.y) >= min_walkable_y;
-	};
-
-	auto add_oriented_polygon = [&](const Vector<int> &p_indices) {
-		if (p_indices.size() < 3) {
+	auto add_walkable_triangle = [&](int p_a, int p_b, int p_c) {
+		if (!_is_navigation_height_allowed(vertices[p_a].y) || !_is_navigation_height_allowed(vertices[p_b].y) || !_is_navigation_height_allowed(vertices[p_c].y)) {
 			return;
 		}
-		const Vector3 normal = get_triangle_normal(p_indices[0], p_indices[1], p_indices[2]);
+		const Vector3 normal = get_triangle_normal(p_a, p_b, p_c);
 		if (normal.is_zero_approx() || Math::abs(normal.y) < min_walkable_y) {
 			return;
 		}
-
 		Vector<int> polygon;
-		polygon.resize(p_indices.size());
-		if (normal.y >= 0.0) {
-			for (int i = 0; i < p_indices.size(); i++) {
-				polygon.write[i] = p_indices[i];
-			}
-		} else {
-			polygon.write[0] = p_indices[0];
-			for (int i = 1; i < p_indices.size(); i++) {
-				polygon.write[i] = p_indices[p_indices.size() - i];
-			}
-		}
+		polygon.push_back(p_a);
+		polygon.push_back(p_b);
+		polygon.push_back(p_c);
 		polygons.push_back(polygon);
 	};
 
-	auto add_walkable_triangle = [&](int p_a, int p_b, int p_c) {
-		Vector<int> triangle;
-		triangle.resize(3);
-		triangle.write[0] = p_a;
-		triangle.write[1] = p_b;
-		triangle.write[2] = p_c;
-		add_oriented_polygon(triangle);
-	};
-
-	auto add_walkable_quad = [&](int p_top_left, int p_top_right, int p_bottom_left, int p_bottom_right, bool p_fallback_to_triangles) {
-		const Vector3 first_normal = get_triangle_normal(p_top_left, p_top_right, p_bottom_left);
-		const Vector3 second_normal = get_triangle_normal(p_top_right, p_bottom_right, p_bottom_left);
-		const real_t normal_similarity = Math::cos(Math::deg_to_rad(navigation_quad_max_normal_angle));
-		const bool triangles_walkable = is_walkable_normal(first_normal) && is_walkable_normal(second_normal);
-		const bool normals_similar = triangles_walkable && Math::abs(first_normal.dot(second_normal)) >= normal_similarity;
-		const Plane plane(vertices[p_top_left], vertices[p_top_right], vertices[p_bottom_left]);
-		const bool planar = normals_similar && Math::abs(plane.distance_to(vertices[p_bottom_right])) <= navigation_quad_planar_tolerance;
-
-		if (planar) {
-			Vector<int> quad;
-			quad.resize(4);
-			quad.write[0] = p_top_left;
-			quad.write[1] = p_top_right;
-			quad.write[2] = p_bottom_right;
-			quad.write[3] = p_bottom_left;
-			add_oriented_polygon(quad);
-			return;
-		}
-
-		if (p_fallback_to_triangles) {
-			add_walkable_triangle(p_top_left, p_top_right, p_bottom_left);
-			add_walkable_triangle(p_top_right, p_bottom_right, p_bottom_left);
-		}
-	};
-
-	auto add_cell_as_current_mode = [&](int p_x, int p_z) {
-		const int top_left = get_local_index(p_x, p_z);
-		const int top_right = get_local_index(p_x + 1, p_z);
-		const int bottom_left = get_local_index(p_x, p_z + 1);
-		const int bottom_right = get_local_index(p_x + 1, p_z + 1);
-		if (navigation_build_mode == NAVIGATION_BUILD_TRIANGLES) {
+	for (int z = 0; z < p_quad_depth; z++) {
+		for (int x = 0; x < p_quad_width; x++) {
+			const int top_left = get_local_index(x, z);
+			const int top_right = get_local_index(x + 1, z);
+			const int bottom_left = get_local_index(x, z + 1);
+			const int bottom_right = get_local_index(x + 1, z + 1);
 			add_walkable_triangle(top_left, top_right, bottom_left);
 			add_walkable_triangle(top_right, bottom_right, bottom_left);
-		} else {
-			add_walkable_quad(top_left, top_right, bottom_left, bottom_right, true);
-		}
-	};
-
-	if (navigation_build_mode == NAVIGATION_BUILD_MERGED_RECTS) {
-		Vector<NavigationCell> cells;
-		cells.resize(p_quad_width * p_quad_depth);
-
-		auto get_cell_index = [&](int p_x, int p_z) {
-			return p_z * p_quad_width + p_x;
-		};
-
-		const real_t merge_normal_similarity = Math::cos(Math::deg_to_rad(navigation_merge_max_normal_angle));
-		for (int z = 0; z < p_quad_depth; z++) {
-			for (int x = 0; x < p_quad_width; x++) {
-				const int top_left = get_local_index(x, z);
-				const int top_right = get_local_index(x + 1, z);
-				const int bottom_left = get_local_index(x, z + 1);
-				const int bottom_right = get_local_index(x + 1, z + 1);
-				const Vector3 first_normal = get_triangle_normal(top_left, top_right, bottom_left);
-				const Vector3 second_normal = get_triangle_normal(top_right, bottom_right, bottom_left);
-				NavigationCell &cell = cells.write[get_cell_index(x, z)];
-				if (!is_walkable_normal(first_normal) || !is_walkable_normal(second_normal) || Math::abs(first_normal.dot(second_normal)) < merge_normal_similarity) {
-					continue;
-				}
-				cell.plane = Plane(vertices[top_left], vertices[top_right], vertices[bottom_left]);
-				if (Math::abs(cell.plane.distance_to(vertices[bottom_right])) > navigation_merge_planar_tolerance) {
-					continue;
-				}
-				Vector3 normal = first_normal + second_normal;
-				if (normal.is_zero_approx()) {
-					normal = first_normal;
-				} else {
-					normal.normalize();
-				}
-				if (normal.y < 0.0) {
-					normal = -normal;
-				}
-				cell.walkable = true;
-				cell.normal = normal;
-			}
-		}
-
-		auto rect_fits_seed = [&](int p_start_x, int p_start_z, int p_width, int p_height, const NavigationCell &p_seed) {
-			for (int z = p_start_z; z < p_start_z + p_height; z++) {
-				for (int x = p_start_x; x < p_start_x + p_width; x++) {
-					const NavigationCell &cell = cells[get_cell_index(x, z)];
-					if (!cell.walkable || cell.used || p_seed.normal.dot(cell.normal) < merge_normal_similarity) {
-						return false;
-					}
-				}
-			}
-
-			const int corner_indices[4] = {
-				get_local_index(p_start_x, p_start_z),
-				get_local_index(p_start_x + p_width, p_start_z),
-				get_local_index(p_start_x + p_width, p_start_z + p_height),
-				get_local_index(p_start_x, p_start_z + p_height),
-			};
-			for (int i = 0; i < 4; i++) {
-				if (Math::abs(p_seed.plane.distance_to(vertices[corner_indices[i]])) > navigation_merge_planar_tolerance) {
-					return false;
-				}
-			}
-
-			for (int z = p_start_z; z <= p_start_z + p_height; z++) {
-				real_t min_height = vertices[get_local_index(p_start_x, z)].y;
-				real_t max_height = min_height;
-				for (int x = p_start_x + 1; x <= p_start_x + p_width; x++) {
-					const real_t height = vertices[get_local_index(x, z)].y;
-					min_height = MIN(min_height, height);
-					max_height = MAX(max_height, height);
-				}
-				if (max_height - min_height > navigation_merge_max_height_delta * (real_t)p_width) {
-					return false;
-				}
-			}
-			for (int x = p_start_x; x <= p_start_x + p_width; x++) {
-				real_t min_height = vertices[get_local_index(x, p_start_z)].y;
-				real_t max_height = min_height;
-				for (int z = p_start_z + 1; z <= p_start_z + p_height; z++) {
-					const real_t height = vertices[get_local_index(x, z)].y;
-					min_height = MIN(min_height, height);
-					max_height = MAX(max_height, height);
-				}
-				if (max_height - min_height > navigation_merge_max_height_delta * (real_t)p_height) {
-					return false;
-				}
-			}
-
-			return true;
-		};
-
-		for (int z = 0; z < p_quad_depth; z++) {
-			for (int x = 0; x < p_quad_width; x++) {
-				NavigationCell &seed = cells.write[get_cell_index(x, z)];
-				if (seed.used) {
-					continue;
-				}
-				if (!seed.walkable) {
-					add_cell_as_current_mode(x, z);
-					seed.used = true;
-					continue;
-				}
-
-				int rect_width = 1;
-				while (x + rect_width < p_quad_width && rect_width < navigation_merge_max_rect_size && rect_fits_seed(x, z, rect_width + 1, 1, seed)) {
-					rect_width++;
-				}
-
-				int rect_height = 1;
-				while (z + rect_height < p_quad_depth && rect_height < navigation_merge_max_rect_size && rect_fits_seed(x, z, rect_width, rect_height + 1, seed)) {
-					rect_height++;
-				}
-
-				for (int rect_z = z; rect_z < z + rect_height; rect_z++) {
-					for (int rect_x = x; rect_x < x + rect_width; rect_x++) {
-						cells.write[get_cell_index(rect_x, rect_z)].used = true;
-					}
-				}
-
-				Vector<int> rect;
-				rect.resize(4);
-				rect.write[0] = get_local_index(x, z);
-				rect.write[1] = get_local_index(x + rect_width, z);
-				rect.write[2] = get_local_index(x + rect_width, z + rect_height);
-				rect.write[3] = get_local_index(x, z + rect_height);
-				const int previous_polygon_count = polygons.size();
-				add_oriented_polygon(rect);
-				if (polygons.size() == previous_polygon_count) {
-					for (int rect_z = z; rect_z < z + rect_height; rect_z++) {
-						for (int rect_x = x; rect_x < x + rect_width; rect_x++) {
-							add_cell_as_current_mode(rect_x, rect_z);
-						}
-					}
-				}
-			}
-		}
-	} else {
-		for (int z = 0; z < p_quad_depth; z++) {
-			for (int x = 0; x < p_quad_width; x++) {
-				add_cell_as_current_mode(x, z);
-			}
 		}
 	}
 
@@ -684,31 +473,45 @@ Ref<NavigationMeshSourceGeometryData3D> SimpleTerrain3D::_build_bake_source_geom
 	Ref<NavigationMeshSourceGeometryData3D> source_geometry_data;
 	source_geometry_data.instantiate();
 
-	const int grid_size = simple_terrain_data->get_grid_size();
+	const int tile_size = simple_terrain_data->get_tile_size();
+	const PackedVector2Array created_cells = simple_terrain_data->get_created_tile_cells();
 	PackedVector3Array faces;
-	faces.resize(grid_size * grid_size * 6);
+	faces.resize(created_cells.size() * tile_size * tile_size * 6);
 	Vector3 *faces_w = faces.ptrw();
 	int face_index = 0;
 
-	for (int z = 0; z < grid_size; z++) {
-		for (int x = 0; x < grid_size; x++) {
-			const Vector3 top_left = _get_vertex_position(x, z);
-			const Vector3 top_right = _get_vertex_position(x + 1, z);
-			const Vector3 bottom_left = _get_vertex_position(x, z + 1);
-			const Vector3 bottom_right = _get_vertex_position(x + 1, z + 1);
+	auto append_face_if_height_allowed = [&](const Vector3 &p_a, const Vector3 &p_b, const Vector3 &p_c) {
+		if (!_is_navigation_height_allowed(p_a.y) || !_is_navigation_height_allowed(p_b.y) || !_is_navigation_height_allowed(p_c.y)) {
+			return;
+		}
+		faces_w[face_index++] = p_a;
+		faces_w[face_index++] = p_b;
+		faces_w[face_index++] = p_c;
+	};
 
-			faces_w[face_index++] = top_left;
-			faces_w[face_index++] = top_right;
-			faces_w[face_index++] = bottom_left;
-			faces_w[face_index++] = top_right;
-			faces_w[face_index++] = bottom_right;
-			faces_w[face_index++] = bottom_left;
+	for (int cell_index = 0; cell_index < created_cells.size(); cell_index++) {
+		const Vector2 cell_value = created_cells[cell_index];
+		const Vector2i cell(Math::floor(cell_value.x), Math::floor(cell_value.y));
+		for (int z = 0; z < tile_size; z++) {
+			for (int x = 0; x < tile_size; x++) {
+				const Vector3 top_left = _get_tile_vertex_position(cell, x, z);
+				const Vector3 top_right = _get_tile_vertex_position(cell, x + 1, z);
+				const Vector3 bottom_left = _get_tile_vertex_position(cell, x, z + 1);
+				const Vector3 bottom_right = _get_tile_vertex_position(cell, x + 1, z + 1);
+				append_face_if_height_allowed(top_left, top_right, bottom_left);
+				append_face_if_height_allowed(top_right, bottom_right, bottom_left);
+			}
 		}
 	}
 
-	source_geometry_data->add_faces(faces, Transform3D());
+	if (face_index > 0) {
+		if (face_index != faces.size()) {
+			faces.resize(face_index);
+		}
+		source_geometry_data->add_faces(faces, Transform3D());
+	}
 
-	if (world_placement_library.is_valid() && world_placement_data.is_valid()) {
+	if (is_inside_tree() && world_placement_library.is_valid() && world_placement_data.is_valid()) {
 		const PackedStringArray profile_ids = world_placement_data->get_profile_ids();
 		const PackedVector3Array positions = world_placement_data->get_positions();
 		const PackedVector3Array rotations = world_placement_data->get_rotations();
@@ -734,7 +537,7 @@ Ref<NavigationMeshSourceGeometryData3D> SimpleTerrain3D::_build_bake_source_geom
 		}
 	}
 
-	if (p_include_runtime_obstacles) {
+	if (is_inside_tree() && p_include_runtime_obstacles) {
 		const Transform3D terrain_inverse = get_global_transform().affine_inverse();
 		for (const ObjectID &blocker_id : dynamic_navigation_blockers) {
 			SimpleNavigationBlocker3D *blocker = ObjectDB::get_instance<SimpleNavigationBlocker3D>(blocker_id);
@@ -873,6 +676,13 @@ void SimpleTerrain3D::_update_navigation_debug_mesh() {
 	ERR_FAIL_NULL(ns);
 	ERR_FAIL_NULL(rs);
 
+	if (!is_inside_tree()) {
+		if (navigation_debug_instance.is_valid()) {
+			rs->instance_set_visible(navigation_debug_instance, false);
+		}
+		return;
+	}
+
 	if (!ns->get_debug_enabled() || !ns->get_debug_navigation_enabled() || !navigation_enabled || !navigation_debug_visible) {
 		if (navigation_debug_instance.is_valid()) {
 			rs->instance_set_visible(navigation_debug_instance, false);
@@ -881,19 +691,21 @@ void SimpleTerrain3D::_update_navigation_debug_mesh() {
 	}
 
 	Vector<Ref<NavigationMesh>> navigation_meshes;
-	if (navigation_build_mode == NAVIGATION_BUILD_BAKED) {
-		if (navigation_baked_mesh.is_valid()) {
-			navigation_meshes.push_back(navigation_baked_mesh);
-		}
-	} else {
-		for (const TerrainChunk &chunk : chunks) {
-			if (chunk.navigation_mesh.is_valid()) {
-				navigation_meshes.push_back(chunk.navigation_mesh);
+	if (navigation_debug_navigation_mesh_visible) {
+		if (navigation_build_mode == NAVIGATION_BUILD_BAKED) {
+			if (navigation_baked_mesh.is_valid()) {
+				navigation_meshes.push_back(navigation_baked_mesh);
+			}
+		} else {
+			for (const TerrainChunk &chunk : chunks) {
+				if (chunk.navigation_mesh.is_valid()) {
+					navigation_meshes.push_back(chunk.navigation_mesh);
+				}
 			}
 		}
-	}
-	if (navigation_dynamic_enabled && navigation_dynamic_baked_mesh.is_valid()) {
-		navigation_meshes.push_back(navigation_dynamic_baked_mesh);
+		if (navigation_dynamic_enabled && navigation_dynamic_baked_mesh.is_valid()) {
+			navigation_meshes.push_back(navigation_dynamic_baked_mesh);
+		}
 	}
 
 	Vector<SimpleTerrainNavigationObstruction> runtime_obstructions;
@@ -919,7 +731,53 @@ void SimpleTerrain3D::_update_navigation_debug_mesh() {
 		}
 	}
 
-	if (navigation_meshes.is_empty() && runtime_obstructions.is_empty()) {
+	int height_range_line_vertex_count = 0;
+	int steep_face_vertex_count = 0;
+	const bool show_height_range_debug = navigation_debug_height_range_visible && simple_terrain_data.is_valid();
+	const bool show_steep_slope_debug = navigation_debug_steep_slopes_visible && simple_terrain_data.is_valid();
+	if (show_height_range_debug) {
+		height_range_line_vertex_count = 24;
+	}
+	const real_t min_walkable_y = Math::cos(Math::deg_to_rad(navigation_max_slope));
+	auto is_height_range_debug_triangle = [&](const Vector3 &p_a, const Vector3 &p_b, const Vector3 &p_c) {
+		return _is_navigation_height_allowed(p_a.y) && _is_navigation_height_allowed(p_b.y) && _is_navigation_height_allowed(p_c.y);
+	};
+	auto is_steep_debug_triangle = [&](const Vector3 &p_a, const Vector3 &p_b, const Vector3 &p_c) {
+		if (!is_height_range_debug_triangle(p_a, p_b, p_c)) {
+			return false;
+		}
+		Vector3 normal = (p_b - p_a).cross(p_c - p_a);
+		if (normal.is_zero_approx()) {
+			return false;
+		}
+		normal.normalize();
+		return Math::abs(normal.y) < min_walkable_y;
+	};
+
+	if (show_steep_slope_debug) {
+		const int tile_size = simple_terrain_data->get_tile_size();
+		const PackedVector2Array created_cells = simple_terrain_data->get_created_tile_cells();
+		for (int cell_index = 0; cell_index < created_cells.size(); cell_index++) {
+			const Vector2 cell_value = created_cells[cell_index];
+			const Vector2i cell(Math::floor(cell_value.x), Math::floor(cell_value.y));
+			for (int z = 0; z < tile_size; z++) {
+				for (int x = 0; x < tile_size; x++) {
+					const Vector3 top_left = _get_tile_vertex_position(cell, x, z);
+					const Vector3 top_right = _get_tile_vertex_position(cell, x + 1, z);
+					const Vector3 bottom_left = _get_tile_vertex_position(cell, x, z + 1);
+					const Vector3 bottom_right = _get_tile_vertex_position(cell, x + 1, z + 1);
+					if (is_steep_debug_triangle(top_left, top_right, bottom_left)) {
+						steep_face_vertex_count += 3;
+					}
+					if (is_steep_debug_triangle(top_right, bottom_right, bottom_left)) {
+						steep_face_vertex_count += 3;
+					}
+				}
+			}
+		}
+	}
+
+	if (navigation_meshes.is_empty() && runtime_obstructions.is_empty() && height_range_line_vertex_count == 0 && steep_face_vertex_count == 0) {
 		if (navigation_debug_instance.is_valid()) {
 			rs->instance_set_visible(navigation_debug_instance, false);
 		}
@@ -952,7 +810,7 @@ void SimpleTerrain3D::_update_navigation_debug_mesh() {
 		obstacle_line_vertex_count += vertex_count * 2;
 	}
 
-	if (face_vertex_count == 0 && obstacle_face_vertex_count == 0) {
+	if (face_vertex_count == 0 && obstacle_face_vertex_count == 0 && height_range_line_vertex_count == 0 && steep_face_vertex_count == 0) {
 		if (navigation_debug_instance.is_valid()) {
 			rs->instance_set_visible(navigation_debug_instance, false);
 		}
@@ -980,16 +838,28 @@ void SimpleTerrain3D::_update_navigation_debug_mesh() {
 	if (enabled_edge_lines && obstacle_line_vertex_count > 0) {
 		obstacle_line_vertices.resize(obstacle_line_vertex_count);
 	}
+	Vector<Vector3> height_range_line_vertices;
+	if (height_range_line_vertex_count > 0) {
+		height_range_line_vertices.resize(height_range_line_vertex_count);
+	}
+	Vector<Vector3> steep_face_vertices;
+	if (steep_face_vertex_count > 0) {
+		steep_face_vertices.resize(steep_face_vertex_count);
+	}
 
 	Vector3 *face_vertices_w = face_vertices.ptrw();
 	Color *face_colors_w = face_colors.ptrw();
 	Vector3 *line_vertices_w = line_vertices.ptrw();
 	Vector3 *obstacle_face_vertices_w = obstacle_face_vertices.ptrw();
 	Vector3 *obstacle_line_vertices_w = obstacle_line_vertices.ptrw();
+	Vector3 *height_range_line_vertices_w = height_range_line_vertices.ptrw();
+	Vector3 *steep_face_vertices_w = steep_face_vertices.ptrw();
 	int face_vertex_index = 0;
 	int line_vertex_index = 0;
 	int obstacle_face_vertex_index = 0;
 	int obstacle_line_vertex_index = 0;
+	int height_range_line_vertex_index = 0;
+	int steep_face_vertex_index = 0;
 
 	const Color debug_face_color = ns->get_debug_navigation_geometry_face_color();
 	Color polygon_color = debug_face_color;
@@ -1056,6 +926,61 @@ void SimpleTerrain3D::_update_navigation_debug_mesh() {
 		}
 	}
 
+	if (height_range_line_vertex_count > 0) {
+		const AABB bounds = get_aabb();
+		const real_t min_x = bounds.position.x;
+		const real_t max_x = bounds.position.x + bounds.size.x;
+		const real_t min_z = bounds.position.z;
+		const real_t max_z = bounds.position.z + bounds.size.z;
+		const Vector3 corners[8] = {
+			Vector3(min_x, navigation_min_height, min_z),
+			Vector3(max_x, navigation_min_height, min_z),
+			Vector3(max_x, navigation_min_height, max_z),
+			Vector3(min_x, navigation_min_height, max_z),
+			Vector3(min_x, navigation_max_height, min_z),
+			Vector3(max_x, navigation_max_height, min_z),
+			Vector3(max_x, navigation_max_height, max_z),
+			Vector3(min_x, navigation_max_height, max_z),
+		};
+		const int edges[12][2] = {
+			{ 0, 1 }, { 1, 2 }, { 2, 3 }, { 3, 0 },
+			{ 4, 5 }, { 5, 6 }, { 6, 7 }, { 7, 4 },
+			{ 0, 4 }, { 1, 5 }, { 2, 6 }, { 3, 7 },
+		};
+		for (int edge_index = 0; edge_index < 12; edge_index++) {
+			height_range_line_vertices_w[height_range_line_vertex_index++] = corners[edges[edge_index][0]];
+			height_range_line_vertices_w[height_range_line_vertex_index++] = corners[edges[edge_index][1]];
+		}
+	}
+
+	if (steep_face_vertex_count > 0) {
+		auto append_steep_debug_triangle = [&](const Vector3 &p_a, const Vector3 &p_b, const Vector3 &p_c) {
+			if (!is_steep_debug_triangle(p_a, p_b, p_c)) {
+				return;
+			}
+			steep_face_vertices_w[steep_face_vertex_index++] = p_a;
+			steep_face_vertices_w[steep_face_vertex_index++] = p_b;
+			steep_face_vertices_w[steep_face_vertex_index++] = p_c;
+		};
+
+		const int tile_size = simple_terrain_data->get_tile_size();
+		const PackedVector2Array created_cells = simple_terrain_data->get_created_tile_cells();
+		for (int cell_index = 0; cell_index < created_cells.size(); cell_index++) {
+			const Vector2 cell_value = created_cells[cell_index];
+			const Vector2i cell(Math::floor(cell_value.x), Math::floor(cell_value.y));
+			for (int z = 0; z < tile_size; z++) {
+				for (int x = 0; x < tile_size; x++) {
+					const Vector3 top_left = _get_tile_vertex_position(cell, x, z);
+					const Vector3 top_right = _get_tile_vertex_position(cell, x + 1, z);
+					const Vector3 bottom_left = _get_tile_vertex_position(cell, x, z + 1);
+					const Vector3 bottom_right = _get_tile_vertex_position(cell, x + 1, z + 1);
+					append_steep_debug_triangle(top_left, top_right, bottom_left);
+					append_steep_debug_triangle(top_right, bottom_right, bottom_left);
+				}
+			}
+		}
+	}
+
 	if (!navigation_debug_instance.is_valid()) {
 		navigation_debug_instance = rs->instance_create();
 	}
@@ -1079,6 +1004,37 @@ void SimpleTerrain3D::_update_navigation_debug_mesh() {
 		}
 		navigation_debug_mesh->add_surface_from_arrays(Mesh::PRIMITIVE_TRIANGLES, face_mesh_array);
 		navigation_debug_mesh->surface_set_material(navigation_debug_mesh->get_surface_count() - 1, ns->get_debug_navigation_geometry_face_material());
+	}
+
+	if (height_range_line_vertex_index > 0) {
+		if (height_range_line_vertex_index != height_range_line_vertices.size()) {
+			height_range_line_vertices.resize(height_range_line_vertex_index);
+		}
+		if (navigation_debug_height_range_material.is_null()) {
+			navigation_debug_height_range_material.instantiate();
+			navigation_debug_height_range_material->set_albedo(Color(0.0, 1.0, 0.25, 1.0));
+		}
+		Array height_range_line_mesh_array;
+		height_range_line_mesh_array.resize(Mesh::ARRAY_MAX);
+		height_range_line_mesh_array[Mesh::ARRAY_VERTEX] = height_range_line_vertices;
+		navigation_debug_mesh->add_surface_from_arrays(Mesh::PRIMITIVE_LINES, height_range_line_mesh_array);
+		navigation_debug_mesh->surface_set_material(navigation_debug_mesh->get_surface_count() - 1, navigation_debug_height_range_material);
+	}
+
+	if (steep_face_vertex_index > 0) {
+		if (steep_face_vertex_index != steep_face_vertices.size()) {
+			steep_face_vertices.resize(steep_face_vertex_index);
+		}
+		if (navigation_debug_steep_slope_material.is_null()) {
+			navigation_debug_steep_slope_material.instantiate();
+			navigation_debug_steep_slope_material->set_albedo(Color(1.0, 0.28, 0.08, 0.45));
+			navigation_debug_steep_slope_material->set_transparency(BaseMaterial3D::TRANSPARENCY_ALPHA);
+		}
+		Array steep_face_mesh_array;
+		steep_face_mesh_array.resize(Mesh::ARRAY_MAX);
+		steep_face_mesh_array[Mesh::ARRAY_VERTEX] = steep_face_vertices;
+		navigation_debug_mesh->add_surface_from_arrays(Mesh::PRIMITIVE_TRIANGLES, steep_face_mesh_array);
+		navigation_debug_mesh->surface_set_material(navigation_debug_mesh->get_surface_count() - 1, navigation_debug_steep_slope_material);
 	}
 
 	if (enabled_edge_lines && line_vertex_index > 0) {
@@ -1154,7 +1110,23 @@ void SimpleTerrain3D::_sync_chunk_instances() {
 		rs->instance_set_scenario(chunk.instance, scenario);
 		rs->instance_set_transform(chunk.instance, global_transform);
 	}
+	_update_chunk_visibility();
 	_sync_chunk_materials();
+}
+
+void SimpleTerrain3D::_update_chunk_visibility() {
+	if (!is_inside_tree()) {
+		return;
+	}
+
+	RenderingServer *rs = RenderingServer::get_singleton();
+	const bool visible = is_visible_in_tree();
+	for (TerrainChunk &chunk : chunks) {
+		if (chunk.instance.is_valid()) {
+			rs->instance_set_visible(chunk.instance, visible);
+		}
+	}
+
 }
 
 void SimpleTerrain3D::_sync_chunk_navigation() {
@@ -1255,30 +1227,36 @@ void SimpleTerrain3D::_sync_chunk_materials() {
 	}
 }
 
-void SimpleTerrain3D::_rebuild_chunks_for_region(int p_min_x, int p_min_z, int p_max_x, int p_max_z) {
+void SimpleTerrain3D::_rebuild_tile_chunks_for_region(const Vector2i &p_cell, int p_min_x, int p_min_z, int p_max_x, int p_max_z) {
 	if (simple_terrain_data.is_null()) {
 		return;
 	}
 	_mark_navigation_bake_dirty();
 
-	// Convert the edited vertex rectangle to chunk coordinates. The caller pads
-	// the rectangle by one vertex so neighboring triangles that depend on edge
-	// vertices are also rebuilt.
-	const int min_chunk_x = CLAMP(p_min_x / chunk_size, 0, Math::ceil((real_t)simple_terrain_data->get_grid_size() / (real_t)chunk_size) - 1);
-	const int max_chunk_x = CLAMP(p_max_x / chunk_size, 0, Math::ceil((real_t)simple_terrain_data->get_grid_size() / (real_t)chunk_size) - 1);
-	const int min_chunk_z = CLAMP(p_min_z / chunk_size, 0, Math::ceil((real_t)simple_terrain_data->get_grid_size() / (real_t)chunk_size) - 1);
-	const int max_chunk_z = CLAMP(p_max_z / chunk_size, 0, Math::ceil((real_t)simple_terrain_data->get_grid_size() / (real_t)chunk_size) - 1);
+	const int tile_size = simple_terrain_data->get_tile_size();
+	const int min_x = CLAMP(p_min_x, 0, tile_size);
+	const int min_z = CLAMP(p_min_z, 0, tile_size);
+	const int max_x = CLAMP(p_max_x, 0, tile_size);
+	const int max_z = CLAMP(p_max_z, 0, tile_size);
+	if (min_x > max_x || min_z > max_z) {
+		return;
+	}
 
 	RenderingServer *rs = RenderingServer::get_singleton();
 	for (TerrainChunk &chunk : chunks) {
-		const int chunk_x = chunk.origin_x / chunk_size;
-		const int chunk_z = chunk.origin_z / chunk_size;
-		if (chunk_x < min_chunk_x || chunk_x > max_chunk_x || chunk_z < min_chunk_z || chunk_z > max_chunk_z) {
+		if (!chunk.uses_tile || chunk.tile_cell != p_cell) {
 			continue;
 		}
-		chunk.mesh = _build_chunk_mesh(chunk.origin_x, chunk.origin_z, chunk.quad_width, chunk.quad_depth);
+		const int chunk_min_x = chunk.origin_x;
+		const int chunk_min_z = chunk.origin_z;
+		const int chunk_max_x = chunk.origin_x + chunk.quad_width;
+		const int chunk_max_z = chunk.origin_z + chunk.quad_depth;
+		if (chunk_max_x < min_x || chunk_min_x > max_x || chunk_max_z < min_z || chunk_min_z > max_z) {
+			continue;
+		}
+		chunk.mesh = _build_tile_chunk_mesh(chunk.tile_cell, chunk.origin_x, chunk.origin_z, chunk.quad_width, chunk.quad_depth);
 		if (navigation_enabled && navigation_build_mode != NAVIGATION_BUILD_BAKED) {
-			chunk.navigation_mesh = _build_chunk_navigation_mesh(chunk.origin_x, chunk.origin_z, chunk.quad_width, chunk.quad_depth);
+			chunk.navigation_mesh = _build_tile_chunk_navigation_mesh(chunk.tile_cell, chunk.origin_x, chunk.origin_z, chunk.quad_width, chunk.quad_depth);
 		}
 		if (chunk.instance.is_valid()) {
 			rs->instance_set_base(chunk.instance, chunk.mesh->get_rid());
@@ -1289,6 +1267,7 @@ void SimpleTerrain3D::_rebuild_chunks_for_region(int p_min_x, int p_min_z, int p
 		update_gizmos();
 	}
 }
+
 
 Ref<Material> SimpleTerrain3D::_get_active_chunk_material() {
 	// Explicit user material wins because it is the least surprising behavior:
@@ -1400,7 +1379,6 @@ void SimpleTerrain3D::set_simple_terrain_data(const Ref<SimpleTerrainData> &p_si
 	}
 	simple_terrain_data = p_simple_terrain_data;
 	if (simple_terrain_data.is_valid()) {
-		simple_terrain_data->ensure_height_data_size(false);
 		simple_terrain_data->connect_changed(callable_mp(this, &SimpleTerrain3D::_simple_terrain_data_changed));
 	}
 	rebuild_mesh();
@@ -1438,18 +1416,6 @@ void SimpleTerrain3D::set_world_placement_data(const Ref<SimpleWorldPlacementDat
 	notify_property_list_changed();
 }
 
-void SimpleTerrain3D::set_grid_size(int p_grid_size) {
-	_ensure_data();
-	syncing_data = true;
-	simple_terrain_data->set_grid_size(p_grid_size);
-	syncing_data = false;
-	rebuild_mesh();
-}
-
-int SimpleTerrain3D::get_grid_size() const {
-	return simple_terrain_data.is_valid() ? simple_terrain_data->get_grid_size() : 64;
-}
-
 void SimpleTerrain3D::set_cell_size(real_t p_cell_size) {
 	_ensure_data();
 	syncing_data = true;
@@ -1468,6 +1434,57 @@ void SimpleTerrain3D::set_chunk_size(int p_chunk_size) {
 		return;
 	}
 	chunk_size = new_chunk_size;
+	rebuild_mesh();
+}
+
+
+void SimpleTerrain3D::set_tile_size(int p_tile_size) {
+	_ensure_data();
+	syncing_data = true;
+	simple_terrain_data->set_tile_size(p_tile_size);
+	syncing_data = false;
+	rebuild_mesh();
+}
+
+int SimpleTerrain3D::get_tile_size() const {
+	return simple_terrain_data.is_valid() ? simple_terrain_data->get_tile_size() : 128;
+}
+
+void SimpleTerrain3D::set_created_tile_cells(const PackedVector2Array &p_cells) {
+	_ensure_data();
+	syncing_data = true;
+	simple_terrain_data->set_created_tile_cells(p_cells);
+	syncing_data = false;
+	rebuild_mesh();
+}
+
+PackedVector2Array SimpleTerrain3D::get_created_tile_cells() const {
+	return simple_terrain_data.is_valid() ? simple_terrain_data->get_created_tile_cells() : PackedVector2Array();
+}
+
+bool SimpleTerrain3D::has_tile(const Vector2i &p_cell) const {
+	return simple_terrain_data.is_valid() && simple_terrain_data->has_tile(p_cell);
+}
+
+void SimpleTerrain3D::create_tile(const Vector2i &p_cell) {
+	_ensure_data();
+	if (simple_terrain_data->has_tile(p_cell)) {
+		return;
+	}
+	syncing_data = true;
+	simple_terrain_data->create_tile(p_cell);
+	syncing_data = false;
+	rebuild_mesh();
+}
+
+void SimpleTerrain3D::remove_tile(const Vector2i &p_cell) {
+	_ensure_data();
+	if (!simple_terrain_data->has_tile(p_cell)) {
+		return;
+	}
+	syncing_data = true;
+	simple_terrain_data->remove_tile(p_cell);
+	syncing_data = false;
 	rebuild_mesh();
 }
 
@@ -1509,6 +1526,53 @@ void SimpleTerrain3D::set_navigation_max_slope(real_t p_slope) {
 		_mark_navigation_dynamic_bake_dirty();
 		rebuild_navigation();
 	}
+#ifdef DEBUG_ENABLED
+	if (is_inside_tree()) {
+		_update_navigation_debug_mesh();
+	}
+#endif // DEBUG_ENABLED
+}
+
+void SimpleTerrain3D::set_navigation_min_height(real_t p_height) {
+	if (Math::is_equal_approx(navigation_min_height, p_height)) {
+		return;
+	}
+	navigation_min_height = p_height;
+	if (navigation_min_height > navigation_max_height) {
+		navigation_max_height = navigation_min_height;
+	}
+	if (navigation_build_mode == NAVIGATION_BUILD_BAKED) {
+		_mark_navigation_bake_dirty();
+	} else {
+		_mark_navigation_dynamic_bake_dirty();
+		rebuild_navigation();
+	}
+#ifdef DEBUG_ENABLED
+	if (is_inside_tree()) {
+		_update_navigation_debug_mesh();
+	}
+#endif // DEBUG_ENABLED
+}
+
+void SimpleTerrain3D::set_navigation_max_height(real_t p_height) {
+	if (Math::is_equal_approx(navigation_max_height, p_height)) {
+		return;
+	}
+	navigation_max_height = p_height;
+	if (navigation_max_height < navigation_min_height) {
+		navigation_min_height = navigation_max_height;
+	}
+	if (navigation_build_mode == NAVIGATION_BUILD_BAKED) {
+		_mark_navigation_bake_dirty();
+	} else {
+		_mark_navigation_dynamic_bake_dirty();
+		rebuild_navigation();
+	}
+#ifdef DEBUG_ENABLED
+	if (is_inside_tree()) {
+		_update_navigation_debug_mesh();
+	}
+#endif // DEBUG_ENABLED
 }
 
 void SimpleTerrain3D::set_navigation_build_mode(NavigationBuildMode p_mode) {
@@ -1626,6 +1690,19 @@ void SimpleTerrain3D::set_navigation_debug_visible(bool p_visible) {
 	notify_property_list_changed();
 }
 
+void SimpleTerrain3D::set_navigation_debug_navigation_mesh_visible(bool p_visible) {
+	if (navigation_debug_navigation_mesh_visible == p_visible) {
+		return;
+	}
+	navigation_debug_navigation_mesh_visible = p_visible;
+#ifdef DEBUG_ENABLED
+	if (is_inside_tree()) {
+		_update_navigation_debug_mesh();
+	}
+#endif // DEBUG_ENABLED
+	notify_property_list_changed();
+}
+
 void SimpleTerrain3D::set_navigation_debug_runtime_obstacles_visible(bool p_visible) {
 	if (navigation_debug_runtime_obstacles_visible == p_visible) {
 		return;
@@ -1639,16 +1716,30 @@ void SimpleTerrain3D::set_navigation_debug_runtime_obstacles_visible(bool p_visi
 	notify_property_list_changed();
 }
 
-void SimpleTerrain3D::set_height_data(const PackedFloat32Array &p_height_data) {
-	_ensure_data();
-	syncing_data = true;
-	simple_terrain_data->set_height_data(p_height_data);
-	syncing_data = false;
-	rebuild_mesh();
+void SimpleTerrain3D::set_navigation_debug_height_range_visible(bool p_visible) {
+	if (navigation_debug_height_range_visible == p_visible) {
+		return;
+	}
+	navigation_debug_height_range_visible = p_visible;
+#ifdef DEBUG_ENABLED
+	if (is_inside_tree()) {
+		_update_navigation_debug_mesh();
+	}
+#endif // DEBUG_ENABLED
+	notify_property_list_changed();
 }
 
-PackedFloat32Array SimpleTerrain3D::get_height_data() const {
-	return simple_terrain_data.is_valid() ? simple_terrain_data->get_height_data() : PackedFloat32Array();
+void SimpleTerrain3D::set_navigation_debug_steep_slopes_visible(bool p_visible) {
+	if (navigation_debug_steep_slopes_visible == p_visible) {
+		return;
+	}
+	navigation_debug_steep_slopes_visible = p_visible;
+#ifdef DEBUG_ENABLED
+	if (is_inside_tree()) {
+		_update_navigation_debug_mesh();
+	}
+#endif // DEBUG_ENABLED
+	notify_property_list_changed();
 }
 
 void SimpleTerrain3D::set_terrain_material(const Ref<Material> &p_material) {
@@ -1766,31 +1857,40 @@ void SimpleTerrain3D::reset_flat_terrain() {
 
 void SimpleTerrain3D::generate_random_terrain() {
 	_ensure_data();
-	const int vertex_count = simple_terrain_data->get_vertex_count();
-	PackedFloat32Array heights;
-	heights.resize(vertex_count * vertex_count);
+	const int tile_size = simple_terrain_data->get_tile_size();
+	const int vertex_count = simple_terrain_data->get_tile_vertex_count();
+	const PackedVector2Array created_cells = simple_terrain_data->get_created_tile_cells();
+	const real_t tile_world_size = (real_t)tile_size * simple_terrain_data->get_cell_size();
 
-	// This is intentionally simple deterministic fractal value noise. It is a
-	// quick generator for editor iteration, not a full terrain synthesis system.
-	for (int z = 0; z < vertex_count; z++) {
-		for (int x = 0; x < vertex_count; x++) {
-			real_t amplitude = 1.0;
-			real_t frequency = random_frequency;
-			real_t value = 0.0;
-			real_t amplitude_sum = 0.0;
-			for (int octave = 0; octave < random_octaves; octave++) {
-				value += _sample_value_noise((real_t)x * frequency, (real_t)z * frequency, random_seed + octave * 131) * amplitude;
-				amplitude_sum += amplitude;
-				amplitude *= 0.5;
-				frequency *= 2.0;
+	syncing_data = true;
+	for (int cell_index = 0; cell_index < created_cells.size(); cell_index++) {
+		const Vector2 cell_value = created_cells[cell_index];
+		const Vector2i cell(Math::floor(cell_value.x), Math::floor(cell_value.y));
+		PackedFloat32Array heights;
+		heights.resize(vertex_count * vertex_count);
+		for (int z = 0; z < vertex_count; z++) {
+			for (int x = 0; x < vertex_count; x++) {
+				const real_t world_x = (real_t)cell.x * tile_world_size + (real_t)x * simple_terrain_data->get_cell_size();
+				const real_t world_z = (real_t)cell.y * tile_world_size + (real_t)z * simple_terrain_data->get_cell_size();
+				real_t amplitude = 1.0;
+				real_t frequency = random_frequency;
+				real_t value = 0.0;
+				real_t amplitude_sum = 0.0;
+				for (int octave = 0; octave < random_octaves; octave++) {
+					value += _sample_value_noise(world_x * frequency, world_z * frequency, random_seed + octave * 131) * amplitude;
+					amplitude_sum += amplitude;
+					amplitude *= 0.5;
+					frequency *= 2.0;
+				}
+				heights.set(simple_terrain_data->get_tile_height_index(x, z), (value / MAX((real_t)0.0001, amplitude_sum)) * random_height_scale);
 			}
-			heights.set(simple_terrain_data->get_height_index(x, z), (value / MAX((real_t)0.0001, amplitude_sum)) * random_height_scale);
 		}
+		simple_terrain_data->set_tile_height_data_no_notify(cell, heights);
 	}
-
-	set_height_data(heights);
+	simple_terrain_data->notify_height_data_changed();
+	syncing_data = false;
+	rebuild_mesh();
 }
-
 void SimpleTerrain3D::randomize_seed() {
 	RandomPCG rng;
 	rng.randomize();
@@ -1800,26 +1900,33 @@ void SimpleTerrain3D::randomize_seed() {
 
 void SimpleTerrain3D::rebuild_mesh() {
 	_ensure_data();
-	const int grid_size = simple_terrain_data->get_grid_size();
 	_clear_chunks();
 	set_mesh(Ref<Mesh>());
 	_mark_navigation_bake_dirty();
 
 	// Build one mesh per chunk. The inherited MeshInstance3D mesh is kept empty
 	// because RenderingServer instances below provide the actual renderables.
-	for (int origin_z = 0; origin_z < grid_size; origin_z += chunk_size) {
-		for (int origin_x = 0; origin_x < grid_size; origin_x += chunk_size) {
-			TerrainChunk chunk;
-			chunk.origin_x = origin_x;
-			chunk.origin_z = origin_z;
-			chunk.quad_width = MIN(chunk_size, grid_size - origin_x);
-			chunk.quad_depth = MIN(chunk_size, grid_size - origin_z);
-			chunk.mesh = _build_chunk_mesh(origin_x, origin_z, chunk.quad_width, chunk.quad_depth);
-			if (navigation_enabled && navigation_build_mode != NAVIGATION_BUILD_BAKED) {
-				chunk.navigation_mesh = _build_chunk_navigation_mesh(origin_x, origin_z, chunk.quad_width, chunk.quad_depth);
+	const int tile_size = simple_terrain_data->get_tile_size();
+	const PackedVector2Array created_cells = simple_terrain_data->get_created_tile_cells();
+	for (int cell_index = 0; cell_index < created_cells.size(); cell_index++) {
+			const Vector2 cell_value = created_cells[cell_index];
+			const Vector2i cell(Math::floor(cell_value.x), Math::floor(cell_value.y));
+			for (int origin_z = 0; origin_z < tile_size; origin_z += chunk_size) {
+				for (int origin_x = 0; origin_x < tile_size; origin_x += chunk_size) {
+					TerrainChunk chunk;
+					chunk.uses_tile = true;
+					chunk.tile_cell = cell;
+					chunk.origin_x = origin_x;
+					chunk.origin_z = origin_z;
+					chunk.quad_width = MIN(chunk_size, tile_size - origin_x);
+					chunk.quad_depth = MIN(chunk_size, tile_size - origin_z);
+					chunk.mesh = _build_tile_chunk_mesh(cell, origin_x, origin_z, chunk.quad_width, chunk.quad_depth);
+					if (navigation_enabled && navigation_build_mode != NAVIGATION_BUILD_BAKED) {
+						chunk.navigation_mesh = _build_tile_chunk_navigation_mesh(cell, origin_x, origin_z, chunk.quad_width, chunk.quad_depth);
+					}
+					chunks.push_back(chunk);
+				}
 			}
-			chunks.push_back(chunk);
-		}
 	}
 
 	_sync_chunk_instances();
@@ -1843,7 +1950,7 @@ void SimpleTerrain3D::rebuild_navigation() {
 		return;
 	}
 	for (TerrainChunk &chunk : chunks) {
-		chunk.navigation_mesh = _build_chunk_navigation_mesh(chunk.origin_x, chunk.origin_z, chunk.quad_width, chunk.quad_depth);
+		chunk.navigation_mesh = _build_tile_chunk_navigation_mesh(chunk.tile_cell, chunk.origin_x, chunk.origin_z, chunk.quad_width, chunk.quad_depth);
 	}
 	_sync_chunk_navigation();
 }
@@ -1944,76 +2051,342 @@ Dictionary SimpleTerrain3D::apply_brush_with_delta(const Vector3 &p_world_positi
 		return delta;
 	}
 
-	PackedFloat32Array &heights = simple_terrain_data->get_mutable_height_data();
-	const PackedFloat32Array original_heights = p_operation == BRUSH_SMOOTH ? simple_terrain_data->get_height_data() : PackedFloat32Array();
-	float *heights_w = heights.ptrw();
-	PackedInt32Array changed_indices;
-	PackedFloat32Array before_values;
-	PackedFloat32Array after_values;
-	const Vector3 local_position = get_global_transform().affine_inverse().xform(p_world_position);
-	const int vertex_count = simple_terrain_data->get_vertex_count();
-	const real_t half_size = (real_t)simple_terrain_data->get_grid_size() * simple_terrain_data->get_cell_size() * 0.5;
-	const real_t center_x = (local_position.x + half_size) / simple_terrain_data->get_cell_size();
-	const real_t center_z = (local_position.z + half_size) / simple_terrain_data->get_cell_size();
-	const real_t radius_cells = p_radius / simple_terrain_data->get_cell_size();
-	const int min_x = CLAMP(Math::floor(center_x - radius_cells), 0, vertex_count - 1);
-	const int max_x = CLAMP(Math::ceil(center_x + radius_cells), 0, vertex_count - 1);
-	const int min_z = CLAMP(Math::floor(center_z - radius_cells), 0, vertex_count - 1);
-	const int max_z = CLAMP(Math::ceil(center_z + radius_cells), 0, vertex_count - 1);
-	const real_t flatten_height = _sample_nearest_height(center_x, center_z);
-	bool changed = false;
+	if (!_has_created_tiles()) {
+		return delta;
+	}
 
-	// Brush radius is evaluated in world units but converted to heightmap cells.
-	// This keeps painting behavior stable even when cell_size changes.
-	for (int z = min_z; z <= max_z; z++) {
-		for (int x = min_x; x <= max_x; x++) {
-			const real_t dx = ((real_t)x - center_x) * simple_terrain_data->get_cell_size();
-			const real_t dz = ((real_t)z - center_z) * simple_terrain_data->get_cell_size();
-			const real_t distance = Vector2(dx, dz).length();
-			if (distance > p_radius) {
-				continue;
-			}
+	{
+		const int tile_size = simple_terrain_data->get_tile_size();
+		const int vertex_count = simple_terrain_data->get_tile_vertex_count();
+		const int tile_value_count = vertex_count * vertex_count;
+		const real_t cell_size = simple_terrain_data->get_cell_size();
+		const real_t tile_world_size = (real_t)tile_size * cell_size;
+		ERR_FAIL_COND_V(tile_size < 1 || tile_value_count <= 0 || tile_world_size <= 0.0, delta);
 
-			const real_t falloff = 1.0 - distance / p_radius;
-			const int index = simple_terrain_data->get_height_index(x, z);
-			const real_t before = heights_w[index];
-			real_t after = before;
-			switch (p_operation) {
-				case BRUSH_RAISE:
-					after = before + p_strength * falloff;
-					break;
-				case BRUSH_LOWER:
-					after = before - p_strength * falloff;
-					break;
-				case BRUSH_SMOOTH:
-					after = Math::lerp(before, _get_average_neighbor_height(original_heights, x, z), CLAMP(p_strength * falloff, (real_t)0.0, (real_t)1.0));
-					break;
-				case BRUSH_FLATTEN:
-					after = Math::lerp(before, flatten_height, CLAMP(p_strength * falloff, (real_t)0.0, (real_t)1.0));
-					break;
+		const Vector3 local_position = get_global_transform().affine_inverse().xform(p_world_position);
+		const PackedVector2Array created_cells = simple_terrain_data->get_created_tile_cells();
+		HashMap<Vector2i, int> tile_data_indices;
+		for (int i = 0; i < created_cells.size(); i++) {
+			const Vector2 cell_value = created_cells[i];
+			tile_data_indices[Vector2i(Math::floor(cell_value.x), Math::floor(cell_value.y))] = i;
+		}
+
+		HashMap<Vector2i, PackedFloat32Array> edited_tiles;
+		HashMap<Vector2i, Rect2i> dirty_rects;
+		HashMap<int, int> delta_positions;
+		HashSet<Vector2i> cells_to_sync;
+		PackedInt32Array changed_indices;
+		PackedFloat32Array before_values;
+		PackedFloat32Array after_values;
+
+		const auto has_tile = [&](const Vector2i &p_cell) {
+			return tile_data_indices.has(p_cell);
+		};
+		const auto get_tile_heights = [&](const Vector2i &p_cell) -> PackedFloat32Array {
+			HashMap<Vector2i, PackedFloat32Array>::Iterator edited_iter = edited_tiles.find(p_cell);
+			if (edited_iter) {
+				return edited_iter->value;
 			}
-			if (!Math::is_equal_approx(before, after)) {
-				heights_w[index] = after;
-				changed_indices.push_back(index);
+			return simple_terrain_data->get_tile_height_data(p_cell);
+		};
+		const auto get_original_tile_heights = [&](const Vector2i &p_cell) -> PackedFloat32Array {
+			return simple_terrain_data->get_tile_height_data(p_cell);
+		};
+		const auto mark_dirty = [&](const Vector2i &p_cell, int p_x, int p_z) {
+			Rect2i dirty_rect = dirty_rects.has(p_cell) ? dirty_rects[p_cell] : Rect2i(p_x, p_z, 1, 1);
+			const int min_x = MIN(dirty_rect.position.x, p_x);
+			const int min_z = MIN(dirty_rect.position.y, p_z);
+			const int max_x = MAX(dirty_rect.position.x + dirty_rect.size.x - 1, p_x);
+			const int max_z = MAX(dirty_rect.position.y + dirty_rect.size.y - 1, p_z);
+			dirty_rects[p_cell] = Rect2i(min_x, min_z, max_x - min_x + 1, max_z - min_z + 1);
+		};
+		const auto record_height_change = [&](const Vector2i &p_cell, PackedFloat32Array &r_heights, int p_x, int p_z, real_t p_after) {
+			HashMap<Vector2i, int>::Iterator tile_index_iter = tile_data_indices.find(p_cell);
+			if (!tile_index_iter) {
+				return;
+			}
+			const int index = simple_terrain_data->get_tile_height_index(p_x, p_z);
+			ERR_FAIL_COND(index < 0 || index >= r_heights.size());
+			const real_t before = r_heights[index];
+			if (Math::is_equal_approx(before, p_after)) {
+				return;
+			}
+			r_heights.set(index, p_after);
+			edited_tiles[p_cell] = r_heights;
+			mark_dirty(p_cell, p_x, p_z);
+			cells_to_sync.insert(p_cell);
+
+			const int encoded_index = tile_index_iter->value * tile_value_count + index;
+			HashMap<int, int>::Iterator delta_iter = delta_positions.find(encoded_index);
+			if (delta_iter) {
+				after_values.set(delta_iter->value, p_after);
+			} else {
+				delta_positions[encoded_index] = changed_indices.size();
+				changed_indices.push_back(encoded_index);
 				before_values.push_back(before);
-				after_values.push_back(after);
-				changed = true;
+				after_values.push_back(p_after);
+			}
+		};
+		const auto normalize_coord = [&](Vector2i &r_cell, int &r_x, int &r_z) {
+			while (r_x < 0) {
+				r_cell.x -= 1;
+				r_x += tile_size;
+			}
+			while (r_x > tile_size) {
+				r_cell.x += 1;
+				r_x -= tile_size;
+			}
+			while (r_z < 0) {
+				r_cell.y -= 1;
+				r_z += tile_size;
+			}
+			while (r_z > tile_size) {
+				r_cell.y += 1;
+				r_z -= tile_size;
+			}
+		};
+		const auto sample_original_height = [&](Vector2i p_cell, int p_x, int p_z, real_t p_fallback) {
+			normalize_coord(p_cell, p_x, p_z);
+			if (!has_tile(p_cell)) {
+				return p_fallback;
+			}
+			const PackedFloat32Array original_heights = get_original_tile_heights(p_cell);
+			const int index = simple_terrain_data->get_tile_height_index(p_x, p_z);
+			return index >= 0 && index < original_heights.size() ? (real_t)original_heights[index] : p_fallback;
+		};
+		const auto average_neighbor_height = [&](const Vector2i &p_cell, int p_x, int p_z, real_t p_fallback) {
+			real_t total = 0.0;
+			int count = 0;
+			for (int z = p_z - 1; z <= p_z + 1; z++) {
+				for (int x = p_x - 1; x <= p_x + 1; x++) {
+					Vector2i sample_cell = p_cell;
+					int sample_x = x;
+					int sample_z = z;
+					normalize_coord(sample_cell, sample_x, sample_z);
+					if (!has_tile(sample_cell)) {
+						continue;
+					}
+					total += sample_original_height(sample_cell, sample_x, sample_z, p_fallback);
+					count++;
+				}
+			}
+			return count > 0 ? total / (real_t)count : p_fallback;
+		};
+
+		const Vector2i center_cell(Math::floor(local_position.x / tile_world_size), Math::floor(local_position.z / tile_world_size));
+		if (!has_tile(center_cell)) {
+			return delta;
+		}
+		const Vector2 center_local(local_position.x - (real_t)center_cell.x * tile_world_size, local_position.z - (real_t)center_cell.y * tile_world_size);
+		const int center_nearest_x = CLAMP(Math::round(center_local.x / cell_size), 0, tile_size);
+		const int center_nearest_z = CLAMP(Math::round(center_local.y / cell_size), 0, tile_size);
+		const real_t flatten_height = simple_terrain_data->get_tile_height(center_cell, center_nearest_x, center_nearest_z);
+		const real_t radius_cells = p_radius / cell_size;
+		const Vector2i min_cell(Math::floor((local_position.x - p_radius) / tile_world_size), Math::floor((local_position.z - p_radius) / tile_world_size));
+		const Vector2i max_cell(Math::floor((local_position.x + p_radius) / tile_world_size), Math::floor((local_position.z + p_radius) / tile_world_size));
+
+		real_t average_height = flatten_height;
+		if (p_operation == BRUSH_AVERAGE) {
+			real_t total_height = 0.0;
+			int height_count = 0;
+			for (int cell_z = min_cell.y; cell_z <= max_cell.y; cell_z++) {
+				for (int cell_x = min_cell.x; cell_x <= max_cell.x; cell_x++) {
+					const Vector2i cell(cell_x, cell_z);
+					if (!has_tile(cell)) {
+						continue;
+					}
+					const PackedFloat32Array original_heights = get_original_tile_heights(cell);
+					const Vector2 local_in_tile(local_position.x - (real_t)cell.x * tile_world_size, local_position.z - (real_t)cell.y * tile_world_size);
+					const real_t center_x = local_in_tile.x / cell_size;
+					const real_t center_z = local_in_tile.y / cell_size;
+					const int min_x = CLAMP(Math::floor(center_x - radius_cells), 0, tile_size);
+					const int max_x = CLAMP(Math::ceil(center_x + radius_cells), 0, tile_size);
+					const int min_z = CLAMP(Math::floor(center_z - radius_cells), 0, tile_size);
+					const int max_z = CLAMP(Math::ceil(center_z + radius_cells), 0, tile_size);
+					for (int z = min_z; z <= max_z; z++) {
+						for (int x = min_x; x <= max_x; x++) {
+							const real_t dx = ((real_t)x - center_x) * cell_size;
+							const real_t dz = ((real_t)z - center_z) * cell_size;
+							if (Vector2(dx, dz).length() > p_radius) {
+								continue;
+							}
+							const int index = simple_terrain_data->get_tile_height_index(x, z);
+							if (index >= 0 && index < original_heights.size()) {
+								total_height += original_heights[index];
+								height_count++;
+							}
+						}
+					}
+				}
+			}
+			if (height_count > 0) {
+				average_height = total_height / (real_t)height_count;
 			}
 		}
+
+		for (int cell_z = min_cell.y; cell_z <= max_cell.y; cell_z++) {
+			for (int cell_x = min_cell.x; cell_x <= max_cell.x; cell_x++) {
+				const Vector2i cell(cell_x, cell_z);
+				if (!has_tile(cell)) {
+					continue;
+				}
+				PackedFloat32Array heights = get_tile_heights(cell);
+				if (heights.size() != tile_value_count) {
+					continue;
+				}
+				const Vector2 local_in_tile(local_position.x - (real_t)cell.x * tile_world_size, local_position.z - (real_t)cell.y * tile_world_size);
+				const real_t center_x = local_in_tile.x / cell_size;
+				const real_t center_z = local_in_tile.y / cell_size;
+				const int min_x = CLAMP(Math::floor(center_x - radius_cells), 0, tile_size);
+				const int max_x = CLAMP(Math::ceil(center_x + radius_cells), 0, tile_size);
+				const int min_z = CLAMP(Math::floor(center_z - radius_cells), 0, tile_size);
+				const int max_z = CLAMP(Math::ceil(center_z + radius_cells), 0, tile_size);
+				for (int z = min_z; z <= max_z; z++) {
+					for (int x = min_x; x <= max_x; x++) {
+						const real_t dx = ((real_t)x - center_x) * cell_size;
+						const real_t dz = ((real_t)z - center_z) * cell_size;
+						const real_t distance = Vector2(dx, dz).length();
+						if (distance > p_radius) {
+							continue;
+						}
+						const real_t falloff = 1.0 - distance / p_radius;
+						const int index = simple_terrain_data->get_tile_height_index(x, z);
+						ERR_CONTINUE(index < 0 || index >= heights.size());
+						const real_t before = heights[index];
+						real_t after = before;
+						switch (p_operation) {
+							case BRUSH_RAISE:
+								after = before + p_strength * falloff;
+								break;
+							case BRUSH_LOWER:
+								after = before - p_strength * falloff;
+								break;
+							case BRUSH_SMOOTH:
+								after = Math::lerp(before, average_neighbor_height(cell, x, z, before), CLAMP(p_strength * falloff, (real_t)0.0, (real_t)1.0));
+								break;
+							case BRUSH_FLATTEN:
+								after = Math::lerp(before, flatten_height, CLAMP(p_strength * falloff, (real_t)0.0, (real_t)1.0));
+								break;
+							case BRUSH_AVERAGE:
+								after = Math::lerp(before, average_height, CLAMP(p_strength * falloff, (real_t)0.0, (real_t)1.0));
+								break;
+						}
+						record_height_change(cell, heights, x, z, after);
+					}
+				}
+			}
+		}
+
+		const auto sync_vertical_edge = [&](const Vector2i &p_left_cell) {
+			const Vector2i right_cell = p_left_cell + Vector2i(1, 0);
+			if (!has_tile(p_left_cell) || !has_tile(right_cell)) {
+				return;
+			}
+			for (int z = 0; z <= tile_size; z++) {
+				PackedFloat32Array left_heights = get_tile_heights(p_left_cell);
+				PackedFloat32Array right_heights = get_tile_heights(right_cell);
+				const int left_index = simple_terrain_data->get_tile_height_index(tile_size, z);
+				const int right_index = simple_terrain_data->get_tile_height_index(0, z);
+				if (left_index < 0 || right_index < 0 || left_index >= left_heights.size() || right_index >= right_heights.size()) {
+					continue;
+				}
+				const real_t height = (left_heights[left_index] + right_heights[right_index]) * 0.5;
+				record_height_change(p_left_cell, left_heights, tile_size, z, height);
+				record_height_change(right_cell, right_heights, 0, z, height);
+			}
+		};
+		const auto sync_horizontal_edge = [&](const Vector2i &p_top_cell) {
+			const Vector2i bottom_cell = p_top_cell + Vector2i(0, 1);
+			if (!has_tile(p_top_cell) || !has_tile(bottom_cell)) {
+				return;
+			}
+			for (int x = 0; x <= tile_size; x++) {
+				PackedFloat32Array top_heights = get_tile_heights(p_top_cell);
+				PackedFloat32Array bottom_heights = get_tile_heights(bottom_cell);
+				const int top_index = simple_terrain_data->get_tile_height_index(x, tile_size);
+				const int bottom_index = simple_terrain_data->get_tile_height_index(x, 0);
+				if (top_index < 0 || bottom_index < 0 || top_index >= top_heights.size() || bottom_index >= bottom_heights.size()) {
+					continue;
+				}
+				const real_t height = (top_heights[top_index] + bottom_heights[bottom_index]) * 0.5;
+				record_height_change(p_top_cell, top_heights, x, tile_size, height);
+				record_height_change(bottom_cell, bottom_heights, x, 0, height);
+			}
+		};
+		const auto sync_corner = [&](const Vector2i &p_corner_cell) {
+			const Vector2i corner_cells[4] = {
+				p_corner_cell,
+				p_corner_cell + Vector2i(-1, 0),
+				p_corner_cell + Vector2i(0, -1),
+				p_corner_cell + Vector2i(-1, -1),
+			};
+			const Vector2i corner_indices[4] = {
+				Vector2i(0, 0),
+				Vector2i(tile_size, 0),
+				Vector2i(0, tile_size),
+				Vector2i(tile_size, tile_size),
+			};
+			real_t total = 0.0;
+			int count = 0;
+			for (int i = 0; i < 4; i++) {
+				if (!has_tile(corner_cells[i])) {
+					continue;
+				}
+				const PackedFloat32Array heights = get_tile_heights(corner_cells[i]);
+				const int index = simple_terrain_data->get_tile_height_index(corner_indices[i].x, corner_indices[i].y);
+				if (index >= 0 && index < heights.size()) {
+					total += heights[index];
+					count++;
+				}
+			}
+			if (count < 2) {
+				return;
+			}
+			const real_t height = total / (real_t)count;
+			for (int i = 0; i < 4; i++) {
+				if (!has_tile(corner_cells[i])) {
+					continue;
+				}
+				PackedFloat32Array heights = get_tile_heights(corner_cells[i]);
+				record_height_change(corner_cells[i], heights, corner_indices[i].x, corner_indices[i].y, height);
+			}
+		};
+
+		Vector<Vector2i> sync_cells;
+		for (const Vector2i &cell : cells_to_sync) {
+			sync_cells.push_back(cell);
+		}
+		for (const Vector2i &cell : sync_cells) {
+			sync_vertical_edge(cell);
+			sync_vertical_edge(cell + Vector2i(-1, 0));
+			sync_horizontal_edge(cell);
+			sync_horizontal_edge(cell + Vector2i(0, -1));
+			sync_corner(cell);
+			sync_corner(cell + Vector2i(1, 0));
+			sync_corner(cell + Vector2i(0, 1));
+			sync_corner(cell + Vector2i(1, 1));
+		}
+
+		if (!edited_tiles.is_empty()) {
+			syncing_data = true;
+			for (const KeyValue<Vector2i, PackedFloat32Array> &E : edited_tiles) {
+				simple_terrain_data->set_tile_height_data_no_notify(E.key, E.value);
+			}
+			simple_terrain_data->notify_height_data_changed();
+			syncing_data = false;
+			for (const KeyValue<Vector2i, Rect2i> &E : dirty_rects) {
+				const Rect2i dirty_rect = E.value;
+				_rebuild_tile_chunks_for_region(E.key, dirty_rect.position.x - 1, dirty_rect.position.y - 1, dirty_rect.position.x + dirty_rect.size.x, dirty_rect.position.y + dirty_rect.size.y);
+			}
+			delta["indices"] = changed_indices;
+			delta["before"] = before_values;
+			delta["after"] = after_values;
+		}
+		return delta;
 	}
 
-	if (changed) {
-		syncing_data = true;
-		simple_terrain_data->notify_height_data_changed();
-		syncing_data = false;
-		_rebuild_chunks_for_region(MAX(0, min_x - 1), MAX(0, min_z - 1), MIN(vertex_count - 1, max_x + 1), MIN(vertex_count - 1, max_z + 1));
-	}
-	delta["indices"] = changed_indices;
-	delta["before"] = before_values;
-	delta["after"] = after_values;
 	return delta;
 }
-
 void SimpleTerrain3D::apply_height_patch(const PackedInt32Array &p_indices, const PackedFloat32Array &p_heights) {
 	_ensure_data();
 	ERR_FAIL_COND(p_indices.size() != p_heights.size());
@@ -2021,40 +2394,72 @@ void SimpleTerrain3D::apply_height_patch(const PackedInt32Array &p_indices, cons
 		return;
 	}
 
-	PackedFloat32Array &heights = simple_terrain_data->get_mutable_height_data();
-	float *heights_w = heights.ptrw();
-	const int vertex_count = simple_terrain_data->get_vertex_count();
-	int min_x = vertex_count - 1;
-	int min_z = vertex_count - 1;
-	int max_x = 0;
-	int max_z = 0;
-	bool changed = false;
+	if (!_has_created_tiles()) {
+		return;
+	}
 
-	for (int i = 0; i < p_indices.size(); i++) {
-		const int index = p_indices[i];
-		ERR_CONTINUE(index < 0 || index >= heights.size());
-		const real_t height = p_heights[i];
-		if (Math::is_equal_approx(heights_w[index], height)) {
-			continue;
+	{
+		const int vertex_count = simple_terrain_data->get_tile_vertex_count();
+		const int tile_value_count = vertex_count * vertex_count;
+		ERR_FAIL_COND(tile_value_count <= 0);
+
+		const PackedVector2Array created_cells = simple_terrain_data->get_created_tile_cells();
+		HashMap<int, PackedFloat32Array> edited_tiles;
+		HashMap<int, Rect2i> dirty_rects;
+
+		for (int i = 0; i < p_indices.size(); i++) {
+			const int encoded_index = p_indices[i];
+			ERR_CONTINUE(encoded_index < 0);
+			const int tile_data_index = encoded_index / tile_value_count;
+			const int index = encoded_index % tile_value_count;
+			ERR_CONTINUE(tile_data_index < 0 || tile_data_index >= created_cells.size());
+
+			PackedFloat32Array heights;
+			HashMap<int, PackedFloat32Array>::Iterator height_iter = edited_tiles.find(tile_data_index);
+			if (height_iter) {
+				heights = height_iter->value;
+			} else {
+				const Vector2 cell_value = created_cells[tile_data_index];
+				heights = simple_terrain_data->get_tile_height_data(Vector2i(Math::floor(cell_value.x), Math::floor(cell_value.y)));
+			}
+			ERR_CONTINUE(index < 0 || index >= heights.size());
+			const real_t height = p_heights[i];
+			if (Math::is_equal_approx(heights[index], height)) {
+				continue;
+			}
+			heights.set(index, height);
+			edited_tiles[tile_data_index] = heights;
+
+			const int x = index % vertex_count;
+			const int z = index / vertex_count;
+			Rect2i dirty_rect = dirty_rects.has(tile_data_index) ? dirty_rects[tile_data_index] : Rect2i(x, z, 1, 1);
+			const int min_x = MIN(dirty_rect.position.x, x);
+			const int min_z = MIN(dirty_rect.position.y, z);
+			const int max_x = MAX(dirty_rect.position.x + dirty_rect.size.x - 1, x);
+			const int max_z = MAX(dirty_rect.position.y + dirty_rect.size.y - 1, z);
+			dirty_rects[tile_data_index] = Rect2i(min_x, min_z, max_x - min_x + 1, max_z - min_z + 1);
 		}
-		heights_w[index] = height;
-		const int x = index % vertex_count;
-		const int z = index / vertex_count;
-		min_x = MIN(min_x, x);
-		min_z = MIN(min_z, z);
-		max_x = MAX(max_x, x);
-		max_z = MAX(max_z, z);
-		changed = true;
+
+		if (!edited_tiles.is_empty()) {
+			syncing_data = true;
+			for (const KeyValue<int, PackedFloat32Array> &E : edited_tiles) {
+				const Vector2 cell_value = created_cells[E.key];
+				const Vector2i cell(Math::floor(cell_value.x), Math::floor(cell_value.y));
+				simple_terrain_data->set_tile_height_data_no_notify(cell, E.value);
+			}
+			simple_terrain_data->notify_height_data_changed();
+			syncing_data = false;
+			for (const KeyValue<int, Rect2i> &E : dirty_rects) {
+				const Vector2 cell_value = created_cells[E.key];
+				const Vector2i cell(Math::floor(cell_value.x), Math::floor(cell_value.y));
+				const Rect2i dirty_rect = E.value;
+				_rebuild_tile_chunks_for_region(cell, dirty_rect.position.x - 1, dirty_rect.position.y - 1, dirty_rect.position.x + dirty_rect.size.x, dirty_rect.position.y + dirty_rect.size.y);
+			}
+		}
+		return;
 	}
 
-	if (changed) {
-		syncing_data = true;
-		simple_terrain_data->notify_height_data_changed();
-		syncing_data = false;
-		_rebuild_chunks_for_region(MAX(0, min_x - 1), MAX(0, min_z - 1), MIN(vertex_count - 1, max_x + 1), MIN(vertex_count - 1, max_z + 1));
-	}
 }
-
 Dictionary SimpleTerrain3D::get_brush_hit(const Vector3 &p_ray_origin, const Vector3 &p_ray_direction) const {
 	Dictionary result;
 	if (!is_inside_tree() || simple_terrain_data.is_null() || p_ray_direction.is_zero_approx()) {
@@ -2062,121 +2467,147 @@ Dictionary SimpleTerrain3D::get_brush_hit(const Vector3 &p_ray_origin, const Vec
 	}
 
 	// Ray picking walks only the XZ cells crossed by the ray using a 2D DDA.
-	// This is much cheaper than checking every triangle in the full terrain and
-	// keeps brush interaction responsive as grid_size grows.
+	// This is much cheaper than checking every triangle in all created tiles and
+	// keeps brush interaction responsive as tile counts grow.
 	const Transform3D inverse_transform = get_global_transform().affine_inverse();
 	const Vector3 local_origin = inverse_transform.xform(p_ray_origin);
 	const Vector3 local_direction = inverse_transform.basis.xform(p_ray_direction).normalized();
-	const real_t half_size = (real_t)simple_terrain_data->get_grid_size() * simple_terrain_data->get_cell_size() * 0.5;
-	const real_t min_bound = -half_size;
-	const real_t max_bound = half_size;
-	real_t entry_t = 0.0;
-	real_t exit_t = Math::INF;
-
-	auto clip_axis = [&](real_t p_origin, real_t p_direction) {
-		if (Math::abs(p_direction) < CMP_EPSILON) {
-			return p_origin >= min_bound && p_origin <= max_bound;
-		}
-		real_t t0 = (min_bound - p_origin) / p_direction;
-		real_t t1 = (max_bound - p_origin) / p_direction;
-		if (t0 > t1) {
-			SWAP(t0, t1);
-		}
-		entry_t = MAX(entry_t, t0);
-		exit_t = MIN(exit_t, t1);
-		return entry_t <= exit_t;
-	};
-
-	if (!clip_axis(local_origin.x, local_direction.x) || !clip_axis(local_origin.z, local_direction.z)) {
+	if (!_has_created_tiles()) {
 		return result;
 	}
 
-	const int grid_size = simple_terrain_data->get_grid_size();
-	const real_t cell_size = simple_terrain_data->get_cell_size();
-	const Vector3 entry_position = local_origin + local_direction * MAX(entry_t, (real_t)0.0);
-	int cell_x = CLAMP(Math::floor((entry_position.x + half_size) / cell_size), 0, grid_size - 1);
-	int cell_z = CLAMP(Math::floor((entry_position.z + half_size) / cell_size), 0, grid_size - 1);
-	const int end_x = CLAMP(Math::floor(((local_origin + local_direction * exit_t).x + half_size) / cell_size), 0, grid_size - 1);
-	const int end_z = CLAMP(Math::floor(((local_origin + local_direction * exit_t).z + half_size) / cell_size), 0, grid_size - 1);
+	{
+		const AABB bounds = get_aabb();
+		if (bounds.size.is_zero_approx()) {
+			return result;
+		}
+		const Vector3 bounds_min = bounds.position;
+		const Vector3 bounds_max = bounds.position + bounds.size;
+		real_t entry_t = 0.0;
+		real_t exit_t = Math::INF;
 
-	const int step_x = local_direction.x > CMP_EPSILON ? 1 : (local_direction.x < -CMP_EPSILON ? -1 : 0);
-	const int step_z = local_direction.z > CMP_EPSILON ? 1 : (local_direction.z < -CMP_EPSILON ? -1 : 0);
-	const real_t next_boundary_x = min_bound + (real_t)(cell_x + (step_x > 0 ? 1 : 0)) * cell_size;
-	const real_t next_boundary_z = min_bound + (real_t)(cell_z + (step_z > 0 ? 1 : 0)) * cell_size;
-	real_t next_t_x = step_x == 0 ? Math::INF : (next_boundary_x - local_origin.x) / local_direction.x;
-	real_t next_t_z = step_z == 0 ? Math::INF : (next_boundary_z - local_origin.z) / local_direction.z;
-	const real_t delta_t_x = step_x == 0 ? Math::INF : cell_size / Math::abs(local_direction.x);
-	const real_t delta_t_z = step_z == 0 ? Math::INF : cell_size / Math::abs(local_direction.z);
-	real_t closest_distance = Math::INF;
-	Vector3 closest_position;
-	Vector3 closest_normal = Vector3(0.0, 1.0, 0.0);
-	bool found = false;
+		const auto clip_axis = [&](real_t p_origin, real_t p_direction, real_t p_min, real_t p_max) {
+			if (Math::abs(p_direction) < CMP_EPSILON) {
+				return p_origin >= p_min && p_origin <= p_max;
+			}
+			real_t t0 = (p_min - p_origin) / p_direction;
+			real_t t1 = (p_max - p_origin) / p_direction;
+			if (t0 > t1) {
+				SWAP(t0, t1);
+			}
+			entry_t = MAX(entry_t, t0);
+			exit_t = MIN(exit_t, t1);
+			return entry_t <= exit_t;
+		};
 
-	auto test_cell = [&](int p_x, int p_z) {
-		const Vector3 top_left = _get_vertex_position(p_x, p_z);
-		const Vector3 top_right = _get_vertex_position(p_x + 1, p_z);
-		const Vector3 bottom_left = _get_vertex_position(p_x, p_z + 1);
-		const Vector3 bottom_right = _get_vertex_position(p_x + 1, p_z + 1);
-		Vector3 hit;
-		if (Geometry3D::ray_intersects_triangle(local_origin, local_direction, top_left, top_right, bottom_left, &hit)) {
-			const real_t distance = local_origin.distance_to(hit);
-			if (distance < closest_distance) {
-				Vector3 normal = (top_right - top_left).cross(bottom_left - top_left).normalized();
-				if (normal.y < 0.0) {
-					normal = -normal;
+		if (!clip_axis(local_origin.x, local_direction.x, bounds_min.x, bounds_max.x) ||
+				!clip_axis(local_origin.y, local_direction.y, bounds_min.y, bounds_max.y) ||
+				!clip_axis(local_origin.z, local_direction.z, bounds_min.z, bounds_max.z)) {
+			return result;
+		}
+
+		const int tile_size = simple_terrain_data->get_tile_size();
+		const real_t cell_size = simple_terrain_data->get_cell_size();
+		const Vector3 entry_position = local_origin + local_direction * MAX(entry_t, (real_t)0.0);
+		const Vector3 exit_position = local_origin + local_direction * exit_t;
+		int cell_x = Math::floor(entry_position.x / cell_size);
+		int cell_z = Math::floor(entry_position.z / cell_size);
+		const int end_x = Math::floor(exit_position.x / cell_size);
+		const int end_z = Math::floor(exit_position.z / cell_size);
+
+		const int step_x = local_direction.x > CMP_EPSILON ? 1 : (local_direction.x < -CMP_EPSILON ? -1 : 0);
+		const int step_z = local_direction.z > CMP_EPSILON ? 1 : (local_direction.z < -CMP_EPSILON ? -1 : 0);
+		const real_t next_boundary_x = (real_t)(cell_x + (step_x > 0 ? 1 : 0)) * cell_size;
+		const real_t next_boundary_z = (real_t)(cell_z + (step_z > 0 ? 1 : 0)) * cell_size;
+		real_t next_t_x = step_x == 0 ? Math::INF : (next_boundary_x - local_origin.x) / local_direction.x;
+		real_t next_t_z = step_z == 0 ? Math::INF : (next_boundary_z - local_origin.z) / local_direction.z;
+		const real_t delta_t_x = step_x == 0 ? Math::INF : cell_size / Math::abs(local_direction.x);
+		const real_t delta_t_z = step_z == 0 ? Math::INF : cell_size / Math::abs(local_direction.z);
+
+		real_t closest_distance = Math::INF;
+		Vector3 closest_position;
+		Vector3 closest_normal = Vector3(0.0, 1.0, 0.0);
+		bool found = false;
+
+		const auto get_tile_cell_for_global_cell = [&](int p_x, int p_z) {
+			return Vector2i(Math::floor((real_t)p_x / (real_t)tile_size), Math::floor((real_t)p_z / (real_t)tile_size));
+		};
+		const auto test_cell = [&](int p_global_x, int p_global_z) {
+			const Vector2i tile_cell = get_tile_cell_for_global_cell(p_global_x, p_global_z);
+			if (!simple_terrain_data->has_tile(tile_cell)) {
+				return;
+			}
+			const int local_x = p_global_x - tile_cell.x * tile_size;
+			const int local_z = p_global_z - tile_cell.y * tile_size;
+			if (local_x < 0 || local_z < 0 || local_x >= tile_size || local_z >= tile_size) {
+				return;
+			}
+
+			const Vector3 top_left = _get_tile_vertex_position(tile_cell, local_x, local_z);
+			const Vector3 top_right = _get_tile_vertex_position(tile_cell, local_x + 1, local_z);
+			const Vector3 bottom_left = _get_tile_vertex_position(tile_cell, local_x, local_z + 1);
+			const Vector3 bottom_right = _get_tile_vertex_position(tile_cell, local_x + 1, local_z + 1);
+			Vector3 hit;
+			if (Geometry3D::ray_intersects_triangle(local_origin, local_direction, top_left, top_right, bottom_left, &hit)) {
+				const real_t distance = local_origin.distance_to(hit);
+				if (distance < closest_distance) {
+					Vector3 normal = (top_right - top_left).cross(bottom_left - top_left).normalized();
+					if (normal.y < 0.0) {
+						normal = -normal;
+					}
+					closest_distance = distance;
+					closest_position = hit;
+					closest_normal = normal;
+					found = true;
 				}
-				closest_distance = distance;
-				closest_position = hit;
-				closest_normal = normal;
-				found = true;
+			}
+			if (Geometry3D::ray_intersects_triangle(local_origin, local_direction, top_right, bottom_right, bottom_left, &hit)) {
+				const real_t distance = local_origin.distance_to(hit);
+				if (distance < closest_distance) {
+					Vector3 normal = (bottom_right - top_right).cross(bottom_left - top_right).normalized();
+					if (normal.y < 0.0) {
+						normal = -normal;
+					}
+					closest_distance = distance;
+					closest_position = hit;
+					closest_normal = normal;
+					found = true;
+				}
+			}
+		};
+
+		const int max_steps = 1048576;
+		int steps = 0;
+		while (steps++ < max_steps) {
+			test_cell(cell_x, cell_z);
+			const real_t next_t = MIN(next_t_x, next_t_z);
+			if (found && closest_distance <= next_t) {
+				break;
+			}
+			if (cell_x == end_x && cell_z == end_z) {
+				break;
+			}
+			if (next_t_x < next_t_z) {
+				cell_x += step_x;
+				next_t_x += delta_t_x;
+			} else {
+				cell_z += step_z;
+				next_t_z += delta_t_z;
 			}
 		}
-		if (Geometry3D::ray_intersects_triangle(local_origin, local_direction, top_right, bottom_right, bottom_left, &hit)) {
-			const real_t distance = local_origin.distance_to(hit);
-			if (distance < closest_distance) {
-				Vector3 normal = (bottom_right - top_right).cross(bottom_left - top_right).normalized();
-				if (normal.y < 0.0) {
-					normal = -normal;
-				}
-				closest_distance = distance;
-				closest_position = hit;
-				closest_normal = normal;
-				found = true;
-			}
-		}
-	};
 
-	while (cell_x >= 0 && cell_x < grid_size && cell_z >= 0 && cell_z < grid_size) {
-		test_cell(cell_x, cell_z);
-		const real_t next_t = MIN(next_t_x, next_t_z);
-		if (found && closest_distance <= next_t) {
-			break;
+		if (found) {
+			const Vector3 world_position = get_global_transform().xform(closest_position);
+			const Vector3 world_normal = get_global_transform().basis.xform(closest_normal).normalized();
+			result["position"] = world_position;
+			result["local_position"] = closest_position;
+			result["normal"] = world_normal;
+			result["distance"] = p_ray_origin.distance_to(world_position);
 		}
-		if (cell_x == end_x && cell_z == end_z) {
-			break;
-		}
-		if (next_t_x < next_t_z) {
-			cell_x += step_x;
-			next_t_x += delta_t_x;
-		} else {
-			cell_z += step_z;
-			next_t_z += delta_t_z;
-		}
+		return result;
 	}
 
-	if (found) {
-		// Public API returns world-space data because editor tools and gameplay
-		// scripts usually operate in scene coordinates.
-		const Vector3 world_position = get_global_transform().xform(closest_position);
-		const Vector3 world_normal = get_global_transform().basis.xform(closest_normal).normalized();
-		result["position"] = world_position;
-		result["local_position"] = closest_position;
-		result["normal"] = world_normal;
-		result["distance"] = p_ray_origin.distance_to(world_position);
-	}
-	return result;
 }
-
 PackedVector3Array SimpleTerrain3D::get_chunk_debug_lines() const {
 	PackedVector3Array lines;
 	if (simple_terrain_data.is_null() || chunks.is_empty()) {
@@ -2191,14 +2622,18 @@ PackedVector3Array SimpleTerrain3D::get_chunk_debug_lines() const {
 		const int max_x = chunk.origin_x + chunk.quad_width;
 		const int max_z = chunk.origin_z + chunk.quad_depth;
 
-		lines.push_back(_get_vertex_position(min_x, min_z));
-		lines.push_back(_get_vertex_position(max_x, min_z));
-		lines.push_back(_get_vertex_position(max_x, min_z));
-		lines.push_back(_get_vertex_position(max_x, max_z));
-		lines.push_back(_get_vertex_position(max_x, max_z));
-		lines.push_back(_get_vertex_position(min_x, max_z));
-		lines.push_back(_get_vertex_position(min_x, max_z));
-		lines.push_back(_get_vertex_position(min_x, min_z));
+		const auto get_debug_position = [&](int p_x, int p_z) {
+			return _get_tile_vertex_position(chunk.tile_cell, p_x, p_z);
+		};
+
+		lines.push_back(get_debug_position(min_x, min_z));
+		lines.push_back(get_debug_position(max_x, min_z));
+		lines.push_back(get_debug_position(max_x, min_z));
+		lines.push_back(get_debug_position(max_x, max_z));
+		lines.push_back(get_debug_position(max_x, max_z));
+		lines.push_back(get_debug_position(min_x, max_z));
+		lines.push_back(get_debug_position(min_x, max_z));
+		lines.push_back(get_debug_position(min_x, min_z));
 	}
 
 	return lines;
@@ -2207,11 +2642,7 @@ PackedVector3Array SimpleTerrain3D::get_chunk_debug_lines() const {
 void SimpleTerrain3D::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_ENTER_WORLD: {
-			if (simple_terrain_data.is_null()) {
-				// First appearance in a world creates a flat terrain. Random noise
-				// generation is intentionally never automatic.
-				reset_flat_terrain();
-			} else if (chunks.is_empty()) {
+			if (simple_terrain_data.is_null() || chunks.is_empty()) {
 				rebuild_mesh();
 			}
 			_sync_chunk_instances();
@@ -2256,6 +2687,13 @@ void SimpleTerrain3D::_notification(int p_what) {
 			}
 #endif // DEBUG_ENABLED
 		} break;
+
+		case NOTIFICATION_VISIBILITY_CHANGED: {
+			_update_chunk_visibility();
+#ifdef DEBUG_ENABLED
+			_update_navigation_debug_mesh();
+#endif // DEBUG_ENABLED
+		} break;
 	}
 }
 
@@ -2270,12 +2708,17 @@ void SimpleTerrain3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_world_placement_library"), &SimpleTerrain3D::get_world_placement_library);
 	ClassDB::bind_method(D_METHOD("set_world_placement_data", "data"), &SimpleTerrain3D::set_world_placement_data);
 	ClassDB::bind_method(D_METHOD("get_world_placement_data"), &SimpleTerrain3D::get_world_placement_data);
-	ClassDB::bind_method(D_METHOD("set_grid_size", "grid_size"), &SimpleTerrain3D::set_grid_size);
-	ClassDB::bind_method(D_METHOD("get_grid_size"), &SimpleTerrain3D::get_grid_size);
 	ClassDB::bind_method(D_METHOD("set_cell_size", "cell_size"), &SimpleTerrain3D::set_cell_size);
 	ClassDB::bind_method(D_METHOD("get_cell_size"), &SimpleTerrain3D::get_cell_size);
 	ClassDB::bind_method(D_METHOD("set_chunk_size", "chunk_size"), &SimpleTerrain3D::set_chunk_size);
 	ClassDB::bind_method(D_METHOD("get_chunk_size"), &SimpleTerrain3D::get_chunk_size);
+	ClassDB::bind_method(D_METHOD("set_tile_size", "tile_size"), &SimpleTerrain3D::set_tile_size);
+	ClassDB::bind_method(D_METHOD("get_tile_size"), &SimpleTerrain3D::get_tile_size);
+	ClassDB::bind_method(D_METHOD("set_created_tile_cells", "cells"), &SimpleTerrain3D::set_created_tile_cells);
+	ClassDB::bind_method(D_METHOD("get_created_tile_cells"), &SimpleTerrain3D::get_created_tile_cells);
+	ClassDB::bind_method(D_METHOD("has_tile", "cell"), &SimpleTerrain3D::has_tile);
+	ClassDB::bind_method(D_METHOD("create_tile", "cell"), &SimpleTerrain3D::create_tile);
+	ClassDB::bind_method(D_METHOD("remove_tile", "cell"), &SimpleTerrain3D::remove_tile);
 	ClassDB::bind_method(D_METHOD("set_show_chunk_gizmos", "show"), &SimpleTerrain3D::set_show_chunk_gizmos);
 	ClassDB::bind_method(D_METHOD("is_showing_chunk_gizmos"), &SimpleTerrain3D::is_showing_chunk_gizmos);
 	ClassDB::bind_method(D_METHOD("set_navigation_enabled", "enabled"), &SimpleTerrain3D::set_navigation_enabled);
@@ -2284,6 +2727,10 @@ void SimpleTerrain3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_navigation_layers"), &SimpleTerrain3D::get_navigation_layers);
 	ClassDB::bind_method(D_METHOD("set_navigation_max_slope", "max_slope"), &SimpleTerrain3D::set_navigation_max_slope);
 	ClassDB::bind_method(D_METHOD("get_navigation_max_slope"), &SimpleTerrain3D::get_navigation_max_slope);
+	ClassDB::bind_method(D_METHOD("set_navigation_min_height", "min_height"), &SimpleTerrain3D::set_navigation_min_height);
+	ClassDB::bind_method(D_METHOD("get_navigation_min_height"), &SimpleTerrain3D::get_navigation_min_height);
+	ClassDB::bind_method(D_METHOD("set_navigation_max_height", "max_height"), &SimpleTerrain3D::set_navigation_max_height);
+	ClassDB::bind_method(D_METHOD("get_navigation_max_height"), &SimpleTerrain3D::get_navigation_max_height);
 	ClassDB::bind_method(D_METHOD("set_navigation_build_mode", "mode"), &SimpleTerrain3D::set_navigation_build_mode);
 	ClassDB::bind_method(D_METHOD("get_navigation_build_mode"), &SimpleTerrain3D::get_navigation_build_mode);
 	ClassDB::bind_method(D_METHOD("set_navigation_baked_mesh", "navigation_mesh"), &SimpleTerrain3D::set_navigation_baked_mesh);
@@ -2311,10 +2758,14 @@ void SimpleTerrain3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_navigation_merge_max_rect_size"), &SimpleTerrain3D::get_navigation_merge_max_rect_size);
 	ClassDB::bind_method(D_METHOD("set_navigation_debug_visible", "visible"), &SimpleTerrain3D::set_navigation_debug_visible);
 	ClassDB::bind_method(D_METHOD("is_navigation_debug_visible"), &SimpleTerrain3D::is_navigation_debug_visible);
+	ClassDB::bind_method(D_METHOD("set_navigation_debug_navigation_mesh_visible", "visible"), &SimpleTerrain3D::set_navigation_debug_navigation_mesh_visible);
+	ClassDB::bind_method(D_METHOD("is_navigation_debug_navigation_mesh_visible"), &SimpleTerrain3D::is_navigation_debug_navigation_mesh_visible);
 	ClassDB::bind_method(D_METHOD("set_navigation_debug_runtime_obstacles_visible", "visible"), &SimpleTerrain3D::set_navigation_debug_runtime_obstacles_visible);
 	ClassDB::bind_method(D_METHOD("is_navigation_debug_runtime_obstacles_visible"), &SimpleTerrain3D::is_navigation_debug_runtime_obstacles_visible);
-	ClassDB::bind_method(D_METHOD("set_height_data", "height_data"), &SimpleTerrain3D::set_height_data);
-	ClassDB::bind_method(D_METHOD("get_height_data"), &SimpleTerrain3D::get_height_data);
+	ClassDB::bind_method(D_METHOD("set_navigation_debug_height_range_visible", "visible"), &SimpleTerrain3D::set_navigation_debug_height_range_visible);
+	ClassDB::bind_method(D_METHOD("is_navigation_debug_height_range_visible"), &SimpleTerrain3D::is_navigation_debug_height_range_visible);
+	ClassDB::bind_method(D_METHOD("set_navigation_debug_steep_slopes_visible", "visible"), &SimpleTerrain3D::set_navigation_debug_steep_slopes_visible);
+	ClassDB::bind_method(D_METHOD("is_navigation_debug_steep_slopes_visible"), &SimpleTerrain3D::is_navigation_debug_steep_slopes_visible);
 	ClassDB::bind_method(D_METHOD("set_terrain_material", "material"), &SimpleTerrain3D::set_terrain_material);
 	ClassDB::bind_method(D_METHOD("get_terrain_material"), &SimpleTerrain3D::get_terrain_material);
 	ClassDB::bind_method(D_METHOD("set_use_builtin_triplanar_material", "use"), &SimpleTerrain3D::set_use_builtin_triplanar_material);
@@ -2368,20 +2819,23 @@ void SimpleTerrain3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_chunk_debug_lines"), &SimpleTerrain3D::get_chunk_debug_lines);
 
 	// Core terrain data and render chunk controls.
+	ADD_GROUP("Data", "");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "simple_terrain_data", PROPERTY_HINT_RESOURCE_TYPE, "SimpleTerrainData"), "set_simple_terrain_data", "get_simple_terrain_data");
 	ADD_GROUP("World Placement", "world_placement_");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "world_placement_library", PROPERTY_HINT_RESOURCE_TYPE, "SimpleWorldPlacementLibrary"), "set_world_placement_library", "get_world_placement_library");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "world_placement_data", PROPERTY_HINT_RESOURCE_TYPE, "SimpleWorldPlacementData"), "set_world_placement_data", "get_world_placement_data");
-	ADD_GROUP("", "");
-	ADD_PROPERTY(PropertyInfo(Variant::INT, "grid_size", PROPERTY_HINT_RANGE, "2,512,1,or_greater"), "set_grid_size", "get_grid_size");
+	ADD_GROUP("Terrain", "");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "cell_size", PROPERTY_HINT_RANGE, "0.01,100,0.01,or_greater"), "set_cell_size", "get_cell_size");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "chunk_size", PROPERTY_HINT_RANGE, "1,256,1,or_greater"), "set_chunk_size", "get_chunk_size");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "tile_size", PROPERTY_HINT_RANGE, "2,4096,1,or_greater"), "set_tile_size", "get_tile_size");
+	ADD_PROPERTY(PropertyInfo(Variant::PACKED_VECTOR2_ARRAY, "created_tile_cells"), "set_created_tile_cells", "get_created_tile_cells");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "show_chunk_gizmos"), "set_show_chunk_gizmos", "is_showing_chunk_gizmos");
-	ADD_PROPERTY(PropertyInfo(Variant::PACKED_FLOAT32_ARRAY, "height_data"), "set_height_data", "get_height_data");
 	ADD_GROUP("Navigation", "navigation_");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "navigation_enabled"), "set_navigation_enabled", "is_navigation_enabled");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "navigation_layers", PROPERTY_HINT_LAYERS_3D_NAVIGATION), "set_navigation_layers", "get_navigation_layers");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "navigation_max_slope", PROPERTY_HINT_RANGE, "0,89.9,0.1,suffix:deg"), "set_navigation_max_slope", "get_navigation_max_slope");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "navigation_min_height", PROPERTY_HINT_RANGE, "-1000000,1000000,0.01,or_less,or_greater,suffix:m"), "set_navigation_min_height", "get_navigation_min_height");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "navigation_max_height", PROPERTY_HINT_RANGE, "-1000000,1000000,0.01,or_less,or_greater,suffix:m"), "set_navigation_max_height", "get_navigation_max_height");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "navigation_build_mode", PROPERTY_HINT_ENUM, "Triangles,Quads,Merged Rectangles,Baked"), "set_navigation_build_mode", "get_navigation_build_mode");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "navigation_baked_mesh", PROPERTY_HINT_RESOURCE_TYPE, NavigationMesh::get_class_static()), "set_navigation_baked_mesh", "get_navigation_baked_mesh");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "navigation_dynamic_enabled"), "set_navigation_dynamic_enabled", "is_navigation_dynamic_enabled");
@@ -2394,7 +2848,10 @@ void SimpleTerrain3D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "navigation_merge_planar_tolerance", PROPERTY_HINT_RANGE, "0,10,0.001,or_greater,suffix:m"), "set_navigation_merge_planar_tolerance", "get_navigation_merge_planar_tolerance");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "navigation_merge_max_rect_size", PROPERTY_HINT_RANGE, "1,128,1,or_greater"), "set_navigation_merge_max_rect_size", "get_navigation_merge_max_rect_size");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "navigation_debug_visible"), "set_navigation_debug_visible", "is_navigation_debug_visible");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "navigation_debug_navigation_mesh_visible"), "set_navigation_debug_navigation_mesh_visible", "is_navigation_debug_navigation_mesh_visible");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "navigation_debug_runtime_obstacles_visible"), "set_navigation_debug_runtime_obstacles_visible", "is_navigation_debug_runtime_obstacles_visible");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "navigation_debug_height_range_visible"), "set_navigation_debug_height_range_visible", "is_navigation_debug_height_range_visible");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "navigation_debug_steep_slopes_visible"), "set_navigation_debug_steep_slopes_visible", "is_navigation_debug_steep_slopes_visible");
 	ADD_GROUP("", "");
 
 	// Material controls are exposed as node properties so game projects can
@@ -2428,6 +2885,7 @@ void SimpleTerrain3D::_bind_methods() {
 	BIND_ENUM_CONSTANT(BRUSH_LOWER);
 	BIND_ENUM_CONSTANT(BRUSH_SMOOTH);
 	BIND_ENUM_CONSTANT(BRUSH_FLATTEN);
+	BIND_ENUM_CONSTANT(BRUSH_AVERAGE);
 	BIND_ENUM_CONSTANT(NAVIGATION_BUILD_TRIANGLES);
 	BIND_ENUM_CONSTANT(NAVIGATION_BUILD_QUADS);
 	BIND_ENUM_CONSTANT(NAVIGATION_BUILD_MERGED_RECTS);
@@ -2444,29 +2902,53 @@ SimpleTerrain3D::SimpleTerrain3D() {
 }
 
 AABB SimpleTerrain3D::get_aabb() const {
-	if (simple_terrain_data.is_null()) {
+	if (simple_terrain_data.is_null() || !_has_created_tiles()) {
 		return AABB();
 	}
 
-	// The visible renderables are internal chunk instances, but the editor and
-	// culling code still ask the SimpleTerrain3D node for an overall local bounds.
-	const int vertex_count = simple_terrain_data->get_vertex_count();
-	const PackedFloat32Array heights = simple_terrain_data->get_height_data();
+	const real_t tile_world_size = (real_t)simple_terrain_data->get_tile_size() * simple_terrain_data->get_cell_size();
+	const PackedVector2Array created_cells = simple_terrain_data->get_created_tile_cells();
 	real_t min_height = 0.0;
 	real_t max_height = 0.0;
-	if (!heights.is_empty()) {
-		min_height = heights[0];
-		max_height = heights[0];
-		for (int i = 1; i < heights.size(); i++) {
-			min_height = MIN(min_height, (real_t)heights[i]);
-			max_height = MAX(max_height, (real_t)heights[i]);
+	bool has_height = false;
+	real_t min_x = 0.0;
+	real_t min_z = 0.0;
+	real_t max_x = 0.0;
+	real_t max_z = 0.0;
+
+	for (int cell_index = 0; cell_index < created_cells.size(); cell_index++) {
+		const Vector2 cell_value = created_cells[cell_index];
+		const Vector2i cell(Math::floor(cell_value.x), Math::floor(cell_value.y));
+		const real_t cell_min_x = (real_t)cell.x * tile_world_size;
+		const real_t cell_min_z = (real_t)cell.y * tile_world_size;
+		const real_t cell_max_x = cell_min_x + tile_world_size;
+		const real_t cell_max_z = cell_min_z + tile_world_size;
+		if (cell_index == 0) {
+			min_x = cell_min_x;
+			min_z = cell_min_z;
+			max_x = cell_max_x;
+			max_z = cell_max_z;
+		} else {
+			min_x = MIN(min_x, cell_min_x);
+			min_z = MIN(min_z, cell_min_z);
+			max_x = MAX(max_x, cell_max_x);
+			max_z = MAX(max_z, cell_max_z);
+		}
+
+		const PackedFloat32Array heights = simple_terrain_data->get_tile_height_data(cell);
+		for (int i = 0; i < heights.size(); i++) {
+			if (!has_height) {
+				min_height = heights[i];
+				max_height = heights[i];
+				has_height = true;
+			} else {
+				min_height = MIN(min_height, (real_t)heights[i]);
+				max_height = MAX(max_height, (real_t)heights[i]);
+			}
 		}
 	}
-
-	const real_t size = (real_t)simple_terrain_data->get_grid_size() * simple_terrain_data->get_cell_size();
-	return AABB(Vector3(-size * 0.5, min_height, -size * 0.5), Vector3(size, MAX((real_t)0.01, max_height - min_height), size));
+	return AABB(Vector3(min_x, min_height, min_z), Vector3(max_x - min_x, MAX((real_t)0.01, max_height - min_height), max_z - min_z));
 }
-
 Ref<TriangleMesh> SimpleTerrain3D::generate_triangle_mesh() const {
 	Vector<Vector3> faces;
 	for (const TerrainChunk &chunk : chunks) {
