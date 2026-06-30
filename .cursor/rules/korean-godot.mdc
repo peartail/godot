@@ -1,0 +1,39 @@
+---
+description: Godot 엔진 포크 프로젝트의 기본 컨텍스트와 한글 응답 규칙
+alwaysApply: true
+---
+
+# 응답 언어
+
+- **모든 설명·요약·답변은 한글로 작성**한다.
+- 코드, 식별자, 로그는 영문 원문을 유지하고 설명만 한글로 단다.
+- 전문 용어는 한글(영문) 형태로 병기한다. 예: 노드(Node), 변형 타입(Variant).
+
+# 프로젝트 개요
+
+오픈소스 게임 엔진 **Godot Engine**의 C++ 코드베이스 포크다. 빌드 시스템은 SCons.
+
+핵심 디렉터리:
+- `core/` : Object, Variant, String 등 핵심 시스템
+- `scene/` : 노드·장면 시스템
+- `servers/` : 렌더링·물리·오디오 서버
+- `editor/` : Godot 에디터
+- `drivers/` : 그래픽 드라이버 (Vulkan, Metal, GLES3)
+- `platform/` : 플랫폼별 구현
+- `modules/` : 확장 모듈 (커스텀 모듈 포함, `terrain-modules` 규칙 참고)
+- `addons/` : GDScript 에디터 애드온
+
+# 빌드 (Windows / PowerShell)
+
+```powershell
+scons platform=windows target=editor dev_build=yes module_mono_enabled=yes -j4
+```
+
+- 특정 모듈 비활성화: `module_<이름>_enabled=no`
+- ClassDB 메서드/프로퍼티 변경 후 Mono glue 재생성이 필요할 수 있다.
+
+# 작업 원칙
+
+- 변경은 기존 Godot 코딩 컨벤션을 따른다 (`cpp-style` 규칙 참고).
+- 새 클래스는 ClassDB 등록과 `doc_classes/*.xml` 문서를 함께 갱신한다.
+- 불확실한 정보는 추측하지 말고 명확히 표시한다.
