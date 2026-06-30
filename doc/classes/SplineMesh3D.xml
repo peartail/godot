@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="SplineMesh3D" inherits="MeshInstance3D" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		Deforms a source [Mesh] along a [Path3D].
+	</brief_description>
+	<description>
+		SplineMesh3D generates an internal mesh by bending [member source_mesh] along the [Curve3D] of [member path_node]. If [member path_node] is empty, the parent node is used when it is a [Path3D].
+		The source mesh is interpreted using [member forward_axis] as its length axis and [member up_axis] as its local up direction. The generated mesh uses parallel transport frames by default to minimize unwanted twisting, then optionally applies [Curve3D] tilt. [member frame_mode] can be changed to use the [Curve3D]'s baked up vectors instead.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="rebuild">
+			<return type="void" />
+			<description>
+				Regenerates the internal mesh from [member source_mesh] and the current [Path3D] curve.
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="cubic_interp" type="bool" setter="set_cubic_interpolation" getter="get_cubic_interpolation" default="true">
+			If [code]true[/code], curve positions are sampled with cubic interpolation.
+		</member>
+		<member name="forward_axis" type="int" setter="set_forward_axis" getter="get_forward_axis" enum="SplineMesh3D.Axis" default="2">
+			The source mesh axis treated as the length direction to map onto the path.
+		</member>
+		<member name="frame_interval" type="float" setter="set_frame_interval" getter="get_frame_interval" default="0.25">
+			Distance in meters between cached curve frames used by [constant FRAME_PARALLEL_TRANSPORT]. Smaller values follow sharp changes more closely.
+		</member>
+		<member name="frame_mode" type="int" setter="set_frame_mode" getter="get_frame_mode" enum="SplineMesh3D.FrameMode" default="0">
+			Controls how orientation frames are generated along the curve.
+		</member>
+		<member name="path_node" type="NodePath" setter="set_path_node" getter="get_path_node" default="NodePath(&quot;&quot;)">
+			Path to the [Path3D] whose [Curve3D] deforms the mesh. If empty, the parent node is used when it is a [Path3D].
+		</member>
+		<member name="source_mesh" type="Mesh" setter="set_source_mesh" getter="get_source_mesh">
+			The mesh to deform along the path. The generated mesh is assigned internally to the inherited [member MeshInstance3D.mesh] property.
+		</member>
+		<member name="stretch_to_fit" type="bool" setter="set_stretch_to_fit" getter="is_stretch_to_fit_enabled" default="true">
+			If [code]true[/code], the source mesh length is stretched to the full curve length. If [code]false[/code], source mesh units map directly to path meters and are clamped to the path length.
+		</member>
+		<member name="tilt_enabled" type="bool" setter="set_tilt_enabled" getter="is_tilt_enabled" default="true">
+			If [code]true[/code], applies the [Curve3D] tilt around the path tangent.
+		</member>
+		<member name="up_axis" type="int" setter="set_up_axis" getter="get_up_axis" enum="SplineMesh3D.Axis" default="1">
+			The source mesh axis treated as local up. Must be different from [member forward_axis].
+		</member>
+	</members>
+	<constants>
+		<constant name="AXIS_X" value="0" enum="Axis">
+			The X axis.
+		</constant>
+		<constant name="AXIS_Y" value="1" enum="Axis">
+			The Y axis.
+		</constant>
+		<constant name="AXIS_Z" value="2" enum="Axis">
+			The Z axis.
+		</constant>
+		<constant name="FRAME_PARALLEL_TRANSPORT" value="0" enum="FrameMode">
+			Builds orientation frames by transporting the previous frame along the curve with minimal twist.
+		</constant>
+		<constant name="FRAME_CURVE_UP_VECTOR" value="1" enum="FrameMode">
+			Uses the [Curve3D]'s baked up vectors. This requires [member Curve3D.up_vector_enabled] to be [code]true[/code].
+		</constant>
+	</constants>
+</class>
