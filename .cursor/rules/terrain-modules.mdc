@@ -1,0 +1,26 @@
+---
+description: 커스텀 터레인 모듈(simple_terrain, open_world_terrain) 작업 지침
+globs: modules/{simple_terrain,open_world_terrain}/**
+alwaysApply: false
+---
+
+# 커스텀 터레인 모듈
+
+이 포크의 자체 모듈이다. 상세 설계는 `codex_docs/`의 터레인 문서를 참고한다.
+
+- `modules/simple_terrain/` : 높이필드 기반 심플 3D 터레인
+  - `SimpleTerrainData`(Resource), `SimpleTerrain3D`(MeshInstance3D 기반), `SimpleTerrainEditorPlugin`
+  - 높이 배열 인덱스 순서: `z * (grid_size + 1) + x`
+- `modules/open_world_terrain/` : 대형 지형 실험 모듈 (GPU displacement, clipmap 목표). simple_terrain과 독립 유지.
+
+# 등록 레벨
+
+- 런타임 클래스: `MODULE_INITIALIZATION_LEVEL_SCENE`
+- 에디터 플러그인: `MODULE_INITIALIZATION_LEVEL_EDITOR` (에디터 빌드에서만 등록)
+
+# 변경 시 체크리스트
+
+- `register_types.cpp`에 클래스 등록을 갱신한다.
+- `config.py`의 `get_doc_classes()`와 `doc_classes/*.xml`을 동기화한다.
+- 클래스 rename 시 Mono wrapper(`*.cs`)의 stale 파일을 제거한다.
+- 모듈 단독 빌드 토글: `module_simple_terrain_enabled` / `module_open_world_terrain_enabled`.

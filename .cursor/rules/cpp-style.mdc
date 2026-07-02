@@ -1,0 +1,32 @@
+---
+description: Godot 엔진 C++ 코딩 컨벤션
+globs: **/*.{cpp,h,hpp,cc,inc}
+alwaysApply: false
+---
+
+# Godot C++ 컨벤션
+
+- 들여쓰기는 **탭**을 사용한다. 포맷은 루트 `.clang-format`(LLVM 기반)을 따른다.
+- 네이밍:
+  - 클래스: `PascalCase`
+  - 메서드·변수: `snake_case`
+  - 상수·매크로: `UPPER_SNAKE_CASE`
+  - private 멤버는 접두사 없이 `snake_case`
+- 헤더 가드는 `#pragma once` 대신 프로젝트 관례를 따른다(주변 파일 확인).
+- 원시 포인터보다 `Ref<T>`, `Vector<T>`, `HashMap` 등 Godot 자료형을 우선 사용한다.
+- 로깅/검증은 `ERR_FAIL_COND`, `ERR_PRINT`, `WARN_PRINT` 매크로를 사용한다.
+
+# ClassDB 등록
+
+```cpp
+// ❌ 등록 누락
+void MyNode::some_method() { ... }
+
+// ✅ _bind_methods에서 노출
+void MyNode::_bind_methods() {
+    ClassDB::bind_method(D_METHOD("some_method"), &MyNode::some_method);
+}
+```
+
+- 공개 API를 추가/변경하면 `doc_classes/*.xml`도 함께 수정한다.
+- 커밋 전 가능하면 `clang-format`으로 포맷을 맞춘다.
