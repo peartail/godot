@@ -122,8 +122,10 @@ void MeshInstance3D::set_mesh(const Ref<Mesh> &p_mesh) {
 		return;
 	}
 
+	const Callable mesh_changed = callable_mp(this, &MeshInstance3D::_mesh_changed);
+
 	if (mesh.is_valid()) {
-		mesh->disconnect_changed(callable_mp(this, &MeshInstance3D::_mesh_changed));
+		mesh->disconnect_changed(mesh_changed);
 	}
 
 	mesh = p_mesh;
@@ -132,7 +134,9 @@ void MeshInstance3D::set_mesh(const Ref<Mesh> &p_mesh) {
 		// If mesh is a PrimitiveMesh, calling get_rid on it can trigger a changed callback
 		// so do this before connecting _mesh_changed.
 		set_base(mesh->get_rid());
-		mesh->connect_changed(callable_mp(this, &MeshInstance3D::_mesh_changed));
+		if (mesh_changed.is_valid()) {
+			mesh->connect_changed(mesh_changed);
+		}
 		_mesh_changed();
 	} else {
 		blend_shape_tracks.clear();

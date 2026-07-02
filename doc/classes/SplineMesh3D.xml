@@ -4,7 +4,7 @@
 		Deforms a source [Mesh] along a [Path3D].
 	</brief_description>
 	<description>
-		SplineMesh3D generates an internal mesh by bending [member source_mesh] along the [Curve3D] of [member path_node]. If [member path_node] is empty, the parent node is used when it is a [Path3D].
+		SplineMesh3D generates an internal mesh by bending [member source_mesh] along a [Path3D] [Curve3D]. If [member path_node] is empty, the first child [Path3D] is used, falling back to the parent node when it is a [Path3D]. In the editor, a new SplineMesh3D creates a child [Path3D] with a short default curve when no path is available.
 		The source mesh is interpreted using [member forward_axis] as its length axis and [member up_axis] as its local up direction. The generated mesh uses parallel transport frames by default to minimize unwanted twisting, then optionally applies [Curve3D] tilt. [member frame_mode] can be changed to use the [Curve3D]'s baked up vectors instead.
 	</description>
 	<tutorials>
@@ -31,7 +31,7 @@
 			Controls how orientation frames are generated along the curve.
 		</member>
 		<member name="path_node" type="NodePath" setter="set_path_node" getter="get_path_node" default="NodePath(&quot;&quot;)">
-			Path to the [Path3D] whose [Curve3D] deforms the mesh. If empty, the parent node is used when it is a [Path3D].
+			Path to the [Path3D] whose [Curve3D] deforms the mesh. If empty, the first child [Path3D] is used, falling back to the parent node when it is a [Path3D].
 		</member>
 		<member name="source_mesh" type="Mesh" setter="set_source_mesh" getter="get_source_mesh">
 			The mesh to deform along the path. The generated mesh is assigned internally to the inherited [member MeshInstance3D.mesh] property.
@@ -44,6 +44,21 @@
 		</member>
 		<member name="up_axis" type="int" setter="set_up_axis" getter="get_up_axis" enum="SplineMesh3D.Axis" default="1">
 			The source mesh axis treated as local up. Must be different from [member forward_axis].
+		</member>
+		<member name="uv_mode" type="int" setter="set_uv_mode" getter="get_uv_mode" enum="SplineMesh3D.UVMode" default="0">
+			Controls how generated mesh UV coordinates are handled.
+		</member>
+		<member name="uv_tile_length" type="float" setter="set_uv_tile_length" getter="get_uv_tile_length" default="1.0">
+			Distance in meters represented by one U coordinate unit when [member uv_mode] is [constant UV_PATH_DISTANCE]. Smaller values repeat the texture more frequently along the path.
+		</member>
+		<member name="uv_v_mode" type="int" setter="set_uv_v_mode" getter="get_uv_v_mode" enum="SplineMesh3D.UVVMode" default="0">
+			Controls how the generated V coordinate is handled. Width-based modes use the source mesh width after applying [member forward_axis] and [member up_axis].
+		</member>
+		<member name="uv_v_tile_width" type="float" setter="set_uv_v_tile_width" getter="get_uv_v_tile_width" default="1.0">
+			Distance in meters represented by one V coordinate unit when [member uv_v_mode] is [constant UV_V_DISTANCE]. Smaller values repeat the texture more frequently across the spline width.
+		</member>
+		<member name="uv_debug_enabled" type="bool" setter="set_uv_debug_enabled" getter="is_uv_debug_enabled" default="false">
+			If [code]true[/code], displays generated UV coordinates as vertex colors using a temporary debug material override. The previous [member GeometryInstance3D.material_override] is restored when this is disabled. Red shows U, green shows V, and blue alternates per UV tile.
 		</member>
 	</members>
 	<constants>
@@ -61,6 +76,21 @@
 		</constant>
 		<constant name="FRAME_CURVE_UP_VECTOR" value="1" enum="FrameMode">
 			Uses the [Curve3D]'s baked up vectors. This requires [member Curve3D.up_vector_enabled] to be [code]true[/code].
+		</constant>
+		<constant name="UV_KEEP_SOURCE" value="0" enum="UVMode">
+			Keeps the source mesh UV coordinates.
+		</constant>
+		<constant name="UV_PATH_DISTANCE" value="1" enum="UVMode">
+			Recomputes the U coordinate from the vertex distance along the path while preserving the source V coordinate when available.
+		</constant>
+		<constant name="UV_V_KEEP_SOURCE" value="0" enum="UVVMode">
+			Keeps the source mesh V coordinate.
+		</constant>
+		<constant name="UV_V_NORMALIZED" value="1" enum="UVVMode">
+			Recomputes the V coordinate by normalizing the source mesh width to the 0.0 to 1.0 range.
+		</constant>
+		<constant name="UV_V_DISTANCE" value="2" enum="UVVMode">
+			Recomputes the V coordinate from the vertex distance across the source mesh width in meters.
 		</constant>
 	</constants>
 </class>

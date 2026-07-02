@@ -28,4 +28,4 @@ python modules\mono\build_scripts\build_assemblies.py --godot-output-dir bin --g
 ```
 
 - In a separate game project that uses this custom engine, add the same commands to that project's `AGENTS.md` so agents know they can query engine docs from the terminal.
-- See `codex_docs/agent_docs_cli.md` for the full command reference.
+- See `engine_docs/agent_tools/agent_docs_cli.md` for the full command reference.
