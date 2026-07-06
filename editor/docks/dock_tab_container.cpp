@@ -255,6 +255,11 @@ Rect2 DockTabContainer::get_default_floating_dock_rect(EditorDock *p_dock) {
 	return ret;
 }
 
+Size2 DockTabContainer::get_desired_size() const {
+	// Hidden dock tabs can contain very tall scrollable content; only report minimum size.
+	return get_minimum_size();
+}
+
 DockTabContainer::DockTabContainer(EditorDock::DockSlot p_slot) {
 	ERR_FAIL_INDEX(p_slot, EditorDock::DOCK_SLOT_MAX);
 	dock_slot = p_slot;
@@ -286,7 +291,7 @@ SideDockTabContainer::SideDockTabContainer(EditorDock::DockSlot p_slot, const Re
 	grid_rect = p_slot_rect;
 	set_custom_minimum_size(Size2(170 * EDSCALE, 0));
 	set_v_size_flags(Control::SIZE_EXPAND_FILL);
-	set_use_hidden_tabs_for_min_size(true);
+	set_use_hidden_tabs_for_min_size(false);
 }
 
 Rect2 BottomSideDockTabContainer::get_floating_dock_rect(EditorDock *p_dock) {
@@ -304,5 +309,5 @@ BottomSideDockTabContainer::BottomSideDockTabContainer(EditorDock::DockSlot p_sl
 
 	set_custom_minimum_size(Size2(0, 170 * EDSCALE));
 	set_h_size_flags(Control::SIZE_EXPAND_FILL);
-	set_use_hidden_tabs_for_min_size(true);
+	set_use_hidden_tabs_for_min_size(false);
 }

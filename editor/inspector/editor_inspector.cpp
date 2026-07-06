@@ -3974,6 +3974,16 @@ void EditorInspector::initialize_property_theme(EditorProperty::ThemeCache &p_ca
 	}
 }
 
+Size2 EditorInspector::get_desired_size() const {
+	if (is_main_editor_inspector()) {
+		// The main inspector lives in a fixed dock slot and must scroll internally.
+		// Do not report the full property list height or grow_to_desired_size() will
+		// expand the dock beyond the window and disable scrolling.
+		return ScrollContainer::get_minimum_size();
+	}
+	return ScrollContainer::get_desired_size();
+}
+
 EditorInspector *EditorInspector::create_default_inspector(LineEdit *p_filter_line_edit) {
 	EditorInspector *inspector = memnew(EditorInspector);
 	inspector->set_autoclear(true);
@@ -3985,6 +3995,8 @@ EditorInspector *EditorInspector::create_default_inspector(LineEdit *p_filter_li
 	inspector->set_property_name_style(EditorPropertyNameProcessor::get_default_inspector_style());
 	inspector->set_use_folding(!bool(EDITOR_GET("interface/inspector/disable_folding")));
 	inspector->set_scroll_hint_mode(ScrollContainer::SCROLL_HINT_MODE_TOP_AND_LEFT);
+	inspector->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	inspector->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 
 	if (p_filter_line_edit != nullptr) {
 		inspector->register_text_enter(p_filter_line_edit);
@@ -5192,6 +5204,19 @@ void EditorInspector::update_tree() {
 
 	// The minimum size of the properties could have changed.
 	update_minimum_size();
+
+	if (is_main_editor_inspector()) {
+		queue_sort();
+		Node *node = get_parent();
+		while (node) {
+			InspectorDock *dock = Object::cast_to<InspectorDock>(node);
+			if (dock) {
+				dock->queue_layout_refresh();
+				break;
+			}
+			node = node->get_parent();
+		}
+	}
 }
 
 void EditorInspector::update_property(const String &p_prop) {

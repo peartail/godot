@@ -3531,6 +3531,29 @@ void EditorPropertyResource::_open_editor_pressed() {
 	}
 }
 
+void EditorPropertyResource::_update_sub_inspector_scroll() {
+	if (!sub_inspector) {
+		return;
+	}
+
+	EditorInspector *root = sub_inspector->get_root_inspector();
+	if (!root) {
+		return;
+	}
+
+	int root_height = root->get_size().height;
+	if (root_height <= 0) {
+		// Root may not be laid out yet; use a fallback until resized.
+		root_height = int(400 * EDSCALE);
+	}
+
+	// Cap sub-inspector height so long resource lists (e.g. ShaderMaterial parameters)
+	// scroll internally instead of expanding the entire inspector layout.
+	// Use -1 on X to keep width unconstrained (0 would collapse the control).
+	const int max_height = MAX(int(150 * EDSCALE), root_height / 2);
+	sub_inspector->set_custom_maximum_size(Size2(-1, max_height));
+}
+
 void EditorPropertyResource::_update_preferred_shader() {
 	Node *parent = get_parent();
 	EditorProperty *parent_property = nullptr;
@@ -3666,13 +3689,17 @@ void EditorPropertyResource::update_property() {
 		if (res.is_valid() && get_edited_object()->editor_is_section_unfolded(get_edited_property())) {
 			if (!sub_inspector) {
 				sub_inspector = memnew(EditorInspector);
-				sub_inspector->set_vertical_scroll_mode(ScrollContainer::SCROLL_MODE_DISABLED);
+				sub_inspector->set_vertical_scroll_mode(ScrollContainer::SCROLL_MODE_MAXIMIZE_FIRST);
 				sub_inspector->set_use_doc_hints(true);
 
 				EditorInspector *parent_inspector = get_parent_inspector();
 				if (parent_inspector) {
-					sub_inspector->set_root_inspector(parent_inspector->get_root_inspector());
+					EditorInspector *root_inspector = parent_inspector->get_root_inspector();
+					sub_inspector->set_root_inspector(root_inspector);
 					sub_inspector->register_text_enter(parent_inspector->search_box);
+					if (root_inspector) {
+						root_inspector->connect(SceneStringName(resized), callable_mp(this, &EditorPropertyResource::_update_sub_inspector_scroll));
+					}
 				}
 
 				sub_inspector->set_property_name_style(InspectorDock::get_singleton()->get_property_name_style());
@@ -3691,6 +3718,7 @@ void EditorPropertyResource::update_property() {
 
 				add_child(sub_inspector);
 				set_bottom_editor(sub_inspector);
+				callable_mp(this, &EditorPropertyResource::_update_sub_inspector_scroll).call_deferred();
 
 				resource_picker->set_toggle_pressed(true);
 
@@ -3716,7 +3744,15 @@ void EditorPropertyResource::update_property() {
 				_update_property_bg();
 			}
 
+			_update_sub_inspector_scroll();
+
 		} else if (sub_inspector) {
+			EditorInspector *root = sub_inspector->get_root_inspector();
+			Callable update_scroll_callable = callable_mp(this, &EditorPropertyResource::_update_sub_inspector_scroll);
+			if (root && root->is_connected(SceneStringName(resized), update_scroll_callable)) {
+				root->disconnect(SceneStringName(resized), update_scroll_callable);
+			}
+
 			set_bottom_editor(nullptr);
 			memdelete(sub_inspector);
 			sub_inspector = nullptr;
@@ -3799,6 +3835,14 @@ bool EditorPropertyResource::is_colored(ColorationMode p_mode) {
 void EditorPropertyResource::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_EXIT_TREE: {
+			if (sub_inspector) {
+				EditorInspector *root = sub_inspector->get_root_inspector();
+				Callable update_scroll_callable = callable_mp(this, &EditorPropertyResource::_update_sub_inspector_scroll);
+				if (root && root->is_connected(SceneStringName(resized), update_scroll_callable)) {
+					root->disconnect(SceneStringName(resized), update_scroll_callable);
+				}
+			}
+
 			const EditorInspector *ei = get_parent_inspector();
 			const EditorInspector *main_ei = InspectorDock::get_inspector_singleton();
 			if (ei && main_ei && ei != main_ei && !main_ei->is_ancestor_of(ei)) {

@@ -36,6 +36,7 @@
 #include "editor/debugger/editor_debugger_inspector.h"
 #include "editor/debugger/editor_debugger_node.h"
 #include "editor/docks/filesystem_dock.h"
+#include "editor/docks/dock_tab_container.h"
 #include "editor/editor_main_screen.h"
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
@@ -47,6 +48,7 @@
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
 #include "scene/gui/box_container.h"
+#include "scene/gui/margin_container.h"
 
 void InspectorDock::_prepare_menu() {
 	PopupMenu *menu = object_menu->get_popup();
@@ -443,6 +445,33 @@ Container *InspectorDock::get_addon_area() {
 	return this;
 }
 
+void InspectorDock::queue_layout_refresh() {
+	if (!is_inside_tree()) {
+		return;
+	}
+	set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
+	update_minimum_size();
+	update_desired_size();
+
+	if (main_vbox) {
+		main_vbox->update_minimum_size();
+	}
+	if (inspector_margin) {
+		inspector_margin->update_minimum_size();
+	}
+	if (inspector) {
+		inspector->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
+		inspector->update_minimum_size();
+		inspector->update_desired_size();
+	}
+
+	if (DockTabContainer *tab = get_parent_container()) {
+		tab->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
+		tab->update_minimum_size();
+		tab->update_desired_size();
+	}
+}
+
 void InspectorDock::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_TRANSLATION_CHANGED: {
@@ -711,6 +740,9 @@ InspectorDock::InspectorDock(EditorData &p_editor_data) {
 	set_default_slot(EditorDock::DOCK_SLOT_RIGHT_UL);
 
 	VBoxContainer *main_vb = memnew(VBoxContainer);
+	main_vbox = main_vb;
+	main_vb->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	main_vb->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	add_child(main_vb);
 
 	editor_data = &p_editor_data;
@@ -856,9 +888,11 @@ InspectorDock::InspectorDock(EditorData &p_editor_data) {
 	load_resource_dialog->connect("file_selected", callable_mp(this, &InspectorDock::_resource_file_selected));
 
 	MarginContainer *mc = memnew(MarginContainer);
+	inspector_margin = mc;
 	main_vb->add_child(mc);
 	mc->set_theme_type_variation("NoBorderHorizontalBottom");
 	mc->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	mc->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 
 	inspector = EditorInspector::create_default_inspector(search);
 	mc->add_child(inspector);

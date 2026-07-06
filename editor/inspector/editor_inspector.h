@@ -961,5 +961,7 @@ public:
 
 	void set_restrict_to_basic_settings(bool p_restrict);
 
+	virtual Size2 get_desired_size() const override;
+
 	EditorInspector();
 };
