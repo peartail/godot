@@ -101,6 +101,8 @@ public:
 	virtual bool can_switch_dock() const;
 	virtual Rect2 get_floating_dock_rect(EditorDock *p_dock) { return DockTabContainer::get_default_floating_dock_rect(p_dock); }
 
+	virtual Size2 get_desired_size() const override;
+
 	// There is no equivalent load method, because loading needs to handle floating and closing.
 	void save_docks_to_config(Ref<ConfigFile> p_layout, const String &p_section);
 	virtual void load_selected_tab(int p_idx);

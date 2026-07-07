@@ -103,6 +103,9 @@ class InspectorDock : public EditorDock {
 	Tree *unique_resources_list_tree = nullptr;
 	LocalVector<StringName> properties_to_unique;
 
+	VBoxContainer *main_vbox = nullptr;
+	MarginContainer *inspector_margin = nullptr;
+
 	EditorPropertyNameProcessor::Style property_name_style;
 	List<Pair<StringName, Variant>> stored_properties;
 
@@ -156,6 +159,7 @@ public:
 	void update(Object *p_object);
 	Container *get_addon_area();
 	EditorInspector *get_inspector() { return inspector; }
+	void queue_layout_refresh();
 
 	EditorPropertyNameProcessor::Style get_property_name_style() const;
 

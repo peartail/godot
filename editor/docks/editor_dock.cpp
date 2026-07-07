@@ -168,6 +168,11 @@ void EditorDock::close() {
 	}
 }
 
+Size2 EditorDock::get_desired_size() const {
+	// Docks contain scrollable inspectors; don't expand the editor layout to fit all content.
+	return get_minimum_size();
+}
+
 void EditorDock::set_title(const String &p_title) {
 	if (title == p_title) {
 		return;

@@ -763,6 +763,7 @@ class EditorPropertyResource : public EditorProperty {
 
 	void _open_editor_pressed();
 	void _update_preferred_shader();
+	void _update_sub_inspector_scroll();
 	bool _should_stop_editing() const;
 
 protected:
