@@ -32,6 +32,7 @@
 
 #include "runtime_diagnostics_panel.h"
 
+#include "core/input/shortcut.h"
 #include "core/object/callable_mp.h"
 
 bool ObjectDBProfilerDebuggerPlugin::has_capture(const String &p_capture) const {

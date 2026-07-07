@@ -10,6 +10,7 @@
 
 #include "core/io/file_access.h"
 #include "core/io/json.h"
+#include "core/object/callable_mp.h"
 #include "editor/gui/editor_file_dialog.h"
 #include "main/performance.h"
 #include "scene/gui/button.h"

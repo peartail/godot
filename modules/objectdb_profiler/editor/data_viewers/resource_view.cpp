@@ -8,6 +8,8 @@
 
 #include "resource_view.h"
 
+#include "core/object/callable_mp.h"
+
 #include "editor/editor_node.h"
 
 String SnapshotResourceView::_resource_key(SnapshotDataObject *p_obj) const {

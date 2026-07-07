@@ -35,6 +35,7 @@
 
 class ObjectDBProfilerPanel;
 class ObjectDBProfilerDebuggerPlugin;
+class RuntimeDiagnosticsPanel;
 
 // First, ObjectDBProfilerPlugin is loaded. Then it loads ObjectDBProfilerDebuggerPlugin.
 class ObjectDBProfilerPlugin : public EditorPlugin {
@@ -42,6 +43,7 @@ class ObjectDBProfilerPlugin : public EditorPlugin {
 
 protected:
 	Ref<ObjectDBProfilerDebuggerPlugin> debugger;
+	RuntimeDiagnosticsPanel *runtime_diagnostics = nullptr;
 	void _notification(int p_what);
 
 public:

@@ -49,7 +49,13 @@ void EditorDebuggerSession::_started() {
 void EditorDebuggerSession::_stopped() {
 	emit_signal(SNAME("stopped"));
 }
+void EditorDebuggerSession::_performance_profile_frame(const PackedFloat32Array &p_values) {
+	emit_signal(SNAME("performance_profile_frame"), p_values);
+}
 
+void EditorDebuggerSession::_performance_profile_names(const Array &p_names, const PackedInt32Array &p_types) {
+	emit_signal(SNAME("performance_profile_names"), p_names, p_types);
+}
 void EditorDebuggerSession::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("send_message", "message", "data"), &EditorDebuggerSession::send_message, DEFVAL(Array()));
 	ClassDB::bind_method(D_METHOD("toggle_profiler", "profiler", "enable", "data"), &EditorDebuggerSession::toggle_profiler, DEFVAL(Array()));
