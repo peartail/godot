@@ -48,6 +48,8 @@ private:
 	void _breaked(bool p_really_did, bool p_can_debug, const String &p_message, bool p_has_stackdump);
 	void _started();
 	void _stopped();
+	void _performance_profile_frame(const PackedFloat32Array &p_values);
+	void _performance_profile_names(const Array &p_names, const PackedInt32Array &p_types);
 
 protected:
 	static void _bind_methods();

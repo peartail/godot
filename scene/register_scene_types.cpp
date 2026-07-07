@@ -240,6 +240,7 @@
 #include "scene/3d/fog_volume.h"
 #include "scene/3d/gpu_particles_3d.h"
 #include "scene/3d/gpu_particles_collision_3d.h"
+#include "scene/3d/humanoid_control_rig_3d.h"
 #include "scene/3d/ik_modifier_3d.h"
 #include "scene/3d/importer_mesh_instance_3d.h"
 #include "scene/3d/iterate_ik_3d.h"
@@ -675,6 +676,7 @@ void register_scene_types() {
 	GDREGISTER_CLASS(GPUParticlesAttractorVectorField3D);
 	GDREGISTER_CLASS(CPUParticles3D);
 	GDREGISTER_CLASS(Marker3D);
+	GDREGISTER_CLASS(HumanoidControlRig3D);
 	GDREGISTER_CLASS(RootMotionView);
 	GDREGISTER_VIRTUAL_CLASS(SkeletonModifier3D);
 	GDREGISTER_CLASS(ModifierBoneTarget3D);

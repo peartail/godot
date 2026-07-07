@@ -35,6 +35,7 @@
 #include "data_viewers/node_view.h"
 #include "data_viewers/object_view.h"
 #include "data_viewers/refcounted_view.h"
+#include "data_viewers/resource_view.h"
 #include "data_viewers/summary_view.h"
 
 #include "core/config/project_settings.h"
@@ -72,8 +73,8 @@ void ObjectDBProfilerPanel::_request_object_snapshot() {
 	}
 }
 
-void ObjectDBProfilerPanel::_on_debug_breaked(bool p_reallydid, bool p_can_debug, const String &p_reason, bool p_has_stackdump) {
-	if (p_reallydid && awaiting_debug_break) {
+void ObjectDBProfilerPanel::debugger_breaked(bool p_can_debug) {
+	if (awaiting_debug_break) {
 		awaiting_debug_break = false;
 		_begin_object_snapshot();
 	}
@@ -148,7 +149,7 @@ void ObjectDBProfilerPanel::receive_snapshot(int request_id) {
 		EditorDebuggerNode::get_singleton()->debug_continue();
 	}
 	take_snapshot->set_disabled(false);
-	take_snapshot->set_text("Take ObjectDB Snapshot");
+	take_snapshot->set_text(TTRC("Take Runtime Memory Snapshot"));
 }
 
 Ref<DirAccess> ObjectDBProfilerPanel::_get_and_create_snapshot_storage_dir() {
@@ -262,7 +263,7 @@ void ObjectDBProfilerPanel::clear_snapshot(bool p_update_view_tabs) {
 }
 
 void ObjectDBProfilerPanel::set_enabled(bool p_enabled) {
-	take_snapshot->set_text(TTRC("Take ObjectDB Snapshot"));
+	take_snapshot->set_text(TTRC("Take Runtime Memory Snapshot"));
 	take_snapshot->set_disabled(!p_enabled);
 }
 
@@ -347,11 +348,9 @@ void ObjectDBProfilerPanel::_edit_snapshot_name() {
 }
 
 ObjectDBProfilerPanel::ObjectDBProfilerPanel() {
-	set_name(TTRC("ObjectDB Profiler"));
+	set_name(TTRC("Memory Snapshots"));
 
 	snapshot_cache = LRUCache<String, Ref<GameStateSnapshot>>(SNAPSHOT_CACHE_MAX_SIZE);
-
-	EditorDebuggerNode::get_singleton()->get_current_debugger()->connect("breaked", callable_mp(this, &ObjectDBProfilerPanel::_on_debug_breaked));
 
 	HSplitContainer *root_container = memnew(HSplitContainer);
 	root_container->set_anchors_preset(Control::LayoutPreset::PRESET_FULL_RECT);
@@ -363,7 +362,7 @@ ObjectDBProfilerPanel::ObjectDBProfilerPanel() {
 	VBoxContainer *snapshot_column = memnew(VBoxContainer);
 	root_container->add_child(snapshot_column);
 
-	take_snapshot = memnew(Button(TTRC("Take ObjectDB Snapshot")));
+	take_snapshot = memnew(Button(TTRC("Take Runtime Memory Snapshot")));
 	snapshot_column->add_child(take_snapshot);
 	take_snapshot->connect(SceneStringName(pressed), callable_mp(this, &ObjectDBProfilerPanel::_request_object_snapshot));
 

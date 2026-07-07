@@ -75,7 +75,6 @@ protected:
 
 	void _request_object_snapshot();
 	void _begin_object_snapshot();
-	void _on_debug_breaked(bool p_reallydid, bool p_can_debug, const String &p_reason, bool p_has_stackdump);
 	void _show_selected_snapshot();
 	void _on_snapshot_deselected();
 	Ref<DirAccess> _get_and_create_snapshot_storage_dir();
@@ -97,6 +96,7 @@ public:
 	void clear_snapshot(bool p_update_view_tabs = true);
 	Ref<GameStateSnapshot> get_snapshot(const String &p_snapshot_file_name);
 	void set_enabled(bool p_enabled);
+	void debugger_breaked(bool p_can_debug);
 	void add_view(SnapshotView *p_to_add);
 
 	bool handle_debug_message(const String &p_message, const Array &p_data, int p_index);

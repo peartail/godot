@@ -599,6 +599,12 @@ void ScriptEditorDebugger::_msg_performance_profile_frame(uint64_t p_thread_id, 
 		frame_data.write[i] = p_data[i];
 	}
 	performance_profiler->add_profile_frame(frame_data);
+	PackedFloat32Array signal_frame_data;
+	signal_frame_data.resize(frame_data.size());
+	for (int i = 0; i < frame_data.size(); i++) {
+		signal_frame_data.set(i, frame_data[i]);
+	}
+	emit_signal(SNAME("performance_profile_frame"), signal_frame_data);
 }
 
 void ScriptEditorDebugger::_msg_visual_hardware_info(uint64_t p_thread_id, const Array &p_data) {
@@ -954,6 +960,11 @@ void ScriptEditorDebugger::_msg_performance_profile_names(uint64_t p_thread_id, 
 	}
 
 	performance_profiler->update_monitors(monitors, types);
+	Array signal_monitor_names;
+	for (const StringName &monitor : monitors) {
+		signal_monitor_names.push_back(monitor);
+	}
+	emit_signal(SNAME("performance_profile_names"), signal_monitor_names, types);
 }
 
 void ScriptEditorDebugger::_msg_filesystem_update_file(uint64_t p_thread_id, const Array &p_data) {
@@ -2073,6 +2084,8 @@ void ScriptEditorDebugger::_bind_methods() {
 	ADD_SIGNAL(MethodInfo("stack_frame_vars", PropertyInfo(Variant::INT, "num_vars")));
 	ADD_SIGNAL(MethodInfo("stack_frame_var", PropertyInfo(Variant::ARRAY, "data")));
 	ADD_SIGNAL(MethodInfo("debug_data", PropertyInfo(Variant::STRING, "msg"), PropertyInfo(Variant::ARRAY, "data")));
+	ADD_SIGNAL(MethodInfo("performance_profile_frame", PropertyInfo(Variant::PACKED_FLOAT32_ARRAY, "values")));
+	ADD_SIGNAL(MethodInfo("performance_profile_names", PropertyInfo(Variant::ARRAY, "names"), PropertyInfo(Variant::PACKED_INT32_ARRAY, "types")));
 	ADD_SIGNAL(MethodInfo("set_breakpoint", PropertyInfo("script"), PropertyInfo(Variant::INT, "line"), PropertyInfo(Variant::BOOL, "enabled")));
 	ADD_SIGNAL(MethodInfo("clear_breakpoints"));
 	ADD_SIGNAL(MethodInfo("errors_cleared"));

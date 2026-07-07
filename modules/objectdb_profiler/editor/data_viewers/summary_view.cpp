@@ -52,7 +52,7 @@ SnapshotSummaryView::SnapshotSummaryView() {
 	content_wrapper->add_child(content);
 	content->set_anchors_preset(LayoutPreset::PRESET_FULL_RECT);
 
-	title = memnew(Label(TTRC("ObjectDB Snapshot Summary")));
+	title = memnew(Label(TTRC("Runtime Memory Snapshot Summary")));
 	content->add_child(title);
 	title->set_horizontal_alignment(HorizontalAlignment::HORIZONTAL_ALIGNMENT_CENTER);
 	title->set_vertical_alignment(VerticalAlignment::VERTICAL_ALIGNMENT_CENTER);
@@ -64,7 +64,7 @@ SnapshotSummaryView::SnapshotSummaryView() {
 	content->add_child(explainer_text);
 	VBoxContainer *explainer_lines = memnew(VBoxContainer);
 	explainer_text->add_child(explainer_lines);
-	Label *l1 = memnew(Label(TTRC("Press 'Take ObjectDB Snapshot' to snapshot the ObjectDB.")));
+	Label *l1 = memnew(Label(TTRC("Press 'Take Runtime Memory Snapshot' to snapshot the running game.")));
 	Label *l2 = memnew(Label(TTRC("Memory in Godot is either owned natively by the engine or owned by the ObjectDB.")));
 	Label *l3 = memnew(Label(TTRC("ObjectDB Snapshots capture only memory owned by the ObjectDB.")));
 	l1->set_horizontal_alignment(HorizontalAlignment::HORIZONTAL_ALIGNMENT_CENTER);
@@ -170,6 +170,24 @@ void SnapshotSummaryView::_push_overview_blurb(const String &p_title, GameStateS
 	double bytes_to_mb = 0.000001;
 	if (p_snapshot->snapshot_context.has("mem_usage")) {
 		c += vformat(" [i]%s[/i] %s\n", TTR("Memory Used:"), String::num((double)((uint64_t)p_snapshot->snapshot_context["mem_usage"]) * bytes_to_mb, 3) + " MB");
+	}
+		if (p_snapshot->snapshot_context.has("current_scene")) {
+		c += vformat(" [i]%s[/i] %s\n", TTR("Current Scene:"), (String)p_snapshot->snapshot_context["current_scene"]);
+	}
+	if (p_snapshot->snapshot_context.has("performance")) {
+		Dictionary performance = p_snapshot->snapshot_context["performance"];
+		if (performance.has("memory/static")) {
+			c += vformat(" [i]%s[/i] %s\n", TTR("Performance Static Memory:"), String::num((double)performance["memory/static"] * bytes_to_mb, 3) + " MB");
+		}
+		if (performance.has("render/total_draw_calls_in_frame")) {
+			c += vformat(" [i]%s[/i] %d\n", TTR("Draw Calls:"), (int)performance["render/total_draw_calls_in_frame"]);
+		}
+		if (performance.has("render/texture_mem_used")) {
+			c += vformat(" [i]%s[/i] %s\n", TTR("Texture Memory:"), String::num((double)performance["render/texture_mem_used"] * bytes_to_mb, 3) + " MB");
+		}
+		if (performance.has("render/buffer_mem_used")) {
+			c += vformat(" [i]%s[/i] %s\n", TTR("Buffer Memory:"), String::num((double)performance["render/buffer_mem_used"] * bytes_to_mb, 3) + " MB");
+		}
 	}
 	if (p_snapshot->snapshot_context.has("mem_max_usage")) {
 		c += vformat(" [i]%s[/i] %s\n", TTR("Max Memory Used:"), String::num((double)((uint64_t)p_snapshot->snapshot_context["mem_max_usage"]) * bytes_to_mb, 3) + " MB");

@@ -1,5 +1,5 @@
 /**************************************************************************/
-/*  objectdb_profiler_plugin.h                                            */
+/*  humanoid_control_rig_3d.h                                             */
 /**************************************************************************/
 /*                         This file is part of:                          */
 /*                             GODOT ENGINE                               */
@@ -30,37 +30,64 @@
 
 #pragma once
 
-#include "editor/debugger/editor_debugger_plugin.h"
-#include "editor/plugins/editor_plugin.h"
+#include "scene/3d/node_3d.h"
 
-class ObjectDBProfilerPanel;
-class ObjectDBProfilerDebuggerPlugin;
+class Marker3D;
+class Skeleton3D;
 
-// First, ObjectDBProfilerPlugin is loaded. Then it loads ObjectDBProfilerDebuggerPlugin.
-class ObjectDBProfilerPlugin : public EditorPlugin {
-	GDCLASS(ObjectDBProfilerPlugin, EditorPlugin);
+class HumanoidControlRig3D : public Node3D {
+	GDCLASS(HumanoidControlRig3D, Node3D);
+
+	static constexpr const char *GENERATED_PREFIX = "ControlRig_";
+
+	bool auto_setup_on_ready = false;
+	bool create_hand_ik = true;
+	bool create_foot_ik = true;
+	bool create_head_look_at = true;
+	float control_distance_scale = 1.0f;
+	PackedStringArray missing_bones;
+
+	struct BoneChain {
+		StringName root;
+		StringName middle;
+		StringName end;
+		StringName target_control;
+		StringName pole_control;
+		Vector3 pole_offset;
+	};
+
+	Skeleton3D *_get_parent_skeleton() const;
+	int _find_bone(Skeleton3D *p_skeleton, const Vector<StringName> &p_aliases) const;
+	void _push_missing(const String &p_name);
+	Marker3D *_create_control(const StringName &p_control_name, const Vector3 &p_skeleton_position);
+	void _add_generated_child(Node *p_parent, Node *p_child);
+	void _setup_two_bone_ik(Skeleton3D *p_skeleton, const StringName &p_name, const Vector<BoneChain> &p_chains);
+	void _setup_head_look_at(Skeleton3D *p_skeleton, int p_head_bone);
 
 protected:
-	Ref<ObjectDBProfilerDebuggerPlugin> debugger;
 	void _notification(int p_what);
+	static void _bind_methods();
 
 public:
-	ObjectDBProfilerPlugin();
-};
+	virtual PackedStringArray get_configuration_warnings() const override;
 
-class ObjectDBProfilerDebuggerPlugin : public EditorDebuggerPlugin {
-	GDCLASS(ObjectDBProfilerDebuggerPlugin, EditorDebuggerPlugin);
+	void set_auto_setup_on_ready(bool p_enabled);
+	bool is_auto_setup_on_ready() const;
 
-protected:
-	RuntimeDiagnosticsPanel *runtime_diagnostics = nullptr;
+	void set_create_hand_ik(bool p_enabled);
+	bool is_hand_ik_created() const;
 
-	void _request_object_snapshot(int p_request_id);
+	void set_create_foot_ik(bool p_enabled);
+	bool is_foot_ik_created() const;
 
-public:
-	ObjectDBProfilerDebuggerPlugin() {}
-	void set_runtime_diagnostics_panel(RuntimeDiagnosticsPanel *p_panel) { runtime_diagnostics = p_panel; }
+	void set_create_head_look_at(bool p_enabled);
+	bool is_head_look_at_created() const;
 
-	virtual bool has_capture(const String &p_capture) const override;
-	virtual bool capture(const String &p_message, const Array &p_data, int p_index) override;
-	virtual void setup_session(int p_session_id) override;
+	void set_control_distance_scale(float p_scale);
+	float get_control_distance_scale() const;
+
+	void setup_from_skeleton();
+	void clear_generated_rig();
+	Node *get_control_node(const StringName &p_control_name) const;
+	PackedStringArray get_missing_bones() const;
 };

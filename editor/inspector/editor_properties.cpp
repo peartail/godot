@@ -3861,6 +3861,8 @@ static EditorPropertyRangeHint _parse_range_hint(PropertyHint p_hint, const Stri
 				hint.or_less = true;
 			} else if (slice == "prefer_slider") {
 				hint.prefer_slider = true;
+			} else if (slice == "circle_degree_range") {
+				hint.circle_degree_range = true;
 			} else if (slice == "hide_control") {
 				hint.hide_control = true;
 #ifndef DISABLE_DEPRECATED
@@ -4103,8 +4105,15 @@ EditorProperty *EditorInspectorDefaultPlugin::get_editor_for_property(Object *p_
 			// math types
 
 		case Variant::VECTOR2: {
+			EditorPropertyRangeHint hint = _parse_range_hint(p_hint, p_hint_text, default_float_step);
+			if (hint.circle_degree_range) {
+				EditorPropertyCircleDegreeRange *editor = memnew(EditorPropertyCircleDegreeRange);
+				editor->setup(hint);
+				return editor;
+			}
+
 			EditorPropertyVector2 *editor = memnew(EditorPropertyVector2(p_wide));
-			editor->setup(_parse_range_hint(p_hint, p_hint_text, default_float_step), p_hint == PROPERTY_HINT_LINK);
+			editor->setup(hint, p_hint == PROPERTY_HINT_LINK);
 			return editor;
 
 		} break;

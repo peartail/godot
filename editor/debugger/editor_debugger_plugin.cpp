@@ -64,6 +64,8 @@ void EditorDebuggerSession::_bind_methods() {
 	ADD_SIGNAL(MethodInfo("stopped"));
 	ADD_SIGNAL(MethodInfo("breaked", PropertyInfo(Variant::BOOL, "can_debug")));
 	ADD_SIGNAL(MethodInfo("continued"));
+	ADD_SIGNAL(MethodInfo("performance_profile_frame", PropertyInfo(Variant::PACKED_FLOAT32_ARRAY, "values")));
+	ADD_SIGNAL(MethodInfo("performance_profile_names", PropertyInfo(Variant::ARRAY, "names"), PropertyInfo(Variant::PACKED_INT32_ARRAY, "types")));
 }
 
 void EditorDebuggerSession::add_session_tab(Control *p_tab) {
@@ -115,6 +117,8 @@ void EditorDebuggerSession::detach_debugger() {
 	debugger->disconnect("started", callable_mp(this, &EditorDebuggerSession::_started));
 	debugger->disconnect("stopped", callable_mp(this, &EditorDebuggerSession::_stopped));
 	debugger->disconnect("breaked", callable_mp(this, &EditorDebuggerSession::_breaked));
+	debugger->disconnect("performance_profile_frame", callable_mp(this, &EditorDebuggerSession::_performance_profile_frame));
+	debugger->disconnect("performance_profile_names", callable_mp(this, &EditorDebuggerSession::_performance_profile_names));
 	for (Control *tab : tabs) {
 		debugger->remove_debugger_tab(tab);
 	}
@@ -129,6 +133,8 @@ EditorDebuggerSession::EditorDebuggerSession(ScriptEditorDebugger *p_debugger) {
 	debugger->connect("started", callable_mp(this, &EditorDebuggerSession::_started));
 	debugger->connect("stopped", callable_mp(this, &EditorDebuggerSession::_stopped));
 	debugger->connect("breaked", callable_mp(this, &EditorDebuggerSession::_breaked));
+	debugger->connect("performance_profile_frame", callable_mp(this, &EditorDebuggerSession::_performance_profile_frame));
+	debugger->connect("performance_profile_names", callable_mp(this, &EditorDebuggerSession::_performance_profile_names));
 }
 
 EditorDebuggerSession::~EditorDebuggerSession() {

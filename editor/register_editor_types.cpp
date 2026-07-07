@@ -119,6 +119,7 @@
 #include "editor/scene/material_editor_plugin.h"
 #include "editor/scene/packed_scene_editor_plugin.h"
 #include "editor/scene/resource_preloader_editor_plugin.h"
+#include "editor/scene_size_map_editor_plugin.h"
 #include "editor/scene/sprite_frames_editor_plugin.h"
 #include "editor/scene/texture/bit_map_editor_plugin.h"
 #include "editor/scene/texture/gradient_texture_2d_editor_plugin.h"
@@ -254,6 +255,7 @@ void register_editor_types() {
 	EditorPlugins::add_by_type<PhysicalBone3DEditorPlugin>();
 	EditorPlugins::add_by_type<Polygon3DEditorPlugin>();
 	EditorPlugins::add_by_type<ResourcePreloaderEditorPlugin>();
+	EditorPlugins::add_by_type<SceneSizeMapEditorPlugin>();
 	EditorPlugins::add_by_type<ShaderEditorPlugin>();
 	EditorPlugins::add_by_type<ShaderFileEditorPlugin>();
 	EditorPlugins::add_by_type<Skeleton3DEditorPlugin>();

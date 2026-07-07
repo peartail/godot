@@ -36,6 +36,84 @@
 class EditorSpinSlider;
 class TextureButton;
 
+class CircleDegreeRangeSlider : public Control {
+	GDCLASS(CircleDegreeRangeSlider, Control);
+
+public:
+	enum Handle {
+		HANDLE_NONE,
+		HANDLE_A,
+		HANDLE_B,
+	};
+
+private:
+	Vector2 value;
+	double min_value = 0.0;
+	double max_value = 360.0;
+	double step = 1.0;
+	bool read_only = false;
+	Handle hovered_handle = HANDLE_NONE;
+	Handle dragging_handle = HANDLE_NONE;
+
+	Color track_color;
+	Color range_color;
+	Color handle_a_color;
+	Color handle_b_color;
+	Color handle_outline_color;
+
+	Callable value_changed_callable;
+
+	Vector2 _get_center() const;
+	double _get_radius() const;
+	double _get_sweep() const;
+	double _snap_value(double p_value) const;
+	double _normalize_angle(double p_value) const;
+	Vector2 _angle_to_point(double p_angle) const;
+	double _point_to_angle(const Vector2 &p_point) const;
+	Handle _get_handle_at_position(const Vector2 &p_position) const;
+	void _set_handle_value(Handle p_handle, double p_angle);
+	void _update_theme();
+
+protected:
+	void _notification(int p_what);
+	virtual void gui_input(const Ref<InputEvent> &p_event) override;
+
+public:
+	virtual Size2 get_minimum_size() const override;
+
+	void set_value(const Vector2 &p_value);
+	Vector2 get_value() const;
+	void set_value_no_signal(const Vector2 &p_value);
+	void set_value_changed_callable(const Callable &p_callable);
+
+	void setup(double p_min, double p_max, double p_step);
+	void set_read_only(bool p_read_only);
+	bool is_read_only() const;
+
+	CircleDegreeRangeSlider();
+};
+
+class EditorPropertyCircleDegreeRange : public EditorProperty {
+	GDCLASS(EditorPropertyCircleDegreeRange, EditorProperty);
+
+	CircleDegreeRangeSlider *slider = nullptr;
+	EditorSpinSlider *a_spin = nullptr;
+	EditorSpinSlider *b_spin = nullptr;
+	bool updating = false;
+
+	void _slider_value_changed(const Vector2 &p_value);
+	void _spin_value_changed(double p_value, bool p_is_a);
+
+protected:
+	virtual void _set_read_only(bool p_read_only) override;
+	void _notification(int p_what);
+
+public:
+	virtual void update_property() override;
+	void setup(const EditorPropertyRangeHint &p_range_hint);
+	EditorPropertyCircleDegreeRange();
+};
+
 class EditorPropertyVectorN : public EditorProperty {
 	GDCLASS(EditorPropertyVectorN, EditorProperty);
 

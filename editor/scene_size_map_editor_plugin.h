@@ -1,5 +1,5 @@
 /**************************************************************************/
-/*  objectdb_profiler_plugin.h                                            */
+/*  scene_size_map_editor_plugin.h                                        */
 /**************************************************************************/
 /*                         This file is part of:                          */
 /*                             GODOT ENGINE                               */
@@ -30,37 +30,69 @@
 
 #pragma once
 
-#include "editor/debugger/editor_debugger_plugin.h"
+#include "editor/docks/editor_dock.h"
 #include "editor/plugins/editor_plugin.h"
 
-class ObjectDBProfilerPanel;
-class ObjectDBProfilerDebuggerPlugin;
+class Button;
+class EditorFileDialog;
+class HSplitContainer;
+class Label;
+class LineEdit;
+class SceneSizeMapTreemap;
+class Tree;
 
-// First, ObjectDBProfilerPlugin is loaded. Then it loads ObjectDBProfilerDebuggerPlugin.
-class ObjectDBProfilerPlugin : public EditorPlugin {
-	GDCLASS(ObjectDBProfilerPlugin, EditorPlugin);
+class SceneSizeMapEditor : public EditorDock {
+	GDCLASS(SceneSizeMapEditor, EditorDock);
+
+public:
+	struct SizeItem {
+		String path;
+		String type;
+		int64_t size = 0;
+	};
+
+
+	static String _format_size(int64_t p_size);
+
+private:
+	LineEdit *scene_path = nullptr;
+	Button *browse_button = nullptr;
+	Button *analyze_button = nullptr;
+	Label *summary_label = nullptr;
+	SceneSizeMapTreemap *treemap = nullptr;
+	Tree *resource_list = nullptr;
+	EditorFileDialog *file_dialog = nullptr;
+
+	Vector<SizeItem> items;
+	int64_t total_size = 0;
+
+	static String _get_resolved_dependency_path(const String &p_dependency);
+	static String _get_dependency_type(const String &p_dependency);
+
+	void _browse_pressed();
+	void _file_selected(const String &p_path);
+	void _analyze_pressed();
+	void _analyze_scene(const String &p_scene_path);
+	void _rebuild_resource_list();
+	void _update_summary();
+	void _update_theme();
 
 protected:
-	Ref<ObjectDBProfilerDebuggerPlugin> debugger;
 	void _notification(int p_what);
 
 public:
-	ObjectDBProfilerPlugin();
+	SceneSizeMapEditor();
 };
 
-class ObjectDBProfilerDebuggerPlugin : public EditorDebuggerPlugin {
-	GDCLASS(ObjectDBProfilerDebuggerPlugin, EditorDebuggerPlugin);
+class SceneSizeMapEditorPlugin : public EditorPlugin {
+	GDCLASS(SceneSizeMapEditorPlugin, EditorPlugin);
 
-protected:
-	RuntimeDiagnosticsPanel *runtime_diagnostics = nullptr;
-
-	void _request_object_snapshot(int p_request_id);
+	SceneSizeMapEditor *scene_size_map = nullptr;
 
 public:
-	ObjectDBProfilerDebuggerPlugin() {}
-	void set_runtime_diagnostics_panel(RuntimeDiagnosticsPanel *p_panel) { runtime_diagnostics = p_panel; }
+	virtual void make_visible(bool p_visible) override;
 
-	virtual bool has_capture(const String &p_capture) const override;
-	virtual bool capture(const String &p_message, const Array &p_data, int p_index) override;
-	virtual void setup_session(int p_session_id) override;
+	SceneSizeMapEditorPlugin();
 };
+
+

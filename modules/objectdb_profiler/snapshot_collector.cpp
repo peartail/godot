@@ -33,12 +33,48 @@
 #include "core/core_bind.h"
 #include "core/debugger/engine_debugger.h"
 #include "core/io/compression.h"
+#include "core/io/resource.h"
 #include "core/os/time.h"
 #include "core/version.h"
+#include "main/performance.h"
+#include "scene/resources/mesh.h"
 #include "scene/main/node.h"
 #include "scene/main/scene_tree.h"
 #include "scene/main/window.h" // IWYU pragma: keep. FIXME: Couldn't figure out how to make RequiredResult<T> equality checks be analyzed properly by include-cleaner.
 
+
+static Dictionary _collect_performance_monitors() {
+	Dictionary monitors;
+	Performance *performance = Performance::get_singleton();
+	if (performance == nullptr) {
+		return monitors;
+	}
+
+	Performance::Monitor selected_monitors[] = {
+		Performance::MEMORY_STATIC,
+		Performance::MEMORY_STATIC_MAX,
+		Performance::OBJECT_COUNT,
+		Performance::OBJECT_RESOURCE_COUNT,
+		Performance::OBJECT_NODE_COUNT,
+		Performance::OBJECT_ORPHAN_NODE_COUNT,
+		Performance::RENDER_TOTAL_OBJECTS_IN_FRAME,
+		Performance::RENDER_TOTAL_PRIMITIVES_IN_FRAME,
+		Performance::RENDER_TOTAL_DRAW_CALLS_IN_FRAME,
+		Performance::RENDER_VIDEO_MEM_USED,
+		Performance::RENDER_TEXTURE_MEM_USED,
+		Performance::RENDER_BUFFER_MEM_USED,
+		Performance::PIPELINE_COMPILATIONS_CANVAS,
+		Performance::PIPELINE_COMPILATIONS_MESH,
+		Performance::PIPELINE_COMPILATIONS_SURFACE,
+		Performance::PIPELINE_COMPILATIONS_DRAW,
+		Performance::PIPELINE_COMPILATIONS_SPECIALIZATION,
+	};
+
+	for (Performance::Monitor monitor : selected_monitors) {
+		monitors[performance->get_monitor_name(monitor)] = performance->get_monitor(monitor);
+	}
+	return monitors;
+}
 void SnapshotCollector::initialize() {
 	pending_snapshots.clear();
 	EngineDebugger::register_message_capture("snapshot", EngineDebugger::Capture(nullptr, SnapshotCollector::parse_message));
@@ -93,6 +129,25 @@ void SnapshotCollector::snapshot_objects(Array *p_arr, Dictionary &p_snapshot_co
 			debug_data.extra_debug_data["ref_count"] = ref->get_reference_count();
 		}
 
+		Resource *resource = Object::cast_to<Resource>(obj);
+		if (resource) {
+			debug_data.extra_debug_data["resource_path"] = resource->get_path();
+			debug_data.extra_debug_data["resource_name"] = resource->get_name();
+			debug_data.extra_debug_data["resource_type"] = resource->get_class();
+			Mesh *mesh = Object::cast_to<Mesh>(resource);
+			if (mesh) {
+				debug_data.extra_debug_data["mesh_surface_count"] = mesh->get_surface_count();
+				int vertex_count = 0;
+				int index_count = 0;
+				for (int surface = 0; surface < mesh->get_surface_count(); surface++) {
+					vertex_count += mesh->surface_get_array_len(surface);
+					index_count += mesh->surface_get_array_index_len(surface);
+				}
+				debug_data.extra_debug_data["mesh_vertex_count"] = vertex_count;
+				debug_data.extra_debug_data["mesh_index_count"] = index_count;
+			}
+		}
+
 		Node *node = Object::cast_to<Node>(obj);
 		if (node) {
 			debug_data.extra_debug_data["node_name"] = node->get_name();
@@ -117,6 +172,10 @@ void SnapshotCollector::snapshot_objects(Array *p_arr, Dictionary &p_snapshot_co
 	p_snapshot_context["mem_max_usage"] = Memory::get_mem_max_usage();
 	p_snapshot_context["timestamp"] = Time::get_singleton()->get_unix_time_from_system();
 	p_snapshot_context["game_version"] = get_godot_version_string();
+	p_snapshot_context["performance"] = _collect_performance_monitors();
+	if (SceneTree::get_singleton() && SceneTree::get_singleton()->get_current_scene()) {
+		p_snapshot_context["current_scene"] = SceneTree::get_singleton()->get_current_scene()->get_scene_file_path();
+	}
 	p_arr->push_back(p_snapshot_context);
 	for (SnapshotDataTransportObject &debug_data : debugger_objects) {
 		debug_data.serialize(*p_arr);

@@ -57,6 +57,7 @@ struct EditorPropertyRangeHint {
 	bool prefer_slider = false;
 	bool hide_control = true;
 	bool radians_as_degrees = false;
+	bool circle_degree_range = false;
 };
 
 class EditorPropertyNil : public EditorProperty {

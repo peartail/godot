@@ -30,7 +30,7 @@
 
 #include "objectdb_profiler_plugin.h"
 
-#include "objectdb_profiler_panel.h"
+#include "runtime_diagnostics_panel.h"
 
 #include "core/object/callable_mp.h"
 
@@ -39,17 +39,19 @@ bool ObjectDBProfilerDebuggerPlugin::has_capture(const String &p_capture) const 
 }
 
 bool ObjectDBProfilerDebuggerPlugin::capture(const String &p_message, const Array &p_data, int p_index) {
-	ERR_FAIL_NULL_V(debugger_panel, false);
-	return debugger_panel->handle_debug_message(p_message, p_data, p_index);
+	ERR_FAIL_NULL_V(runtime_diagnostics, false);
+	return runtime_diagnostics->handle_debug_message(p_message, p_data, p_index);
 }
 
 void ObjectDBProfilerDebuggerPlugin::setup_session(int p_session_id) {
 	Ref<EditorDebuggerSession> session = get_session(p_session_id);
 	ERR_FAIL_COND(session.is_null());
-	debugger_panel = memnew(ObjectDBProfilerPanel);
-	session->connect("started", callable_mp(debugger_panel, &ObjectDBProfilerPanel::set_enabled).bind(true));
-	session->connect("stopped", callable_mp(debugger_panel, &ObjectDBProfilerPanel::set_enabled).bind(false));
-	session->add_session_tab(debugger_panel);
+	ERR_FAIL_NULL(runtime_diagnostics);
+	session->connect("started", callable_mp(runtime_diagnostics, &RuntimeDiagnosticsPanel::set_debugger_active).bind(true));
+	session->connect("stopped", callable_mp(runtime_diagnostics, &RuntimeDiagnosticsPanel::set_debugger_active).bind(false));
+	session->connect("breaked", callable_mp(runtime_diagnostics, &RuntimeDiagnosticsPanel::debugger_breaked));
+	session->connect("performance_profile_names", callable_mp(runtime_diagnostics, &RuntimeDiagnosticsPanel::update_monitor_names));
+	session->connect("performance_profile_frame", callable_mp(runtime_diagnostics, &RuntimeDiagnosticsPanel::add_profile_frame));
 }
 
 ObjectDBProfilerPlugin::ObjectDBProfilerPlugin() {
@@ -59,10 +61,19 @@ ObjectDBProfilerPlugin::ObjectDBProfilerPlugin() {
 void ObjectDBProfilerPlugin::_notification(int p_what) {
 	switch (p_what) {
 		case Node::NOTIFICATION_ENTER_TREE: {
+			runtime_diagnostics = memnew(RuntimeDiagnosticsPanel);
+			debugger->set_runtime_diagnostics_panel(runtime_diagnostics);
+			add_control_to_bottom_panel(runtime_diagnostics, TTRC("Runtime Diagnostics"));
 			add_debugger_plugin(debugger);
 		} break;
 		case Node::NOTIFICATION_EXIT_TREE: {
 			remove_debugger_plugin(debugger);
+			if (runtime_diagnostics) {
+				remove_control_from_bottom_panel(runtime_diagnostics);
+				memdelete(runtime_diagnostics);
+				runtime_diagnostics = nullptr;
+			}
+			debugger->set_runtime_diagnostics_panel(nullptr);
 		}
 	}
 }
