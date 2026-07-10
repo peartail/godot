@@ -164,6 +164,9 @@ public:
 	void add_control_to_container(CustomControlContainer p_location, Control *p_control);
 	void remove_control_from_container(CustomControlContainer p_location, Control *p_control);
 
+	void set_3d_editor_custom_tool_active(bool p_active, bool p_hide_builtin_tools = true, bool p_disable_selection = true);
+	bool is_3d_editor_custom_tool_active() const;
+
 	void add_dock(EditorDock *p_dock);
 	void remove_dock(EditorDock *p_dock);
 

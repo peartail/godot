@@ -169,9 +169,52 @@ void DockTabContainer::_notification(int p_what) {
 	if (p_what == NOTIFICATION_POSTINITIALIZE) {
 		connect("pre_popup_pressed", callable_mp(this, &DockTabContainer::_pre_popup));
 		connect("child_order_changed", callable_mp(this, &DockTabContainer::update_visibility));
+	} else if (p_what == NOTIFICATION_INTERNAL_PROCESS) {
+		layout_diagnostics_time += get_process_delta_time();
+		if (layout_diagnostics_time >= 10.0) {
+			layout_diagnostics_time = 0.0;
+			_print_layout_diagnostics();
+		}
 	}
 }
 
+void DockTabContainer::_print_layout_diagnostics() const {
+	TabBar *dock_tab_bar = get_tab_bar();
+	print_line(vformat("[DockLayoutDiagnostics] slot=%d layout=%d visible=%s in_tree=%s tab_count=%d current_tab=%d container_global_rect=%s container_size=%s tab_bar_global_rect=%s tab_bar_size=%s tab_offset=%d offset_buttons=%s",
+			(int)dock_slot,
+			(int)layout,
+			is_visible() ? "true" : "false",
+			is_visible_in_tree() ? "true" : "false",
+			get_tab_count(),
+			get_current_tab(),
+			get_global_rect(),
+			get_size(),
+			dock_tab_bar->get_global_rect(),
+			dock_tab_bar->get_size(),
+			dock_tab_bar->get_tab_offset(),
+			dock_tab_bar->get_offset_buttons_visible() ? "true" : "false"));
+
+	for (int i = 0; i < get_tab_count(); i++) {
+		EditorDock *dock = get_dock(i);
+		Ref<Texture2D> icon = dock_tab_bar->get_tab_icon(i);
+		const Size2 icon_size = icon.is_valid() ? icon->get_size() : Size2();
+		print_line(vformat("[DockLayoutDiagnostics]   tab=%d title='%s' tab_rect=%s tab_width=%d icon_valid=%s icon_size=%s icon_max_width=%d dock=%s dock_title='%s' dock_visible=%s dock_global_rect=%s dock_size=%s dock_icon_name='%s' dock_force_icon=%s",
+				i,
+				dock_tab_bar->get_tab_title(i),
+				dock_tab_bar->get_tab_rect(i),
+				(int)dock_tab_bar->get_tab_rect(i).size.x,
+				icon.is_valid() ? "true" : "false",
+				icon_size,
+				dock_tab_bar->get_tab_icon_max_width(i),
+				dock ? String(dock->get_name()) : String("<null>"),
+				dock ? dock->get_display_title() : String(),
+				dock && dock->is_visible_in_tree() ? "true" : "false",
+				dock ? dock->get_global_rect() : Rect2(),
+				dock ? dock->get_size() : Size2(),
+				dock ? String(dock->get_icon_name()) : String(),
+				dock && dock->get_force_show_icon() ? "true" : "false"));
+	}
+}
 void DockTabContainer::update_visibility() {
 	// Hide the dock container if there are no tabs.
 	set_visible(EditorDockManager::get_singleton()->are_docks_visible() && get_tab_count() > 0);
@@ -267,6 +310,7 @@ DockTabContainer::DockTabContainer(EditorDock::DockSlot p_slot) {
 	set_drag_to_rearrange_enabled(true);
 	set_tabs_rearrange_group(1);
 	set_clip_contents(true);
+	set_process_internal(true);
 	hide();
 
 	drag_hint = memnew(EditorDockDragHint);

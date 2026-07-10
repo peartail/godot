@@ -7,6 +7,7 @@
 #include "../simple_world_object_profile.h"
 #include "../simple_world_placement_data.h"
 #include "../simple_world_placement_library.h"
+#include "../simple_world_placement_3d.h"
 
 #include "editor/docks/editor_dock.h"
 #include "editor/inspector/editor_inspector.h"
@@ -46,6 +47,7 @@ class SimpleWorldPlacementDock : public EditorDock {
 	GDCLASS(SimpleWorldPlacementDock, EditorDock);
 
 	SimpleTerrain3D *terrain = nullptr;
+	SimpleWorldPlacement3D *placement_node = nullptr;
 	Ref<SimpleWorldPlacementLibrary> connected_library;
 	Ref<SimpleWorldObjectProfile> connected_profile;
 	ObjectID selected_profile_object_id;
@@ -97,8 +99,10 @@ class SimpleWorldPlacementDock : public EditorDock {
 	void _debug_log_state(const String &p_context) const;
 	void _save_resource_if_file_backed(const Ref<Resource> &p_resource) const;
 	void _save_current_resources_if_file_backed() const;
-	SimpleTerrain3D *_get_selected_terrain() const;
-	bool _sync_selected_terrain();
+	Node *_get_selected_placement_owner() const;
+	bool _sync_selected_placement_owner();
+	Ref<SimpleWorldPlacementLibrary> _get_owner_library() const;
+	Ref<SimpleWorldPlacementData> _get_owner_data() const;
 	Vector<String> _get_scene_paths_from_drag_data(const Variant &p_data) const;
 	bool _has_scene_files_in_drag_data(const Variant &p_data) const;
 	void _add_scene_paths(const Vector<String> &p_paths, const String &p_action_name);
@@ -114,7 +118,7 @@ public:
 	bool can_drop_data_fw(const Point2 &p_point, const Variant &p_data, Control *p_from) const;
 	void drop_data_fw(const Point2 &p_point, const Variant &p_data, Control *p_from);
 	Ref<SimpleWorldObjectProfile> get_selected_profile() const;
-	void edit(SimpleTerrain3D *p_terrain);
+	void edit(Node *p_owner);
 
 	SimpleWorldPlacementDock();
 };
@@ -152,6 +156,7 @@ class SimpleTerrainEditorPlugin : public EditorPlugin {
 	Label *placement_library_label = nullptr;
 	EditorSpinSlider *radius_slider = nullptr;
 	EditorSpinSlider *strength_slider = nullptr;
+	EditorSpinSlider *placement_size_slider = nullptr;
 	Button *flat_button = nullptr;
 	Button *random_button = nullptr;
 	Button *bake_navigation_button = nullptr;
@@ -161,6 +166,7 @@ class SimpleTerrainEditorPlugin : public EditorPlugin {
 	SimpleWorldPlacementDock *placement_dock = nullptr;
 
 	SimpleTerrain3D *terrain = nullptr;
+	SimpleWorldPlacement3D *placement_node = nullptr;
 	bool terrain_mode = false;
 	bool placement_mode = false;
 	bool painting = false;
@@ -196,6 +202,9 @@ class SimpleTerrainEditorPlugin : public EditorPlugin {
 	void _bake_dynamic_navigation_pressed();
 	void _update_toolbar();
 	void _update_placement_overlay();
+	Node3D *_get_current_placement_parent() const;
+	Ref<SimpleWorldPlacementLibrary> _get_current_placement_library() const;
+	Ref<SimpleWorldPlacementData> _get_current_placement_data() const;
 	Node3D *_get_or_create_placement_root(EditorUndoRedoManager *p_undo_redo);
 	void _place_selected_profile(Camera3D *p_camera, const Vector2 &p_mouse_position);
 	void _set_placement_arrays(SimpleWorldPlacementData *p_data, const PackedStringArray &p_profile_ids, const PackedVector3Array &p_positions, const PackedVector3Array &p_rotations, const PackedVector3Array &p_scales, const PackedVector3Array &p_normals, const PackedInt32Array &p_seeds, const PackedVector2Array &p_chunk_coords);

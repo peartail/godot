@@ -129,6 +129,19 @@ void EditorPlugin::remove_control_from_bottom_panel(Control *p_control) {
 }
 #endif
 
+
+void EditorPlugin::set_3d_editor_custom_tool_active(bool p_active, bool p_hide_builtin_tools, bool p_disable_selection) {
+	Node3DEditor *node_3d_editor = Node3DEditor::get_singleton();
+	ERR_FAIL_NULL(node_3d_editor);
+	node_3d_editor->set_custom_tool_active(this, p_active, p_hide_builtin_tools, p_disable_selection);
+}
+
+bool EditorPlugin::is_3d_editor_custom_tool_active() const {
+	Node3DEditor *node_3d_editor = Node3DEditor::get_singleton();
+	ERR_FAIL_NULL_V(node_3d_editor, false);
+	return node_3d_editor->is_custom_tool_active(const_cast<EditorPlugin *>(this));
+}
+
 void EditorPlugin::add_dock(EditorDock *p_dock) {
 	EditorDockManager::get_singleton()->add_dock(p_dock);
 }
@@ -612,6 +625,10 @@ void EditorPlugin::_editor_project_settings_changed() {
 #endif
 
 void EditorPlugin::_notification(int p_what) {
+	if (p_what == NOTIFICATION_EXIT_TREE && is_3d_editor_custom_tool_active()) {
+		set_3d_editor_custom_tool_active(false);
+	}
+
 #ifndef DISABLE_DEPRECATED
 	switch (p_what) {
 		case NOTIFICATION_ENTER_TREE: {
@@ -630,6 +647,8 @@ void EditorPlugin::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("remove_dock", "dock"), &EditorPlugin::remove_dock);
 	ClassDB::bind_method(D_METHOD("add_control_to_container", "container", "control"), &EditorPlugin::add_control_to_container);
 	ClassDB::bind_method(D_METHOD("remove_control_from_container", "container", "control"), &EditorPlugin::remove_control_from_container);
+	ClassDB::bind_method(D_METHOD("set_3d_editor_custom_tool_active", "active", "hide_builtin_tools", "disable_selection"), &EditorPlugin::set_3d_editor_custom_tool_active, DEFVAL(true), DEFVAL(true));
+	ClassDB::bind_method(D_METHOD("is_3d_editor_custom_tool_active"), &EditorPlugin::is_3d_editor_custom_tool_active);
 	ClassDB::bind_method(D_METHOD("add_tool_menu_item", "name", "callable"), &EditorPlugin::add_tool_menu_item);
 	ClassDB::bind_method(D_METHOD("add_tool_submenu_item", "name", "submenu"), &EditorPlugin::add_tool_submenu_item);
 	ClassDB::bind_method(D_METHOD("remove_tool_menu_item", "name"), &EditorPlugin::remove_tool_menu_item);

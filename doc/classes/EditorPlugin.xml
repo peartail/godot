@@ -636,6 +636,12 @@
 				Minimizes the bottom panel.
 			</description>
 		</method>
+		<method name="is_3d_editor_custom_tool_active" qualifiers="const">
+			<return type="bool" />
+			<description>
+				Returns whether this plugin currently has an active custom 3D editor tool. See [method set_3d_editor_custom_tool_active].
+			</description>
+		</method>
 		<method name="make_bottom_panel_item_visible">
 			<return type="void" />
 			<param index="0" name="item" type="Control" />
@@ -789,6 +795,17 @@
 			<param index="1" name="icon" type="Texture2D" />
 			<description>
 				Sets the tab icon for the given control in a dock slot. Setting to [code]null[/code] removes the icon.
+			</description>
+		</method>
+		<method name="set_3d_editor_custom_tool_active">
+			<return type="void" />
+			<param index="0" name="active" type="bool" />
+			<param index="1" name="hide_builtin_tools" type="bool" default="true" />
+			<param index="2" name="disable_selection" type="bool" default="true" />
+			<description>
+				Marks this plugin as owning an active custom 3D editor tool. This is useful for tools added to [constant CONTAINER_SPATIAL_EDITOR_MENU] that need to behave like an exclusive editor mode.
+				If [param hide_builtin_tools] is [code]true[/code], the built-in 3D transform/select/ruler toolbar buttons are hidden, their pressed state is cleared, and their shortcuts are ignored while any plugin requests this mode. If [param disable_selection] is [code]true[/code], normal 3D viewport object selection is suppressed while plugin viewport input forwarding and viewport navigation can still run.
+				Call this with [param active] set to [code]false[/code] when leaving the custom mode. The editor also clears this state automatically when the plugin exits the tree.
 			</description>
 		</method>
 		<method name="set_force_draw_over_forwarding_enabled">

@@ -449,7 +449,6 @@ void InspectorDock::queue_layout_refresh() {
 	if (!is_inside_tree()) {
 		return;
 	}
-	set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
 	update_minimum_size();
 	update_desired_size();
 
@@ -460,18 +459,71 @@ void InspectorDock::queue_layout_refresh() {
 		inspector_margin->update_minimum_size();
 	}
 	if (inspector) {
-		inspector->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
 		inspector->update_minimum_size();
 		inspector->update_desired_size();
 	}
 
 	if (DockTabContainer *tab = get_parent_container()) {
-		tab->set_anchors_and_offsets_preset(Control::PRESET_FULL_RECT);
 		tab->update_minimum_size();
 		tab->update_desired_size();
 	}
 }
 
+void InspectorDock::_print_layout_diagnostics() const {
+	auto print_control = [](const String &p_name, const Control *p_control) {
+		if (!p_control) {
+			print_line(vformat("[InspectorLayoutDiagnostics]   %s=<null>", p_name));
+			return;
+		}
+		print_line(vformat("[InspectorLayoutDiagnostics]   %s visible=%s in_tree=%s global_rect=%s size=%s min_size=%s parent='%s'",
+				p_name,
+				p_control->is_visible() ? "true" : "false",
+				p_control->is_visible_in_tree() ? "true" : "false",
+				p_control->get_global_rect(),
+				p_control->get_size(),
+				p_control->get_combined_minimum_size(),
+				p_control->get_parent() ? String(p_control->get_parent()->get_name()) : String("<null>")));
+	};
+	auto print_button = [](const String &p_name, const Button *p_button) {
+		if (!p_button) {
+			print_line(vformat("[InspectorLayoutDiagnostics]   %s=<null>", p_name));
+			return;
+		}
+		Ref<Texture2D> icon = p_button->get_button_icon();
+		print_line(vformat("[InspectorLayoutDiagnostics]   %s visible=%s disabled=%s global_rect=%s size=%s icon_valid=%s icon_size=%s text='%s' parent='%s'",
+				p_name,
+				p_button->is_visible() ? "true" : "false",
+				p_button->is_disabled() ? "true" : "false",
+				p_button->get_global_rect(),
+				p_button->get_size(),
+				icon.is_valid() ? "true" : "false",
+				icon.is_valid() ? icon->get_size() : Size2(),
+				p_button->get_text(),
+				p_button->get_parent() ? String(p_button->get_parent()->get_name()) : String("<null>")));
+	};
+
+	print_line(vformat("[InspectorLayoutDiagnostics] dock_visible=%s dock_in_tree=%s dock_global_rect=%s dock_size=%s current='%s' parent_container=%s parent_container_rect=%s",
+			is_visible() ? "true" : "false",
+			is_visible_in_tree() ? "true" : "false",
+			get_global_rect(),
+			get_size(),
+			current ? current->get_class() : String("<null>"),
+			get_parent_container() ? String(get_parent_container()->get_name()) : String("<null>"),
+			get_parent_container() ? get_parent_container()->get_global_rect() : Rect2()));
+	print_control("main_vbox", main_vbox);
+	print_button("resource_new_button", resource_new_button);
+	print_button("resource_load_button", resource_load_button);
+	print_button("resource_save_button", resource_save_button);
+	print_button("resource_extra_button", resource_extra_button);
+	print_control("object_selector", object_selector);
+	print_button("open_docs_button", open_docs_button);
+	print_button("history_menu", history_menu);
+	print_button("object_menu", object_menu);
+	print_control("search", search);
+	print_button("info", info);
+	print_control("inspector_margin", inspector_margin);
+	print_control("inspector", inspector);
+}
 void InspectorDock::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_TRANSLATION_CHANGED: {
@@ -521,6 +573,14 @@ void InspectorDock::_notification(int p_what) {
 
 				bool disable_folding = EDITOR_GET("interface/inspector/disable_folding");
 				inspector->set_use_folding(!disable_folding);
+			}
+		} break;
+
+		case NOTIFICATION_INTERNAL_PROCESS: {
+			layout_diagnostics_time += get_process_delta_time();
+			if (layout_diagnostics_time >= 10.0) {
+				layout_diagnostics_time = 0.0;
+				_print_layout_diagnostics();
 			}
 		} break;
 	}
@@ -736,6 +796,7 @@ InspectorDock::InspectorDock(EditorData &p_editor_data) {
 	singleton = this;
 	set_name(TTRC("Inspector"));
 	set_icon_name("AnimationTrackList");
+	set_process_internal(true);
 	set_dock_shortcut(ED_SHORTCUT_AND_COMMAND("docks/open_inspector", TTRC("Open Inspector Dock")));
 	set_default_slot(EditorDock::DOCK_SLOT_RIGHT_UL);
 

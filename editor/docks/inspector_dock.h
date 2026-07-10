@@ -105,6 +105,7 @@ class InspectorDock : public EditorDock {
 
 	VBoxContainer *main_vbox = nullptr;
 	MarginContainer *inspector_margin = nullptr;
+	double layout_diagnostics_time = 0.0;
 
 	EditorPropertyNameProcessor::Style property_name_style;
 	List<Pair<StringName, Variant>> stored_properties;
@@ -149,6 +150,7 @@ public:
 protected:
 	static void _bind_methods();
 	void _notification(int p_what);
+	void _print_layout_diagnostics() const;
 
 public:
 	void go_back();

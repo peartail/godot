@@ -72,9 +72,11 @@ class DockTabContainer : public TabContainer {
 	GDCLASS(DockTabContainer, TabContainer);
 
 	EditorDockDragHint *drag_hint = nullptr;
+	double layout_diagnostics_time = 0.0;
 
 	void _pre_popup();
 	void _tab_rmb_clicked(int p_tab_idx);
+	void _print_layout_diagnostics() const;
 
 protected:
 	DockContextPopup *dock_context_popup = nullptr;

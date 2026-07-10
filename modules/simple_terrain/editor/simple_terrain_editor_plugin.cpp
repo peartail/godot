@@ -68,6 +68,35 @@ Transform3D _get_node_3d_scene_transform(Node3D *p_node) {
 	return transform;
 }
 
+void _find_closest_simple_terrain_hit(Node *p_node, const Vector3 &p_ray_origin, const Vector3 &p_ray_direction, Dictionary &r_hit, real_t &r_best_distance) {
+	if (p_node == nullptr) {
+		return;
+	}
+
+	SimpleTerrain3D *terrain_node = Object::cast_to<SimpleTerrain3D>(p_node);
+	if (terrain_node != nullptr && terrain_node->is_inside_tree()) {
+		Dictionary terrain_hit = terrain_node->get_brush_hit(p_ray_origin, p_ray_direction);
+		if (!terrain_hit.is_empty() && terrain_hit.has("position")) {
+			const real_t distance = p_ray_origin.distance_to((Vector3)terrain_hit["position"]);
+			if (distance < r_best_distance) {
+				r_hit = terrain_hit;
+				r_best_distance = distance;
+			}
+		}
+	}
+
+	for (int i = 0; i < p_node->get_child_count(); i++) {
+		_find_closest_simple_terrain_hit(p_node->get_child(i), p_ray_origin, p_ray_direction, r_hit, r_best_distance);
+	}
+}
+
+Dictionary _get_closest_simple_terrain_hit(Node *p_root, const Vector3 &p_ray_origin, const Vector3 &p_ray_direction) {
+	Dictionary hit;
+	real_t best_distance = 1e20;
+	_find_closest_simple_terrain_hit(p_root, p_ray_origin, p_ray_direction, hit, best_distance);
+	return hit;
+}
+
 void _collect_runtime_collision_obstacle_specs(Node *p_node, const Transform3D &p_root_inverse, Vector<SimpleTerrainRuntimeObstacleSpec> &r_specs) {
 	CollisionShape3D *collision_shape = Object::cast_to<CollisionShape3D>(p_node);
 	if (collision_shape != nullptr && !collision_shape->is_disabled()) {
@@ -237,7 +266,7 @@ PackedVector3Array _get_navigation_blocker_gizmo_lines(SimpleNavigationBlocker3D
 
 void SimpleWorldPlacementDock::_library_resource_changed(const Ref<Resource> &p_resource) {
 	_debug_log(vformat("library_resource_changed resource=%s updating=%s", p_resource.is_valid() ? p_resource->get_path() : String("<null>"), updating ? "true" : "false"));
-	if (updating || !_sync_selected_terrain()) {
+	if (updating || !_sync_selected_placement_owner()) {
 		_debug_log("library_resource_changed ignored");
 		return;
 	}
@@ -247,7 +276,7 @@ void SimpleWorldPlacementDock::_library_resource_changed(const Ref<Resource> &p_
 
 void SimpleWorldPlacementDock::_data_resource_changed(const Ref<Resource> &p_resource) {
 	_debug_log(vformat("data_resource_changed resource=%s updating=%s", p_resource.is_valid() ? p_resource->get_path() : String("<null>"), updating ? "true" : "false"));
-	if (updating || !_sync_selected_terrain()) {
+	if (updating || !_sync_selected_placement_owner()) {
 		_debug_log("data_resource_changed ignored");
 		return;
 	}
@@ -256,7 +285,7 @@ void SimpleWorldPlacementDock::_data_resource_changed(const Ref<Resource> &p_res
 }
 
 void SimpleWorldPlacementDock::_new_library_pressed() {
-	if (!_sync_selected_terrain()) {
+	if (!_sync_selected_placement_owner()) {
 		return;
 	}
 	Ref<SimpleWorldPlacementLibrary> library;
@@ -265,24 +294,25 @@ void SimpleWorldPlacementDock::_new_library_pressed() {
 }
 
 void SimpleWorldPlacementDock::_new_data_pressed() {
-	if (!_sync_selected_terrain()) {
+	if (!_sync_selected_placement_owner()) {
 		return;
 	}
 	Ref<SimpleWorldPlacementData> placement_data;
 	placement_data.instantiate();
-	placement_data->set_terrain_path(terrain->get_path());
-	placement_data->set_library(terrain->get_world_placement_library());
+	Node *owner = terrain != nullptr ? static_cast<Node *>(terrain) : static_cast<Node *>(placement_node);
+	placement_data->set_terrain_path(owner != nullptr ? owner->get_path() : NodePath());
+	placement_data->set_library(_get_owner_library());
 	_set_data_with_undo(placement_data, TTR("Create World Placement Data"));
 }
 
 void SimpleWorldPlacementDock::_add_profile_pressed() {
 	_debug_log_state("add_profile_pressed:begin");
-	if (!_sync_selected_terrain()) {
+	if (!_sync_selected_placement_owner()) {
 		_debug_log("add_profile_pressed ignored: no terrain");
 		return;
 	}
 
-	Ref<SimpleWorldPlacementLibrary> library = terrain->get_world_placement_library();
+	Ref<SimpleWorldPlacementLibrary> library = _get_owner_library();
 	if (library.is_null()) {
 		_debug_log("add_profile_pressed: creating transient library");
 		library.instantiate();
@@ -305,7 +335,7 @@ void SimpleWorldPlacementDock::_add_profile_pressed() {
 	selected_profile_object_id = profile->get_instance_id();
 	_debug_log(vformat("add_profile_pressed profile id=%s before=%d after=%d selected=%d", id, before.size(), after.size(), (uint64_t)selected_profile_object_id));
 
-	if (terrain->get_world_placement_library().is_null()) {
+	if (_get_owner_library().is_null()) {
 		library->set_profiles(after);
 		_set_library_with_undo(library, TTR("Add World Object Profile"));
 	} else {
@@ -315,7 +345,7 @@ void SimpleWorldPlacementDock::_add_profile_pressed() {
 }
 
 void SimpleWorldPlacementDock::_add_scene_pressed() {
-	if (!_sync_selected_terrain()) {
+	if (!_sync_selected_placement_owner()) {
 		return;
 	}
 	scene_file_dialog->popup_file_dialog();
@@ -329,11 +359,11 @@ void SimpleWorldPlacementDock::_scene_file_selected(const String &p_path) {
 }
 
 void SimpleWorldPlacementDock::_duplicate_profile_pressed() {
-	if (!_sync_selected_terrain()) {
+	if (!_sync_selected_placement_owner()) {
 		return;
 	}
 	Ref<SimpleWorldObjectProfile> source = _get_selected_profile();
-	if (terrain == nullptr || terrain->get_world_placement_library().is_null() || source.is_null()) {
+	if ((terrain == nullptr && placement_node == nullptr) || _get_owner_library().is_null() || source.is_null()) {
 		return;
 	}
 
@@ -365,7 +395,7 @@ void SimpleWorldPlacementDock::_duplicate_profile_pressed() {
 	duplicate->set_navigation_avoidance_layers(source->get_navigation_avoidance_layers());
 	duplicate->set_navigation_obstacle_shape_source(source->get_navigation_obstacle_shape_source());
 
-	Ref<SimpleWorldPlacementLibrary> library = terrain->get_world_placement_library();
+	Ref<SimpleWorldPlacementLibrary> library = _get_owner_library();
 	Array before = library->get_profiles().duplicate();
 	Array after = before.duplicate();
 	after.push_back(duplicate);
@@ -374,10 +404,10 @@ void SimpleWorldPlacementDock::_duplicate_profile_pressed() {
 }
 
 void SimpleWorldPlacementDock::_remove_profile_pressed() {
-	if (!_sync_selected_terrain() || terrain->get_world_placement_library().is_null()) {
+	if (!_sync_selected_placement_owner() || _get_owner_library().is_null()) {
 		return;
 	}
-	Ref<SimpleWorldPlacementLibrary> library = terrain->get_world_placement_library();
+	Ref<SimpleWorldPlacementLibrary> library = _get_owner_library();
 	Ref<SimpleWorldObjectProfile> profile = _get_selected_profile();
 	if (profile.is_null()) {
 		return;
@@ -444,9 +474,9 @@ void SimpleWorldPlacementDock::_category_selected(int p_index) {
 }
 
 void SimpleWorldPlacementDock::_editor_selection_changed() {
-	SimpleTerrain3D *selected_terrain = _get_selected_terrain();
-	if (selected_terrain != nullptr || terrain != nullptr) {
-		edit(selected_terrain);
+	Node *selected_owner = _get_selected_placement_owner();
+	if (selected_owner != nullptr || terrain != nullptr || placement_node != nullptr) {
+		edit(selected_owner);
 		return;
 	}
 
@@ -470,7 +500,7 @@ void SimpleWorldPlacementDock::_profile_changed() {
 void SimpleWorldPlacementDock::_refresh_after_resource_undo() {
 	_debug_log_state("refresh_after_resource_undo:begin");
 	_refresh_resource_pickers();
-	_connect_library(terrain != nullptr ? terrain->get_world_placement_library() : Ref<SimpleWorldPlacementLibrary>());
+	_connect_library(_get_owner_library());
 	_refresh_profile_list();
 	_refresh_profile_inspector();
 	_update_controls();
@@ -486,46 +516,48 @@ void SimpleWorldPlacementDock::_refresh_after_resource_undo_deferred() {
 }
 
 void SimpleWorldPlacementDock::_set_library_with_undo(const Ref<SimpleWorldPlacementLibrary> &p_library, const String &p_action_name) {
-	_debug_log(vformat("set_library_with_undo action=%s incoming=%s current=%s", p_action_name, p_library.is_valid() ? p_library->get_path() : String("<null>"), terrain != nullptr && terrain->get_world_placement_library().is_valid() ? terrain->get_world_placement_library()->get_path() : String("<null>")));
-	if (terrain == nullptr || terrain->get_world_placement_library() == p_library) {
+	Node *owner = terrain != nullptr ? static_cast<Node *>(terrain) : static_cast<Node *>(placement_node);
+	_debug_log(vformat("set_library_with_undo action=%s incoming=%s current=%s", p_action_name, p_library.is_valid() ? p_library->get_path() : String("<null>"), _get_owner_library().is_valid() ? _get_owner_library()->get_path() : String("<null>")));
+	if (owner == nullptr || _get_owner_library() == p_library) {
 		_debug_log("set_library_with_undo ignored");
 		return;
 	}
 	EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
 	undo_redo->create_action(p_action_name);
-	undo_redo->add_do_property(terrain, "world_placement_library", p_library);
+	undo_redo->add_do_property(owner, "world_placement_library", p_library);
 	undo_redo->add_do_method(this, "_refresh_after_resource_undo");
-	undo_redo->add_undo_property(terrain, "world_placement_library", terrain->get_world_placement_library());
+	undo_redo->add_undo_property(owner, "world_placement_library", _get_owner_library());
 	undo_redo->add_undo_method(this, "_refresh_after_resource_undo");
 	undo_redo->commit_action();
-	terrain->set_world_placement_library(p_library);
+	owner->set("world_placement_library", p_library);
 	_refresh_after_resource_undo();
 	_refresh_after_resource_undo_deferred();
 }
 
 void SimpleWorldPlacementDock::_set_data_with_undo(const Ref<SimpleWorldPlacementData> &p_data, const String &p_action_name) {
-	if (terrain == nullptr || terrain->get_world_placement_data() == p_data) {
+	Node *owner = terrain != nullptr ? static_cast<Node *>(terrain) : static_cast<Node *>(placement_node);
+	if (owner == nullptr || _get_owner_data() == p_data) {
 		return;
 	}
 	EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
 	undo_redo->create_action(p_action_name);
-	undo_redo->add_do_property(terrain, "world_placement_data", p_data);
+	undo_redo->add_do_property(owner, "world_placement_data", p_data);
 	undo_redo->add_do_method(this, "_refresh_after_resource_undo");
-	undo_redo->add_undo_property(terrain, "world_placement_data", terrain->get_world_placement_data());
+	undo_redo->add_undo_property(owner, "world_placement_data", _get_owner_data());
 	undo_redo->add_undo_method(this, "_refresh_after_resource_undo");
 	undo_redo->commit_action();
-	terrain->set_world_placement_data(p_data);
+	owner->set("world_placement_data", p_data);
 	_refresh_after_resource_undo();
 	_refresh_after_resource_undo_deferred();
 }
 
 void SimpleWorldPlacementDock::_set_profiles_with_undo(const Array &p_before, const Array &p_after, const String &p_action_name) {
 	_debug_log(vformat("set_profiles_with_undo action=%s before=%d after=%d", p_action_name, p_before.size(), p_after.size()));
-	if (terrain == nullptr || terrain->get_world_placement_library().is_null()) {
+	if ((terrain == nullptr && placement_node == nullptr) || _get_owner_library().is_null()) {
 		_debug_log("set_profiles_with_undo ignored: no terrain/library");
 		return;
 	}
-	Ref<SimpleWorldPlacementLibrary> library = terrain->get_world_placement_library();
+	Ref<SimpleWorldPlacementLibrary> library = _get_owner_library();
 	Array before = p_before.duplicate();
 	Array after = p_after.duplicate();
 	EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
@@ -568,12 +600,12 @@ void SimpleWorldPlacementDock::_connect_profile(const Ref<SimpleWorldObjectProfi
 
 void SimpleWorldPlacementDock::_refresh_resource_pickers() {
 	updating = true;
-	library_picker->set_resource_owner(terrain);
+	library_picker->set_resource_owner(terrain != nullptr ? static_cast<Object *>(terrain) : static_cast<Object *>(placement_node));
 	library_picker->set_property_path("world_placement_library");
-	data_picker->set_resource_owner(terrain);
+	data_picker->set_resource_owner(terrain != nullptr ? static_cast<Object *>(terrain) : static_cast<Object *>(placement_node));
 	data_picker->set_property_path("world_placement_data");
-	Ref<Resource> library_resource = terrain != nullptr ? Ref<Resource>(terrain->get_world_placement_library()) : Ref<Resource>();
-	Ref<Resource> data_resource = terrain != nullptr ? Ref<Resource>(terrain->get_world_placement_data()) : Ref<Resource>();
+	Ref<Resource> library_resource = terrain != nullptr || placement_node != nullptr ? Ref<Resource>(_get_owner_library()) : Ref<Resource>();
+	Ref<Resource> data_resource = terrain != nullptr || placement_node != nullptr ? Ref<Resource>(_get_owner_data()) : Ref<Resource>();
 	library_picker->set_edited_resource(library_resource);
 	data_picker->set_edited_resource(data_resource);
 	updating = false;
@@ -586,13 +618,13 @@ void SimpleWorldPlacementDock::_refresh_profile_list() {
 	category_filter->clear();
 	category_filter->add_item(TTRC("All"), 0);
 
-	if (terrain == nullptr || terrain->get_world_placement_library().is_null()) {
+	if ((terrain == nullptr && placement_node == nullptr) || _get_owner_library().is_null()) {
 		selected_profile_object_id = ObjectID();
 		_debug_log("refresh_profile_list empty: no terrain/library");
 		return;
 	}
 
-	Ref<SimpleWorldPlacementLibrary> library = terrain->get_world_placement_library();
+	Ref<SimpleWorldPlacementLibrary> library = _get_owner_library();
 	const Array profiles = library->get_profiles();
 	Vector<String> categories;
 	for (int i = 0; i < profiles.size(); i++) {
@@ -654,17 +686,17 @@ void SimpleWorldPlacementDock::_refresh_profile_inspector() {
 }
 
 void SimpleWorldPlacementDock::_update_controls() {
-	const bool has_terrain = terrain != nullptr;
-	const bool has_library = has_terrain && terrain->get_world_placement_library().is_valid();
+	const bool has_owner = terrain != nullptr || placement_node != nullptr;
+	const bool has_library = has_owner && _get_owner_library().is_valid();
 	const bool has_profile = _get_selected_profile().is_valid();
-	library_picker->set_editable(has_terrain);
-	data_picker->set_editable(has_terrain);
-	new_library_button->set_disabled(!has_terrain);
-	new_data_button->set_disabled(!has_terrain);
+	library_picker->set_editable(has_owner);
+	data_picker->set_editable(has_owner);
+	new_library_button->set_disabled(!has_owner);
+	new_data_button->set_disabled(!has_owner);
 	search_edit->set_editable(has_library);
 	category_filter->set_disabled(!has_library);
-	add_profile_button->set_disabled(!has_terrain);
-	add_scene_button->set_disabled(!has_terrain);
+	add_profile_button->set_disabled(!has_owner);
+	add_scene_button->set_disabled(!has_owner);
 	duplicate_profile_button->set_disabled(!has_profile);
 	remove_profile_button->set_disabled(!has_profile);
 }
@@ -684,7 +716,7 @@ void SimpleWorldPlacementDock::_debug_log(const String &p_message) const {
 
 void SimpleWorldPlacementDock::_debug_log_state(const String &p_context) const {
 	const bool has_terrain = terrain != nullptr;
-	Ref<SimpleWorldPlacementLibrary> library = has_terrain ? terrain->get_world_placement_library() : Ref<SimpleWorldPlacementLibrary>();
+	Ref<SimpleWorldPlacementLibrary> library = has_terrain ? _get_owner_library() : Ref<SimpleWorldPlacementLibrary>();
 	const int profile_count = library.is_valid() ? library->get_profile_count() : -1;
 	const int visible_count = profile_list != nullptr ? profile_list->get_item_count() : -1;
 	_debug_log(vformat("%s terrain=%s library=%s library_valid=%s profiles=%d visible=%d selected=%d",
@@ -698,14 +730,11 @@ void SimpleWorldPlacementDock::_debug_log_state(const String &p_context) const {
 }
 
 void SimpleWorldPlacementDock::_save_current_resources_if_file_backed() const {
-	if (terrain == nullptr) {
-		return;
-	}
-	_save_resource_if_file_backed(terrain->get_world_placement_library());
-	_save_resource_if_file_backed(terrain->get_world_placement_data());
+	_save_resource_if_file_backed(_get_owner_library());
+	_save_resource_if_file_backed(_get_owner_data());
 }
 
-SimpleTerrain3D *SimpleWorldPlacementDock::_get_selected_terrain() const {
+Node *SimpleWorldPlacementDock::_get_selected_placement_owner() const {
 	EditorSelection *selection = EditorNode::get_singleton()->get_editor_selection();
 	if (selection == nullptr) {
 		return nullptr;
@@ -713,30 +742,47 @@ SimpleTerrain3D *SimpleWorldPlacementDock::_get_selected_terrain() const {
 
 	List<Node *> selected_nodes = selection->get_top_selected_node_list();
 	for (Node *node : selected_nodes) {
-		SimpleTerrain3D *selected_terrain = Object::cast_to<SimpleTerrain3D>(node);
-		if (selected_terrain != nullptr) {
-			return selected_terrain;
+		if (Object::cast_to<SimpleTerrain3D>(node) != nullptr || Object::cast_to<SimpleWorldPlacement3D>(node) != nullptr) {
+			return node;
 		}
 	}
 
 	selected_nodes = selection->get_full_selected_node_list();
 	for (Node *node : selected_nodes) {
-		SimpleTerrain3D *selected_terrain = Object::cast_to<SimpleTerrain3D>(node);
-		if (selected_terrain != nullptr) {
-			return selected_terrain;
+		if (Object::cast_to<SimpleTerrain3D>(node) != nullptr || Object::cast_to<SimpleWorldPlacement3D>(node) != nullptr) {
+			return node;
 		}
 	}
 
 	return nullptr;
 }
 
-bool SimpleWorldPlacementDock::_sync_selected_terrain() {
-	SimpleTerrain3D *selected_terrain = _get_selected_terrain();
-	if (selected_terrain != nullptr && selected_terrain != terrain) {
-		_debug_log(vformat("sync_selected_terrain %s -> %s", terrain != nullptr ? String(terrain->get_name()) : String("<null>"), String(selected_terrain->get_name())));
-		edit(selected_terrain);
+bool SimpleWorldPlacementDock::_sync_selected_placement_owner() {
+	Node *selected_owner = _get_selected_placement_owner();
+	if (selected_owner != nullptr && selected_owner != terrain && selected_owner != placement_node) {
+		edit(selected_owner);
 	}
-	return terrain != nullptr;
+	return terrain != nullptr || placement_node != nullptr;
+}
+
+Ref<SimpleWorldPlacementLibrary> SimpleWorldPlacementDock::_get_owner_library() const {
+	if (terrain != nullptr) {
+		return terrain->get_world_placement_library();
+	}
+	if (placement_node != nullptr) {
+		return placement_node->get_world_placement_library();
+	}
+	return Ref<SimpleWorldPlacementLibrary>();
+}
+
+Ref<SimpleWorldPlacementData> SimpleWorldPlacementDock::_get_owner_data() const {
+	if (terrain != nullptr) {
+		return terrain->get_world_placement_data();
+	}
+	if (placement_node != nullptr) {
+		return placement_node->get_world_placement_data();
+	}
+	return Ref<SimpleWorldPlacementData>();
 }
 
 Vector<String> SimpleWorldPlacementDock::_get_scene_paths_from_drag_data(const Variant &p_data) const {
@@ -772,7 +818,7 @@ Vector<String> SimpleWorldPlacementDock::_get_scene_paths_from_drag_data(const V
 }
 
 bool SimpleWorldPlacementDock::_has_scene_files_in_drag_data(const Variant &p_data) const {
-	if (terrain == nullptr && _get_selected_terrain() == nullptr) {
+	if (terrain == nullptr && placement_node == nullptr && _get_selected_placement_owner() == nullptr) {
 		return false;
 	}
 	return !_get_scene_paths_from_drag_data(p_data).is_empty();
@@ -780,12 +826,12 @@ bool SimpleWorldPlacementDock::_has_scene_files_in_drag_data(const Variant &p_da
 
 void SimpleWorldPlacementDock::_add_scene_paths(const Vector<String> &p_paths, const String &p_action_name) {
 	_debug_log(vformat("add_scene_paths begin paths=%d action=%s", p_paths.size(), p_action_name));
-	if (!_sync_selected_terrain() || p_paths.is_empty()) {
+	if (!_sync_selected_placement_owner() || p_paths.is_empty()) {
 		_debug_log("add_scene_paths ignored: no terrain or empty paths");
 		return;
 	}
 
-	Ref<SimpleWorldPlacementLibrary> library = terrain->get_world_placement_library();
+	Ref<SimpleWorldPlacementLibrary> library = _get_owner_library();
 	const bool created_library = library.is_null();
 	if (created_library) {
 		library.instantiate();
@@ -859,10 +905,10 @@ void SimpleWorldPlacementDock::_add_scene_paths(const Vector<String> &p_paths, c
 }
 
 String SimpleWorldPlacementDock::_make_unique_profile_id(const String &p_base_id) const {
-	if (terrain == nullptr || terrain->get_world_placement_library().is_null()) {
+	if ((terrain == nullptr && placement_node == nullptr) || _get_owner_library().is_null()) {
 		return p_base_id;
 	}
-	Ref<SimpleWorldPlacementLibrary> library = terrain->get_world_placement_library();
+	Ref<SimpleWorldPlacementLibrary> library = _get_owner_library();
 	String candidate = p_base_id + "_copy";
 	if (!library->has_profile_id(candidate)) {
 		return candidate;
@@ -875,10 +921,10 @@ String SimpleWorldPlacementDock::_make_unique_profile_id(const String &p_base_id
 }
 
 Ref<SimpleWorldObjectProfile> SimpleWorldPlacementDock::_get_selected_profile() const {
-	if (terrain == nullptr || terrain->get_world_placement_library().is_null() || selected_profile_object_id == ObjectID()) {
+	if ((terrain == nullptr && placement_node == nullptr) || _get_owner_library().is_null() || selected_profile_object_id == ObjectID()) {
 		return Ref<SimpleWorldObjectProfile>();
 	}
-	const Array profiles = terrain->get_world_placement_library()->get_profiles();
+	const Array profiles = _get_owner_library()->get_profiles();
 	for (int i = 0; i < profiles.size(); i++) {
 		Ref<SimpleWorldObjectProfile> profile = profiles[i];
 		if (profile.is_valid() && profile->get_instance_id() == selected_profile_object_id) {
@@ -926,10 +972,11 @@ void SimpleWorldPlacementDock::drop_data_fw(const Point2 &p_point, const Variant
 	_add_scene_paths(_get_scene_paths_from_drag_data(drag_data), TTR("Drop Scenes into World Placement Library"));
 }
 
-void SimpleWorldPlacementDock::edit(SimpleTerrain3D *p_terrain) {
-	terrain = p_terrain;
-	_connect_library(terrain != nullptr ? terrain->get_world_placement_library() : Ref<SimpleWorldPlacementLibrary>());
-	if (terrain == nullptr) {
+void SimpleWorldPlacementDock::edit(Node *p_owner) {
+	terrain = Object::cast_to<SimpleTerrain3D>(p_owner);
+	placement_node = Object::cast_to<SimpleWorldPlacement3D>(p_owner);
+	_connect_library(_get_owner_library());
+	if (terrain == nullptr && placement_node == nullptr) {
 		selected_profile_object_id = ObjectID();
 	}
 	_refresh_resource_pickers();
@@ -1173,13 +1220,13 @@ void SimpleTerrainEditorPlugin::_edit_mode_pressed() {
 
 void SimpleTerrainEditorPlugin::_placement_mode_pressed() {
 	terrain_mode = false;
-	placement_mode = terrain != nullptr;
+	placement_mode = terrain != nullptr || placement_node != nullptr;
 	painting = false;
 	has_last_brush_position = false;
 	_clear_pending_create_cell();
 	_clear_cursor_preview();
 	if (placement_mode) {
-		placement_dock->edit(terrain);
+		placement_dock->edit(_get_current_placement_parent());
 		EditorDockManager::get_singleton()->focus_dock(placement_dock);
 	}
 	_update_toolbar();
@@ -1226,21 +1273,26 @@ void SimpleTerrainEditorPlugin::_bake_dynamic_navigation_pressed() {
 }
 
 void SimpleTerrainEditorPlugin::_update_toolbar() {
+	if (toolbar == nullptr || brush_overlay_panel == nullptr || placement_overlay_panel == nullptr || select_mode_button == nullptr || edit_mode_button == nullptr || placement_mode_button == nullptr || operation_button == nullptr || radius_slider == nullptr || strength_slider == nullptr || placement_size_slider == nullptr || flat_button == nullptr || random_button == nullptr || bake_navigation_button == nullptr || bake_dynamic_navigation_button == nullptr) {
+		return;
+	}
 	const bool has_terrain = terrain != nullptr;
+	const bool has_placement_owner = terrain != nullptr || placement_node != nullptr;
 	// The toolbar remains allocated for the lifetime of the plugin, but it is
-	// only visible and interactive when a SimpleTerrain3D node is actively selected.
-	toolbar->set_visible(has_terrain);
+	// only visible and interactive when a placement-capable node is actively selected.
+	toolbar->set_visible(has_placement_owner);
 	brush_overlay_panel->set_visible(has_terrain && terrain_mode);
-	placement_overlay_panel->set_visible(has_terrain && placement_mode);
-	select_mode_button->set_disabled(!has_terrain);
+	placement_overlay_panel->set_visible(has_placement_owner && placement_mode);
+	select_mode_button->set_disabled(!has_placement_owner);
 	edit_mode_button->set_disabled(!has_terrain);
-	placement_mode_button->set_disabled(!has_terrain);
-	select_mode_button->set_pressed_no_signal(!terrain_mode && !placement_mode && has_terrain);
+	placement_mode_button->set_disabled(!has_placement_owner);
+	select_mode_button->set_pressed_no_signal(!terrain_mode && !placement_mode && has_placement_owner);
 	edit_mode_button->set_pressed_no_signal(terrain_mode && has_terrain);
-	placement_mode_button->set_pressed_no_signal(placement_mode && has_terrain);
+	placement_mode_button->set_pressed_no_signal(placement_mode && has_placement_owner);
 	operation_button->set_disabled(!terrain_mode);
 	radius_slider->set_read_only(!terrain_mode);
 	strength_slider->set_read_only(!terrain_mode);
+	placement_size_slider->set_read_only(!placement_mode);
 	flat_button->set_disabled(!has_terrain);
 	random_button->set_disabled(!has_terrain);
 	bake_navigation_button->set_disabled(!has_terrain);
@@ -1261,23 +1313,48 @@ void SimpleTerrainEditorPlugin::_update_toolbar() {
 	}
 	_update_placement_overlay();
 }
+Node3D *SimpleTerrainEditorPlugin::_get_current_placement_parent() const {
+	if (placement_node != nullptr) {
+		return placement_node;
+	}
+	return terrain;
+}
 
+Ref<SimpleWorldPlacementLibrary> SimpleTerrainEditorPlugin::_get_current_placement_library() const {
+	if (placement_node != nullptr) {
+		return placement_node->get_world_placement_library();
+	}
+	if (terrain != nullptr) {
+		return terrain->get_world_placement_library();
+	}
+	return Ref<SimpleWorldPlacementLibrary>();
+}
+
+Ref<SimpleWorldPlacementData> SimpleTerrainEditorPlugin::_get_current_placement_data() const {
+	if (placement_node != nullptr) {
+		return placement_node->get_world_placement_data();
+	}
+	if (terrain != nullptr) {
+		return terrain->get_world_placement_data();
+	}
+	return Ref<SimpleWorldPlacementData>();
+}
 void SimpleTerrainEditorPlugin::_update_placement_overlay() {
 	if (placement_status_label == nullptr || placement_library_label == nullptr) {
 		return;
 	}
 
-	if (terrain == nullptr) {
-		placement_status_label->set_text(TTRC("No SimpleTerrain3D selected"));
+	if (terrain == nullptr && placement_node == nullptr) {
+		placement_status_label->set_text(TTRC("No placement node selected"));
 		placement_library_label->set_text(String());
 		return;
 	}
 
-	Ref<SimpleWorldPlacementLibrary> library = terrain->get_world_placement_library();
+	Ref<SimpleWorldPlacementLibrary> library = _get_current_placement_library();
 	const int profile_count = library.is_valid() ? library->get_profile_count() : 0;
 	Ref<SimpleWorldObjectProfile> selected_profile = placement_dock->get_selected_profile();
 	const String profile_label = selected_profile.is_valid() ? (selected_profile->get_display_name().is_empty() ? selected_profile->get_id() : selected_profile->get_display_name()) : TTR("None");
-	placement_status_label->set_text(vformat(TTR("Placement Mode: %s"), terrain->get_name()));
+	placement_status_label->set_text(vformat(TTR("Placement Mode: %s"), _get_current_placement_parent()->get_name()));
 	placement_library_label->set_text(vformat(TTR("Profiles: %d  Selected: %s"), profile_count, profile_label));
 }
 
@@ -1315,13 +1392,14 @@ void SimpleTerrainEditorPlugin::_set_placement_arrays(SimpleWorldPlacementData *
 }
 
 void SimpleTerrainEditorPlugin::_place_selected_profile(Camera3D *p_camera, const Vector2 &p_mouse_position) {
-	if (terrain == nullptr || !terrain->is_inside_tree() || p_camera == nullptr) {
+	Node3D *placement_parent = _get_current_placement_parent();
+	if (placement_parent == nullptr || !placement_parent->is_inside_tree() || p_camera == nullptr) {
 		return;
 	}
 
-	Ref<SimpleWorldPlacementLibrary> library = terrain->get_world_placement_library();
+	Ref<SimpleWorldPlacementLibrary> library = _get_current_placement_library();
 	if (library.is_null() || library->get_profile_count() == 0) {
-		WARN_PRINT("SimpleTerrain placement requires a placement library with at least one profile.");
+		WARN_PRINT("World placement requires a placement library with at least one profile.");
 		return;
 	}
 
@@ -1330,7 +1408,7 @@ void SimpleTerrainEditorPlugin::_place_selected_profile(Camera3D *p_camera, cons
 		profile = library->get_profile(0);
 	}
 	if (profile.is_null() || profile->get_scene().is_null() || !profile->get_scene()->can_instantiate()) {
-		WARN_PRINT("Selected SimpleTerrain world object profile has no instantiable PackedScene.");
+		WARN_PRINT("Selected world object profile has no instantiable PackedScene.");
 		return;
 	}
 
@@ -1343,103 +1421,42 @@ void SimpleTerrainEditorPlugin::_place_selected_profile(Camera3D *p_camera, cons
 	Node3D *instance_3d = Object::cast_to<Node3D>(instance);
 	if (instance_3d == nullptr) {
 		memdelete(instance);
-		WARN_PRINT("Selected SimpleTerrain world object scene root must be a Node3D.");
+		WARN_PRINT("Selected world object scene root must be a Node3D.");
 		return;
 	}
 
-	const Vector3 local_position = hit["local_position"];
 	Vector3 world_position = hit["position"];
-	Vector3 normal = Vector3(0.0, 1.0, 0.0);
-	if (hit.has("normal")) {
-		normal = ((Vector3)hit["normal"]).normalized();
-	}
+	Vector3 normal = hit.has("normal") ? ((Vector3)hit["normal"]).normalized() : Vector3(0.0, 1.0, 0.0);
 	world_position += normal * profile->get_surface_offset();
 
 	const int seed = Math::rand();
 	RandomPCG rng((uint64_t)seed);
 	const Vector3 min_scale = profile->get_min_scale();
 	const Vector3 max_scale = profile->get_max_scale();
-	const Vector3 scale(
+	Vector3 scale(
 			rng.random(MIN(min_scale.x, max_scale.x), MAX(min_scale.x, max_scale.x)),
 			rng.random(MIN(min_scale.y, max_scale.y), MAX(min_scale.y, max_scale.y)),
 			rng.random(MIN(min_scale.z, max_scale.z), MAX(min_scale.z, max_scale.z)));
+	scale *= (real_t)placement_size_slider->get_value();
 
 	Vector3 rotation;
 	if (profile->is_random_yaw_enabled()) {
 		rotation.y = rng.random((real_t)0.0, (real_t)Math::TAU);
 	}
 
-	const Transform3D terrain_inverse = terrain->get_global_transform().affine_inverse();
-	const Vector3 local_normal = terrain_inverse.basis.xform(normal).normalized();
+	const Transform3D parent_inverse = placement_parent->get_global_transform().affine_inverse();
 	Transform3D local_transform;
-	local_transform.origin = terrain_inverse.xform(world_position);
-	if (profile->is_aligning_to_terrain_normal()) {
-		Vector3 local_y = local_normal.is_zero_approx() ? Vector3(0.0, 1.0, 0.0) : local_normal;
-		Vector3 local_z = Vector3(Math::sin(rotation.y), 0.0, Math::cos(rotation.y));
-		local_z = (local_z - local_y * local_y.dot(local_z));
-		if (local_z.is_zero_approx()) {
-			local_z = local_y.cross(Vector3(1.0, 0.0, 0.0));
-		}
-		if (local_z.is_zero_approx()) {
-			local_z = local_y.cross(Vector3(0.0, 0.0, 1.0));
-		}
-		local_z.normalize();
-		Vector3 local_x = local_y.cross(local_z).normalized();
-		local_z = local_x.cross(local_y).normalized();
-		local_transform.basis = Basis(local_x, local_y, local_z);
-	} else {
-		local_transform.basis = Basis::from_euler(rotation);
-	}
+	local_transform.origin = parent_inverse.xform(world_position);
+	local_transform.basis = Basis::from_euler(rotation);
 	local_transform.basis.scale(scale);
 	instance_3d->set_transform(local_transform);
 	instance_3d->set_name(profile->get_id().is_empty() ? String("WorldObject") : profile->get_id());
 
-	Vector<NavigationObstacle3D *> runtime_obstacles;
-	if (profile->uses_runtime_navigation_obstacle()) {
-		if (profile->get_navigation_obstacle_shape_source() == SimpleWorldObjectProfile::NAVIGATION_OBSTACLE_SHAPE_SCENE_COLLISION ||
-				profile->get_navigation_obstacle_shape_source() == SimpleWorldObjectProfile::NAVIGATION_OBSTACLE_SHAPE_MESH_AABB) {
-			Vector<SimpleTerrainRuntimeObstacleSpec> specs;
-			if (profile->get_navigation_obstacle_shape_source() == SimpleWorldObjectProfile::NAVIGATION_OBSTACLE_SHAPE_MESH_AABB) {
-				_collect_runtime_mesh_aabb_obstacle_specs(instance_3d, _get_node_3d_scene_transform(instance_3d).affine_inverse(), specs);
-			} else {
-				_collect_runtime_collision_obstacle_specs(instance_3d, _get_node_3d_scene_transform(instance_3d).affine_inverse(), specs);
-			}
-			for (const SimpleTerrainRuntimeObstacleSpec &spec : specs) {
-				NavigationObstacle3D *runtime_obstacle = memnew(NavigationObstacle3D);
-				runtime_obstacle->set_name("NavigationObstacle3D");
-				runtime_obstacle->set_transform(spec.transform);
-				runtime_obstacle->set_height(spec.height);
-				if (spec.use_vertices) {
-					runtime_obstacle->set_vertices(spec.vertices);
-				} else {
-					runtime_obstacle->set_radius(spec.radius);
-				}
-				runtime_obstacle->set_avoidance_layers(profile->get_navigation_avoidance_layers());
-				runtime_obstacle->set_avoidance_enabled(true);
-				runtime_obstacle->set_affect_navigation_mesh(false);
-				runtime_obstacle->set_carve_navigation_mesh(profile->get_navigation_obstacle_carve());
-				instance_3d->add_child(runtime_obstacle);
-				runtime_obstacles.push_back(runtime_obstacle);
-			}
-		} else if (profile->get_navigation_obstacle_radius() > 0.0) {
-			NavigationObstacle3D *runtime_obstacle = memnew(NavigationObstacle3D);
-			runtime_obstacle->set_name("NavigationObstacle3D");
-			runtime_obstacle->set_radius(profile->get_navigation_obstacle_radius());
-			runtime_obstacle->set_height(profile->get_navigation_obstacle_height());
-			runtime_obstacle->set_avoidance_layers(profile->get_navigation_avoidance_layers());
-			runtime_obstacle->set_avoidance_enabled(true);
-			runtime_obstacle->set_affect_navigation_mesh(false);
-			runtime_obstacle->set_carve_navigation_mesh(profile->get_navigation_obstacle_carve());
-			instance_3d->add_child(runtime_obstacle);
-			runtime_obstacles.push_back(runtime_obstacle);
-		}
-	}
-
-	Ref<SimpleWorldPlacementData> placement_data = terrain->get_world_placement_data();
+	Ref<SimpleWorldPlacementData> placement_data = _get_current_placement_data();
 	Ref<SimpleWorldPlacementData> old_data = placement_data;
 	if (placement_data.is_null()) {
 		placement_data.instantiate();
-		placement_data->set_terrain_path(terrain->get_path());
+		placement_data->set_terrain_path(placement_parent->get_path());
 		placement_data->set_library(library);
 	}
 
@@ -1458,49 +1475,44 @@ void SimpleTerrainEditorPlugin::_place_selected_profile(Camera3D *p_camera, cons
 	PackedVector3Array after_normals = before_normals;
 	PackedInt32Array after_seeds = before_seeds;
 	PackedVector2Array after_chunk_coords = before_chunk_coords;
-
 	after_profile_ids.push_back(profile->get_id());
 	after_positions.push_back(world_position);
 	after_rotations.push_back(rotation);
 	after_scales.push_back(scale);
 	after_normals.push_back(normal);
 	after_seeds.push_back(seed);
-
-	Ref<SimpleTerrainData> terrain_data = terrain->get_simple_terrain_data();
-	Vector2 chunk_coord;
-	if (terrain_data.is_valid()) {
-		const real_t chunk_world_size = (real_t)terrain->get_chunk_size() * terrain_data->get_cell_size();
-		chunk_coord.x = Math::floor(local_position.x / chunk_world_size);
-		chunk_coord.y = Math::floor(local_position.z / chunk_world_size);
-	}
-	after_chunk_coords.push_back(chunk_coord);
+	after_chunk_coords.push_back(Vector2());
 
 	EditorUndoRedoManager *undo_redo = get_undo_redo();
 	undo_redo->create_action(TTR("Place World Object"));
-	Node3D *placement_root = _get_or_create_placement_root(undo_redo);
-	undo_redo->add_do_method(placement_root, "add_child", instance_3d, true);
-	Node *edited_scene = EditorNode::get_singleton()->get_edited_scene();
-	if (edited_scene != nullptr) {
-		undo_redo->add_do_method(instance_3d, "set_owner", edited_scene);
-		for (NavigationObstacle3D *runtime_obstacle : runtime_obstacles) {
-			undo_redo->add_do_method(runtime_obstacle, "set_owner", edited_scene);
+	if (placement_node == nullptr) {
+		Node3D *placement_root = _get_or_create_placement_root(undo_redo);
+		undo_redo->add_do_method(placement_root, "add_child", instance_3d, true);
+		Node *edited_scene = EditorNode::get_singleton()->get_edited_scene();
+		if (edited_scene != nullptr) {
+			undo_redo->add_do_method(instance_3d, "set_owner", edited_scene);
 		}
+		undo_redo->add_undo_method(placement_root, "remove_child", instance_3d);
+		undo_redo->add_do_reference(instance_3d);
+	} else {
+		memdelete(instance_3d);
 	}
-	undo_redo->add_do_property(terrain, "world_placement_data", placement_data);
+	undo_redo->add_do_property(placement_parent, "world_placement_data", placement_data);
 	undo_redo->add_do_method(this, "_set_placement_arrays", placement_data.ptr(), after_profile_ids, after_positions, after_rotations, after_scales, after_normals, after_seeds, after_chunk_coords);
 	undo_redo->add_undo_method(this, "_set_placement_arrays", placement_data.ptr(), before_profile_ids, before_positions, before_rotations, before_scales, before_normals, before_seeds, before_chunk_coords);
-	undo_redo->add_undo_property(terrain, "world_placement_data", old_data);
-	undo_redo->add_undo_method(placement_root, "remove_child", instance_3d);
-	undo_redo->add_do_reference(instance_3d);
+	undo_redo->add_undo_property(placement_parent, "world_placement_data", old_data);
+	if (placement_node != nullptr) {
+		undo_redo->add_do_method(placement_node, "rebuild_placements");
+		undo_redo->add_undo_method(placement_node, "rebuild_placements");
+	}
 	undo_redo->commit_action();
 
 	if (placement_data->get_path().is_resource_file()) {
 		EditorNode::get_singleton()->save_resource(placement_data);
 	}
-	placement_dock->edit(terrain);
+	placement_dock->edit(placement_parent);
 	_update_toolbar();
 }
-
 void SimpleTerrainEditorPlugin::_attach_brush_overlay() {
 	Node3DEditorViewport *viewport = Node3DEditor::get_singleton()->get_editor_viewport(0);
 	if (viewport == nullptr || brush_overlay_panel->get_parent() != nullptr) {
@@ -1589,14 +1601,56 @@ void SimpleTerrainEditorPlugin::_record_brush_delta(const Dictionary &p_delta) {
 }
 
 Dictionary SimpleTerrainEditorPlugin::_get_hit(Camera3D *p_camera, const Vector2 &p_mouse_position) const {
-	if (terrain == nullptr || p_camera == nullptr) {
+	if (p_camera == nullptr) {
 		return Dictionary();
 	}
-	// The editor owns viewport-to-ray conversion. SimpleTerrain3D owns terrain picking
-	// so the same hit-test can be reused by scripts or future tools.
+
 	const Vector3 ray_origin = p_camera->project_ray_origin(p_mouse_position);
 	const Vector3 ray_direction = p_camera->project_ray_normal(p_mouse_position);
-	return terrain->get_brush_hit(ray_origin, ray_direction);
+	if (terrain != nullptr) {
+		return terrain->get_brush_hit(ray_origin, ray_direction);
+	}
+	if (placement_node == nullptr || !placement_node->is_inside_tree()) {
+		return Dictionary();
+	}
+
+	Node *edited_scene = EditorNode::get_singleton()->get_edited_scene();
+	Dictionary terrain_hit = _get_closest_simple_terrain_hit(edited_scene, ray_origin, ray_direction);
+	if (!terrain_hit.is_empty()) {
+		return terrain_hit;
+	}
+
+	Dictionary hit;
+	PhysicsDirectSpaceState3D *space_state = placement_node->get_world_3d()->get_direct_space_state();
+	if (space_state != nullptr) {
+		PhysicsDirectSpaceState3D::RayParameters ray_params;
+		ray_params.from = ray_origin;
+		ray_params.to = ray_origin + ray_direction * 10000.0;
+		ray_params.collide_with_areas = true;
+		PhysicsDirectSpaceState3D::RayResult ray_result;
+		if (space_state->intersect_ray(ray_params, ray_result)) {
+			hit["position"] = ray_result.position;
+			hit["local_position"] = placement_node->get_global_transform().affine_inverse().xform(ray_result.position);
+			hit["normal"] = ray_result.normal;
+			return hit;
+		}
+	}
+
+	const Transform3D inverse_transform = placement_node->get_global_transform().affine_inverse();
+	const Vector3 local_origin = inverse_transform.xform(ray_origin);
+	const Vector3 local_direction = inverse_transform.basis.xform(ray_direction).normalized();
+	if (Math::is_zero_approx(local_direction.y)) {
+		return Dictionary();
+	}
+	const real_t t = -local_origin.y / local_direction.y;
+	if (t < 0.0) {
+		return Dictionary();
+	}
+	const Vector3 local_position = local_origin + local_direction * t;
+	hit["local_position"] = local_position;
+	hit["position"] = placement_node->get_global_transform().xform(local_position);
+	hit["normal"] = placement_node->get_global_transform().basis.xform(Vector3(0.0, 1.0, 0.0)).normalized();
+	return hit;
 }
 
 bool SimpleTerrainEditorPlugin::_get_tile_cell_at_mouse(Camera3D *p_camera, const Vector2 &p_mouse_position, Vector2i &r_cell, Vector3 &r_world_position) const {
@@ -1851,24 +1905,26 @@ void SimpleTerrainEditorPlugin::_bind_methods() {
 }
 
 bool SimpleTerrainEditorPlugin::handles(Object *p_object) const {
-	return Object::cast_to<SimpleTerrain3D>(p_object) != nullptr;
+	return Object::cast_to<SimpleTerrain3D>(p_object) != nullptr || Object::cast_to<SimpleWorldPlacement3D>(p_object) != nullptr;
 }
 
 void SimpleTerrainEditorPlugin::edit(Object *p_object) {
 	terrain = Object::cast_to<SimpleTerrain3D>(p_object);
-	if (terrain == nullptr) {
+	placement_node = Object::cast_to<SimpleWorldPlacement3D>(p_object);
+	if (terrain == nullptr && placement_node == nullptr) {
 		terrain_mode = false;
 		placement_mode = false;
 		painting = false;
 		_clear_pending_create_cell();
 		_clear_cursor_preview();
 	}
-	placement_dock->edit(terrain);
+	placement_dock->edit(_get_current_placement_parent());
 	_update_toolbar();
 }
 
 void SimpleTerrainEditorPlugin::clear() {
 	terrain = nullptr;
+	placement_node = nullptr;
 	terrain_mode = false;
 	placement_mode = false;
 	painting = false;
@@ -1882,7 +1938,7 @@ EditorPlugin::AfterGUIInput SimpleTerrainEditorPlugin::forward_3d_gui_input(Came
 	if (placement_mode) {
 		_clear_pending_create_cell();
 		_clear_cursor_preview();
-		if (terrain == nullptr) {
+		if (terrain == nullptr && placement_node == nullptr) {
 			return AFTER_GUI_INPUT_PASS;
 		}
 		Ref<InputEventMouseButton> mouse_button = p_event;
@@ -2017,6 +2073,15 @@ SimpleTerrainEditorPlugin::SimpleTerrainEditorPlugin() {
 	placement_library_label->set_text(TTRC("Profiles: 0"));
 	placement_library_label->set_focus_mode(Control::FOCUS_ACCESSIBILITY);
 	placement_options_vbox->add_child(placement_library_label);
+	placement_size_slider = memnew(EditorSpinSlider);
+	placement_size_slider->set_label(TTRC("Size"));
+	placement_size_slider->set_min(0.05);
+	placement_size_slider->set_max(16.0);
+	placement_size_slider->set_step(0.05);
+	placement_size_slider->set_value(1.0);
+	placement_size_slider->set_custom_minimum_size(Size2(100, 0) * EDSCALE);
+	placement_options_vbox->add_child(placement_size_slider);
+
 
 	mode_button_group.instantiate();
 

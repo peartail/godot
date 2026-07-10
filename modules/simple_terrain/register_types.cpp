@@ -10,6 +10,7 @@
 #include "modules/simple_terrain/simple_terrain_3d.h"
 #include "modules/simple_terrain/simple_terrain_data.h"
 #include "modules/simple_terrain/simple_world_object_profile.h"
+#include "modules/simple_terrain/simple_world_placement_3d.h"
 #include "modules/simple_terrain/simple_world_placement_data.h"
 #include "modules/simple_terrain/simple_world_placement_library.h"
 
@@ -28,6 +29,7 @@ void initialize_simple_terrain_module(ModuleInitializationLevel p_level) {
 		GDREGISTER_CLASS(SimpleTerrain3D);
 		GDREGISTER_CLASS(SimpleNavigationBlocker3D);
 		GDREGISTER_CLASS(SimpleWorldObjectProfile);
+		GDREGISTER_CLASS(SimpleWorldPlacement3D);
 		GDREGISTER_CLASS(SimpleWorldPlacementLibrary);
 		GDREGISTER_CLASS(SimpleWorldPlacementData);
 	}

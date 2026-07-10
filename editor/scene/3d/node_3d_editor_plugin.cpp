@@ -2229,6 +2229,10 @@ void Node3DEditorViewport::_sinput(const Ref<InputEvent> &p_event) {
 		}
 	}
 
+	if (spatial_editor->is_custom_tool_selection_disabled()) {
+		after = EditorPlugin::AFTER_GUI_INPUT_CUSTOM;
+	}
+
 	// Several parts of the 3D navigation are handled here.
 	bool was_navigating = view_3d_controller->is_navigating();
 	view_3d_controller->gui_input(p_event, surface->get_global_rect());
@@ -8058,6 +8062,11 @@ void Node3DEditor::_menu_item_pressed(int p_option) {
 		case MENU_TOOL_SCALE:
 		case MENU_TOOL_SELECT:
 		case MENU_TOOL_LIST_SELECT: {
+			if (!custom_tool_hide_builtin_plugins.is_empty()) {
+				_refresh_custom_tool_state();
+				break;
+			}
+
 			for (uint32_t i = 0; i < VIEWPORTS_COUNT; i++) {
 				if (viewports[i]->_edit.mode != Node3DEditorViewport::TRANSFORM_NONE) {
 					viewports[i]->commit_transform();
@@ -9319,14 +9328,63 @@ void Node3DEditor::_selection_changed() {
 	update_transform_gizmo();
 }
 
-bool Node3DEditor::_is_open_world_terrain_selection() const {
-	const List<Node *> &selection = editor_selection->get_top_selected_node_list();
-	if (selection.size() != 1) {
-		return false;
+void Node3DEditor::set_custom_tool_active(Object *p_owner, bool p_active, bool p_hide_builtin_tools, bool p_disable_selection) {
+	ERR_FAIL_NULL(p_owner);
+	const ObjectID owner_id = p_owner->get_instance_id();
+
+	if (!p_active && !custom_tool_active_plugins.has(owner_id) && !custom_tool_hide_builtin_plugins.has(owner_id) && !custom_tool_disable_selection_plugins.has(owner_id)) {
+		return;
 	}
 
-	Node *node = selection.back()->get();
-	return node != nullptr && node->is_class("OpenWorldTerrain3D");
+	if (p_active) {
+		custom_tool_active_plugins.insert(owner_id);
+		if (p_hide_builtin_tools) {
+			custom_tool_hide_builtin_plugins.insert(owner_id);
+		} else {
+			custom_tool_hide_builtin_plugins.erase(owner_id);
+		}
+		if (p_disable_selection) {
+			custom_tool_disable_selection_plugins.insert(owner_id);
+		} else {
+			custom_tool_disable_selection_plugins.erase(owner_id);
+		}
+	} else {
+		custom_tool_active_plugins.erase(owner_id);
+		custom_tool_hide_builtin_plugins.erase(owner_id);
+		custom_tool_disable_selection_plugins.erase(owner_id);
+	}
+
+	_refresh_custom_tool_state();
+}
+
+bool Node3DEditor::is_custom_tool_active(Object *p_owner) const {
+	ERR_FAIL_NULL_V(p_owner, false);
+	return custom_tool_active_plugins.has(p_owner->get_instance_id());
+}
+
+void Node3DEditor::_refresh_custom_tool_state() {
+	if (tool_button[TOOL_MODE_SELECT] == nullptr) {
+		return;
+	}
+
+	if (!custom_tool_hide_builtin_plugins.is_empty() && tool_mode != TOOL_MODE_SELECT) {
+		for (uint32_t i = 0; i < VIEWPORTS_COUNT; i++) {
+			if (viewports[i]->_edit.mode != Node3DEditorViewport::TRANSFORM_NONE) {
+				viewports[i]->commit_transform();
+			}
+		}
+		tool_mode = TOOL_MODE_SELECT;
+	}
+
+	for (int i = 0; i < TOOL_MAX; i++) {
+		tool_button[i]->set_pressed_no_signal(custom_tool_hide_builtin_plugins.is_empty() && i == tool_mode);
+	}
+
+	update_transform_gizmo();
+	for (uint32_t i = 0; i < VIEWPORTS_COUNT; i++) {
+		viewports[i]->update_transform_gizmo_highlight();
+	}
+	_refresh_menu_icons();
 }
 
 void Node3DEditor::refresh_dirty_gizmos() {
@@ -9348,11 +9406,8 @@ void Node3DEditor::_refresh_menu_icons() {
 	bool all_locked = true;
 	bool all_grouped = true;
 	bool has_node3d_item = false;
-	const bool open_world_terrain_selected = _is_open_world_terrain_selection();
+	const bool custom_tool_hides_builtin = !custom_tool_hide_builtin_plugins.is_empty();
 
-	if (open_world_terrain_selected && tool_mode != TOOL_MODE_SELECT) {
-		_menu_item_pressed(MENU_TOOL_SELECT);
-	}
 
 	const List<Node *> &selection = editor_selection->get_top_selected_node_list();
 
@@ -9390,17 +9445,17 @@ void Node3DEditor::_refresh_menu_icons() {
 	tool_button[TOOL_UNGROUP_SELECTED]->set_visible(all_grouped);
 	tool_button[TOOL_UNGROUP_SELECTED]->set_disabled(!has_node3d_item);
 
-	tool_button[TOOL_MODE_TRANSFORM]->set_visible(!open_world_terrain_selected);
-	tool_button[TOOL_MODE_MOVE]->set_visible(!open_world_terrain_selected);
-	tool_button[TOOL_MODE_ROTATE]->set_visible(!open_world_terrain_selected);
-	tool_button[TOOL_MODE_SCALE]->set_visible(!open_world_terrain_selected);
-	tool_button[TOOL_MODE_SELECT]->set_visible(true);
-	tool_button[TOOL_MODE_LIST_SELECT]->set_visible(!open_world_terrain_selected);
-	tool_button[TOOL_LOCK_SELECTED]->set_visible(!open_world_terrain_selected && !all_locked);
-	tool_button[TOOL_UNLOCK_SELECTED]->set_visible(!open_world_terrain_selected && all_locked);
-	tool_button[TOOL_GROUP_SELECTED]->set_visible(!open_world_terrain_selected && !all_grouped);
-	tool_button[TOOL_UNGROUP_SELECTED]->set_visible(!open_world_terrain_selected && all_grouped);
-	tool_button[TOOL_RULER]->set_visible(!open_world_terrain_selected);
+	tool_button[TOOL_MODE_TRANSFORM]->set_visible(!custom_tool_hides_builtin);
+	tool_button[TOOL_MODE_MOVE]->set_visible(!custom_tool_hides_builtin);
+	tool_button[TOOL_MODE_ROTATE]->set_visible(!custom_tool_hides_builtin);
+	tool_button[TOOL_MODE_SCALE]->set_visible(!custom_tool_hides_builtin);
+	tool_button[TOOL_MODE_SELECT]->set_visible(!custom_tool_hides_builtin);
+	tool_button[TOOL_MODE_LIST_SELECT]->set_visible(!custom_tool_hides_builtin);
+	tool_button[TOOL_LOCK_SELECTED]->set_visible(!custom_tool_hides_builtin && !all_locked);
+	tool_button[TOOL_UNLOCK_SELECTED]->set_visible(!custom_tool_hides_builtin && all_locked);
+	tool_button[TOOL_GROUP_SELECTED]->set_visible(!custom_tool_hides_builtin && !all_grouped);
+	tool_button[TOOL_UNGROUP_SELECTED]->set_visible(!custom_tool_hides_builtin && all_grouped);
+	tool_button[TOOL_RULER]->set_visible(!custom_tool_hides_builtin);
 }
 
 template <typename T>

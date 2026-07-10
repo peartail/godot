@@ -799,6 +799,9 @@ private:
 	PanelContainer *context_toolbar_panel = nullptr;
 	HBoxContainer *context_toolbar_hbox = nullptr;
 	HashMap<Control *, VSeparator *> context_toolbar_separators;
+	HashSet<ObjectID> custom_tool_active_plugins;
+	HashSet<ObjectID> custom_tool_hide_builtin_plugins;
+	HashSet<ObjectID> custom_tool_disable_selection_plugins;
 
 	void _update_context_toolbar();
 
@@ -842,7 +845,7 @@ private:
 
 	void _selection_changed();
 	void _refresh_menu_icons();
-	bool _is_open_world_terrain_selection() const;
+	void _refresh_custom_tool_state();
 
 	bool do_snap_selected_nodes_to_floor = false;
 	void _snap_selected_nodes_to_floor();
@@ -953,6 +956,8 @@ public:
 	bool is_gizmo_visible() const;
 
 	ToolMode get_tool_mode() const { return tool_mode; }
+	bool is_custom_tool_active() const { return !custom_tool_active_plugins.is_empty(); }
+	bool is_custom_tool_selection_disabled() const { return !custom_tool_disable_selection_plugins.is_empty(); }
 	bool are_local_coords_enabled() const { return tool_option_button[Node3DEditor::TOOL_OPT_LOCAL_COORDS]->is_pressed(); }
 	void set_local_coords_enabled(bool on) const { tool_option_button[Node3DEditor::TOOL_OPT_LOCAL_COORDS]->set_pressed(on); }
 	bool is_preserve_children_transform_enabled() const { return tool_option_button[Node3DEditor::TOOL_OPT_PRESERVE_CHILDREN_TRANSFORM]->is_pressed(); }
@@ -988,6 +993,8 @@ public:
 
 	void add_control_to_menu_panel(Control *p_control);
 	void remove_control_from_menu_panel(Control *p_control);
+	void set_custom_tool_active(Object *p_owner, bool p_active, bool p_hide_builtin_tools, bool p_disable_selection);
+	bool is_custom_tool_active(Object *p_owner) const;
 
 	void add_control_to_left_panel(Control *p_control);
 	void remove_control_from_left_panel(Control *p_control);
