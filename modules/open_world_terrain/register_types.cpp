@@ -9,6 +9,12 @@
 #include "modules/open_world_terrain/open_world_terrain_3d.h"
 #include "modules/open_world_terrain/open_world_terrain_data.h"
 #include "modules/open_world_terrain/open_world_terrain_layer.h"
+#include "modules/open_world_terrain/open_world_tree_3d.h"
+#include "modules/open_world_terrain/open_world_tree_generation_profile.h"
+#include "modules/open_world_terrain/open_world_tree_generator_3d.h"
+#include "modules/open_world_terrain/open_world_tree_placement_data.h"
+#include "modules/open_world_terrain/open_world_tree_species.h"
+#include "modules/open_world_terrain/open_world_tree_variant.h"
 
 #ifdef TOOLS_ENABLED
 #include "modules/open_world_terrain/editor/open_world_terrain_editor_plugin.h"
@@ -25,6 +31,12 @@ void initialize_open_world_terrain_module(ModuleInitializationLevel p_level) {
 		GDREGISTER_CLASS(OpenWorldTerrainLayer);
 		GDREGISTER_CLASS(OpenWorldTerrainData);
 		GDREGISTER_CLASS(OpenWorldTerrain3D);
+		GDREGISTER_CLASS(OpenWorldTreeVariant);
+		GDREGISTER_CLASS(OpenWorldTreeSpecies);
+		GDREGISTER_CLASS(OpenWorldTreePlacementData);
+		GDREGISTER_CLASS(OpenWorldTree3D);
+		GDREGISTER_CLASS(OpenWorldTreeGenerationProfile);
+		GDREGISTER_CLASS(OpenWorldTreeGenerator3D);
 	}
 
 #ifdef TOOLS_ENABLED

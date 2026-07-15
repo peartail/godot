@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="OpenWorldTreeSpecies" inherits="Resource" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>
+		Library of baked variations belonging to one tree species.
+	</brief_description>
+	<description>
+		[OpenWorldTreeSpecies] groups [OpenWorldTreeVariant] resources that share the same visual and gameplay identity. [method get_variant_index_for_seed] provides deterministic variation selection for placement records that do not explicitly select a variant.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="get_variant" qualifiers="const">
+			<return type="OpenWorldTreeVariant" />
+			<param index="0" name="index" type="int" />
+			<description>
+				Returns the variation at [param index].
+			</description>
+		</method>
+		<method name="get_variant_count" qualifiers="const">
+			<return type="int" />
+			<description>
+				Returns the number of valid variations in this species.
+			</description>
+		</method>
+		<method name="get_variant_index_for_seed" qualifiers="const">
+			<return type="int" />
+			<param index="0" name="seed" type="int" />
+			<description>
+				Returns a deterministic variation index for [param seed], or [code]-1[/code] when no variations exist.
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="display_name" type="String" setter="set_display_name" getter="get_display_name" default="&quot;Tree Species&quot;">
+			Editor-facing species name.
+		</member>
+		<member name="species_id" type="String" setter="set_species_id" getter="get_species_id" default="&quot;&quot;">
+			Stable species identifier used by gameplay and save data.
+		</member>
+		<member name="tags" type="PackedStringArray" setter="set_tags" getter="get_tags" default="PackedStringArray()">
+			Optional semantic tags such as biome, climate, or wood category.
+		</member>
+		<member name="variants" type="Array[OpenWorldTreeVariant]" setter="set_variants" getter="get_variants" default="[]">
+			Baked visual variations available to this species.
+		</member>
+	</members>
+</class>

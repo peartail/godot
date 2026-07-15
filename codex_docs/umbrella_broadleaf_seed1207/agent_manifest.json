@@ -1,0 +1,114 @@
+{
+  "schema_version": "1.0.0",
+  "asset_id": "Tree_UmbrellaBroadleaf_01",
+  "asset_kind": "stylized_tree_engine_review_sample",
+  "species_profile": "Umbrella Tropical Broadleaf / Rain Tree Inspired",
+  "source_seed": 1207,
+  "approval_state": "sample_for_engine_review_not_final_shipping_asset",
+  "source": {
+    "blend_file": "../../cartoon_palm_tree.blend",
+    "preview_collection": "TREE_PREVIEW/GEN_UmbrellaBroadleaf_Seed1207_PREVIEW",
+    "export_collection": "TREE_EXPORT/UmbrellaBroadleaf_01_EXPORT",
+    "guideline": "../../blender_stylized_tree_asset_guidelines.md"
+  },
+  "units_and_axes": {
+    "meters_per_unit": 1.0,
+    "authoring_up_axis": "+Z",
+    "gltf_up_axis": "+Y",
+    "origin": "ground center of trunk",
+    "ground_contact": 0.0,
+    "rotation_applied": true,
+    "scale": [1.0, 1.0, 1.0]
+  },
+  "combined_sample": {
+    "gltf": "tree_umbrella_broadleaf_01_agent_sample.gltf",
+    "buffer": "tree_umbrella_broadleaf_01_agent_sample.bin",
+    "note": "Contains LOD0, LOD1, LOD2, and collision at the same origin. Activate only the desired render LOD in-engine."
+  },
+  "lods": [
+    {
+      "index": 0,
+      "node": "SM_Tree_UmbrellaBroadleaf_01_LOD0",
+      "mesh": "SM_Tree_UmbrellaBroadleaf_01_LOD0_Mesh",
+      "gltf": "tree_umbrella_broadleaf_01_lod0.gltf",
+      "buffer": "tree_umbrella_broadleaf_01_lod0.bin",
+      "vertices": 1264,
+      "triangles": 2280,
+      "ratio_to_lod0": 1.0,
+      "bounds_min": [-4.5623, -4.8065, 0.0],
+      "bounds_max": [5.2226, 4.2134, 6.2799],
+      "suggested_distance_m": [0.0, 25.0]
+    },
+    {
+      "index": 1,
+      "node": "SM_Tree_UmbrellaBroadleaf_01_LOD1",
+      "mesh": "SM_Tree_UmbrellaBroadleaf_01_LOD1_Mesh",
+      "gltf": "tree_umbrella_broadleaf_01_lod1.gltf",
+      "buffer": "tree_umbrella_broadleaf_01_lod1.bin",
+      "vertices": 626,
+      "triangles": 1065,
+      "ratio_to_lod0": 0.4671,
+      "bounds_min": [-4.2256, -4.9207, 0.0],
+      "bounds_max": [5.3568, 4.1956, 6.335],
+      "suggested_distance_m": [25.0, 55.0]
+    },
+    {
+      "index": 2,
+      "node": "SM_Tree_UmbrellaBroadleaf_01_LOD2",
+      "mesh": "SM_Tree_UmbrellaBroadleaf_01_LOD2_Mesh",
+      "gltf": "tree_umbrella_broadleaf_01_lod2.gltf",
+      "buffer": "tree_umbrella_broadleaf_01_lod2.bin",
+      "vertices": 273,
+      "triangles": 400,
+      "ratio_to_lod0": 0.1754,
+      "bounds_min": [-4.4066, -5.0561, 0.0],
+      "bounds_max": [5.6256, 4.3401, 6.4503],
+      "suggested_distance_m": [55.0, 120.0]
+    }
+  ],
+  "collision": {
+    "node": "COL_Tree_UmbrellaBroadleaf_01",
+    "mesh": "COL_Tree_UmbrellaBroadleaf_01_Mesh",
+    "gltf": "tree_umbrella_broadleaf_01_collision.gltf",
+    "buffer": "tree_umbrella_broadleaf_01_collision.bin",
+    "shape_hint": "low_sided_trunk_cylinder",
+    "radius_m": 0.57,
+    "height_m": 3.75,
+    "vertices": 16,
+    "faces": 10,
+    "canopy_collision": false
+  },
+  "materials": [
+    {
+      "slot": 0,
+      "name": "MAT_Tree_UmbrellaBroadleaf_Trunk",
+      "role": "trunk_and_branches"
+    },
+    {
+      "slot": 1,
+      "name": "MAT_Tree_UmbrellaBroadleaf_Canopy",
+      "role": "canopy_mass"
+    }
+  ],
+  "mesh_attributes": {
+    "POSITION": "vertex position",
+    "NORMAL": "vertex normal",
+    "TEXCOORD_0": "generated inspection UV; replace or repack for a production atlas if needed",
+    "COLOR_0": {
+      "source_name": "wind_data",
+      "R": "primary trunk bend weight",
+      "G": "branch tip or secondary bend weight",
+      "B": "canopy flutter weight",
+      "A": "stable phase variation"
+    },
+    "tangents_exported": false,
+    "tangent_note": "The sample uses flat colors and no normal map, so tangents are intentionally omitted."
+  },
+  "engine_review_notes": [
+    "The combined sample deliberately contains overlapping LOD nodes; an engine controller must enable only one render LOD at a time.",
+    "Suggested LOD distances are starting values and must be tuned against the target camera, hardware, shadows, and visible instance count.",
+    "Use the collision mesh as a reference or replace it with a native engine cylinder/capsule using the supplied dimensions.",
+    "Verify that imported COLOR_0 remains accessible to the vegetation wind shader before producing the full asset library.",
+    "For large populations, group instances by active LOD and use the engine's instancing or MultiMesh path rather than unique runtime meshes."
+  ]
+}

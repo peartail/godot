@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="OpenWorldTreeGenerator3D" inherits="MeshInstance3D" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>
+		Generates a deterministic, static stylized tree mesh in the editor or at run time.
+	</brief_description>
+	<description>
+		[OpenWorldTreeGenerator3D] builds a low-poly trunk and phyllotactic branches from [member generation_profile], then creates an archetype-specific crown. Broadleaf, tropical, umbrella, conifer, and mangrove trees use shaped canopy blobs; palm trees use radial curved ribbon fronds. Tropical and mangrove archetypes can also generate buttress or prop roots. The result is one [ArrayMesh] with trunk/branch surface 0 and foliage surface 1. Generation is deterministic for the same profile and [member seed].
+		Use the Inspector actions to regenerate, randomize the seed, or bake the current result into an [OpenWorldTreeVariant] resource. The baked resource can be added to an [OpenWorldTreeSpecies] and rendered by [OpenWorldTree3D]. This phase does not generate LOD1/LOD2 meshes, collisions, wind animation, leaf cards, or cut fragments.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="clear_generated_tree">
+			<return type="void" />
+			<description>Clears the generated [ArrayMesh] from this node.</description>
+		</method>
+		<method name="create_baked_variant" qualifiers="const">
+			<return type="OpenWorldTreeVariant" />
+			<description>Creates an unsaved variant containing a deep copy of the current mesh as LOD0. Call [method generate_tree] first.</description>
+		</method>
+		<method name="generate_tree">
+			<return type="void" />
+			<description>Rebuilds the static mesh from [member generation_profile] and [member seed], and emits [signal tree_generated].</description>
+		</method>
+		<method name="get_generated_mesh" qualifiers="const">
+			<return type="ArrayMesh" />
+			<description>Returns the currently generated mesh, or [code]null[/code] before generation or after clearing.</description>
+		</method>
+		<method name="randomize_seed">
+			<return type="void" />
+			<description>Chooses a random seed and generates a new variation.</description>
+		</method>
+	</methods>
+	<members>
+		<member name="auto_generate" type="bool" setter="set_auto_generate" getter="is_auto_generate" default="true">
+			Regenerates when the profile or seed changes and generates on entering the scene tree if needed.
+		</member>
+		<member name="foliage_material" type="Material" setter="set_foliage_material" getter="get_foliage_material">
+			Material embedded on foliage surface 1.
+		</member>
+		<member name="generation_profile" type="OpenWorldTreeGenerationProfile" setter="set_generation_profile" getter="get_generation_profile">
+			Shared tree-shape parameters. Duplicate the resource before editing it when generators should not update together.
+		</member>
+		<member name="seed" type="int" setter="set_seed" getter="get_seed" default="1207">
+			Deterministic variation seed.
+		</member>
+		<member name="trunk_material" type="Material" setter="set_trunk_material" getter="get_trunk_material">
+			Material embedded on trunk and branch surface 0.
+		</member>
+	</members>
+	<signals>
+		<signal name="tree_generated">
+			<param index="0" name="mesh" type="ArrayMesh" />
+			<description>Emitted after a new two-surface mesh is assigned to the node.</description>
+		</signal>
+	</signals>
+</class>

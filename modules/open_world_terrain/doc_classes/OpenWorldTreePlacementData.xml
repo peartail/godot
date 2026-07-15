@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="OpenWorldTreePlacementData" inherits="Resource" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>
+		Compact persistent placement records for a group of trees.
+	</brief_description>
+	<description>
+		[OpenWorldTreePlacementData] stores parallel packed arrays used by [OpenWorldTree3D]. Positions and transforms are local to the tree node. Stable instance IDs and enabled flags allow a gameplay system to temporarily remove one tree from static rendering without changing the IDs of remaining trees.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="add_tree">
+			<return type="int" />
+			<param index="0" name="position" type="Vector3" />
+			<param index="1" name="rotation" type="Vector3" default="Vector3(0, 0, 0)" />
+			<param index="2" name="scale" type="Vector3" default="Vector3(1, 1, 1)" />
+			<param index="3" name="seed" type="int" default="0" />
+			<param index="4" name="variant_index" type="int" default="-1" />
+			<param index="5" name="color" type="Color" default="Color(1, 1, 1, 1)" />
+			<param index="6" name="custom_data" type="Color" default="Color(0, 0, 0, 1)" />
+			<description>
+				Adds a tree and returns its stable instance ID. A negative [param variant_index] selects a variation deterministically from [param seed].
+			</description>
+		</method>
+		<method name="clear_trees">
+			<return type="void" />
+			<description>
+				Removes all placement records.
+			</description>
+		</method>
+		<method name="find_index_by_id" qualifiers="const">
+			<return type="int" />
+			<param index="0" name="instance_id" type="int" />
+			<description>
+				Returns the packed-array index for [param instance_id], or [code]-1[/code] when it is not present.
+			</description>
+		</method>
+		<method name="get_instance" qualifiers="const">
+			<return type="Dictionary" />
+			<param index="0" name="index" type="int" />
+			<description>
+				Returns all fields for one placement record.
+			</description>
+		</method>
+		<method name="get_instance_count" qualifiers="const">
+			<return type="int" />
+			<description>
+				Returns the number of placement records, including disabled records.
+			</description>
+		</method>
+		<method name="get_instance_transform" qualifiers="const">
+			<return type="Transform3D" />
+			<param index="0" name="index" type="int" />
+			<description>
+				Returns the local transform for one placement record.
+			</description>
+		</method>
+		<method name="is_instance_enabled" qualifiers="const">
+			<return type="bool" />
+			<param index="0" name="index" type="int" />
+			<description>
+				Returns whether a placement participates in static tree rendering.
+			</description>
+		</method>
+		<method name="remove_tree_at">
+			<return type="void" />
+			<param index="0" name="index" type="int" />
+			<description>
+				Permanently removes the placement at [param index]. Prefer disabling a tree when gameplay may restore it later.
+			</description>
+		</method>
+		<method name="set_instance_enabled">
+			<return type="void" />
+			<param index="0" name="index" type="int" />
+			<param index="1" name="enabled" type="bool" />
+			<description>
+				Controls whether the placement participates in static tree rendering.
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="colors" type="PackedColorArray" setter="set_colors" getter="get_colors" default="PackedColorArray()">
+			Per-instance colors exposed to shaders as [code]INSTANCE_COLOR[/code].
+		</member>
+		<member name="custom_data" type="PackedColorArray" setter="set_custom_data" getter="get_custom_data" default="PackedColorArray()">
+			Per-instance shader data exposed as [code]INSTANCE_CUSTOM[/code], for example wind phase and tint controls.
+		</member>
+		<member name="enabled" type="PackedByteArray" setter="set_enabled" getter="get_enabled" default="PackedByteArray()">
+			One byte per tree. Zero hides the tree from static rendering.
+		</member>
+		<member name="instance_ids" type="PackedInt32Array" setter="set_instance_ids" getter="get_instance_ids" default="PackedInt32Array()">
+			Stable IDs used by save data and future interaction systems.
+		</member>
+		<member name="positions" type="PackedVector3Array" setter="set_positions" getter="get_positions" default="PackedVector3Array()">
+			Local positions. This array defines the placement count.
+		</member>
+		<member name="rotations" type="PackedVector3Array" setter="set_rotations" getter="get_rotations" default="PackedVector3Array()">
+			Local Euler rotations in radians.
+		</member>
+		<member name="scales" type="PackedVector3Array" setter="set_scales" getter="get_scales" default="PackedVector3Array()">
+			Local scales. Uniform scale is recommended for trees that may later become interactive.
+		</member>
+		<member name="seeds" type="PackedInt32Array" setter="set_seeds" getter="get_seeds" default="PackedInt32Array()">
+			Deterministic per-instance seeds used for automatic variant selection.
+		</member>
+		<member name="variant_indices" type="PackedInt32Array" setter="set_variant_indices" getter="get_variant_indices" default="PackedInt32Array()">
+			Explicit variation index per tree. Negative values request deterministic selection from the seed.
+		</member>
+	</members>
+</class>

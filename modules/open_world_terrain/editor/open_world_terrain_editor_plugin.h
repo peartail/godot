@@ -5,6 +5,8 @@
 #pragma once
 
 #include "../open_world_terrain_3d.h"
+#include "../open_world_tree_3d.h"
+#include "../open_world_tree_generator_3d.h"
 
 #include "core/templates/hash_map.h"
 #include "editor/docks/editor_dock.h"
@@ -32,6 +34,18 @@ public:
 	void redraw(EditorNode3DGizmo *p_gizmo) override;
 
 	OpenWorldTerrain3DGizmoPlugin();
+};
+
+class OpenWorldTree3DGizmoPlugin : public EditorNode3DGizmoPlugin {
+	GDCLASS(OpenWorldTree3DGizmoPlugin, EditorNode3DGizmoPlugin);
+
+public:
+	bool has_gizmo(Node3D *p_spatial) override;
+	String get_gizmo_name() const override;
+	int get_priority() const override;
+	void redraw(EditorNode3DGizmo *p_gizmo) override;
+
+	static Ref<TriangleMesh> build_selection_mesh(OpenWorldTree3D *p_tree);
 };
 
 class OpenWorldTerrainSettingsDock : public EditorDock {
@@ -68,6 +82,18 @@ public:
 	OpenWorldTerrainInspectorPlugin();
 };
 
+class OpenWorldTreeGeneratorInspectorPlugin : public EditorInspectorPlugin {
+    GDCLASS(OpenWorldTreeGeneratorInspectorPlugin, EditorInspectorPlugin);
+
+    void _generate_tree(Object *p_object);
+    void _randomize_seed(Object *p_object);
+    void _bake_variant(Object *p_object);
+
+public:
+    virtual bool can_handle(Object *p_object) override;
+    virtual void parse_end(Object *p_object) override;
+};
+
 class OpenWorldTerrainEditorPlugin : public EditorPlugin {
 	GDCLASS(OpenWorldTerrainEditorPlugin, EditorPlugin);
 
@@ -92,7 +118,9 @@ class OpenWorldTerrainEditorPlugin : public EditorPlugin {
 	Button *random_button = nullptr;
 	Button *rebuild_button = nullptr;
 	Ref<OpenWorldTerrain3DGizmoPlugin> gizmo_plugin;
+	Ref<OpenWorldTree3DGizmoPlugin> tree_gizmo_plugin;
 	Ref<OpenWorldTerrainInspectorPlugin> inspector_plugin;
+	Ref<OpenWorldTreeGeneratorInspectorPlugin> tree_generator_inspector_plugin;
 	OpenWorldTerrainSettingsDock *settings_dock = nullptr;
 
 	OpenWorldTerrain3D *terrain = nullptr;

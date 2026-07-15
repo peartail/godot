@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="OpenWorldTreeVariant" inherits="Resource" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>
+		Meshes and distance settings for one pre-generated tree variation.
+	</brief_description>
+	<description>
+		[OpenWorldTreeVariant] describes one baked tree variation with up to three LOD meshes. Missing LOD meshes fall back to an available more detailed mesh. Instances beyond [member max_distance] are culled. Collision values are metadata for gameplay or editor tools; [OpenWorldTree3D] does not create physics bodies automatically.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="get_lod_index_for_distance" qualifiers="const">
+			<return type="int" />
+			<param index="0" name="distance" type="float" />
+			<description>
+				Returns the available LOD index for [param distance], or [code]-1[/code] when the tree should be culled or has no mesh.
+			</description>
+		</method>
+		<method name="get_lod_mesh" qualifiers="const">
+			<return type="Mesh" />
+			<param index="0" name="lod" type="int" />
+			<description>
+				Returns the mesh assigned to LOD index 0, 1, or 2.
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="collision_height" type="float" setter="set_collision_height" getter="get_collision_height" default="2.0">
+			Suggested height in meters for a simplified trunk collision shape.
+		</member>
+		<member name="collision_radius" type="float" setter="set_collision_radius" getter="get_collision_radius" default="0.5">
+			Suggested radius in meters for a simplified trunk collision shape.
+		</member>
+		<member name="lod0_mesh" type="Mesh" setter="set_lod0_mesh" getter="get_lod0_mesh">
+			Highest-detail baked tree mesh.
+		</member>
+		<member name="lod1_distance" type="float" setter="set_lod1_distance" getter="get_lod1_distance" default="25.0">
+			Distance in meters at which LOD1 becomes preferred.
+		</member>
+		<member name="lod1_mesh" type="Mesh" setter="set_lod1_mesh" getter="get_lod1_mesh">
+			Medium-detail baked tree mesh.
+		</member>
+		<member name="lod2_distance" type="float" setter="set_lod2_distance" getter="get_lod2_distance" default="55.0">
+			Distance in meters at which LOD2 becomes preferred.
+		</member>
+		<member name="lod2_mesh" type="Mesh" setter="set_lod2_mesh" getter="get_lod2_mesh">
+			Lowest-detail baked tree mesh.
+		</member>
+		<member name="material_override" type="Material" setter="set_material_override" getter="get_material_override">
+			Optional material applied to every LOD of this variation.
+		</member>
+		<member name="max_distance" type="float" setter="set_max_distance" getter="get_max_distance" default="120.0">
+			Distance in meters beyond which instances of this variation are culled.
+		</member>
+		<member name="source_seed" type="int" setter="set_source_seed" getter="get_source_seed" default="0">
+			Seed used by the external authoring tool to generate this variation.
+		</member>
+		<member name="variant_name" type="String" setter="set_variant_name" getter="get_variant_name" default="&quot;Tree Variant&quot;">
+			Editor-facing name of the variation.
+		</member>
+	</members>
+</class>

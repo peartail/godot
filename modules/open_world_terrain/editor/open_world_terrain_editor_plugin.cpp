@@ -4,8 +4,11 @@
 
 #include "open_world_terrain_editor_plugin.h"
 
+#include "core/math/triangle_mesh.h"
+
 #include "core/object/callable_mp.h"
 #include "editor/docks/editor_dock_manager.h"
+#include "editor/editor_node.h"
 #include "editor/editor_undo_redo_manager.h"
 #include "editor/gui/editor_spin_slider.h"
 #include "editor/inspector/editor_inspector.h"
@@ -16,6 +19,116 @@
 #include "scene/gui/control.h"
 #include "scene/gui/option_button.h"
 #include "scene/gui/panel_container.h"
+
+static void _append_tree_selection_box(Vector<Vector3> &r_faces, const AABB &p_aabb, const Transform3D &p_transform) {
+	Vector3 position = p_aabb.position;
+	Vector3 size = p_aabb.size;
+	const real_t minimum_size = 0.05;
+	for (int axis = 0; axis < 3; axis++) {
+		if (size[axis] < minimum_size) {
+			position[axis] -= (minimum_size - size[axis]) * 0.5;
+			size[axis] = minimum_size;
+		}
+	}
+
+	Vector3 corners[8] = {
+		position,
+		position + Vector3(size.x, 0.0, 0.0),
+		position + Vector3(size.x, size.y, 0.0),
+		position + Vector3(0.0, size.y, 0.0),
+		position + Vector3(0.0, 0.0, size.z),
+		position + Vector3(size.x, 0.0, size.z),
+		position + size,
+		position + Vector3(0.0, size.y, size.z),
+	};
+
+	static constexpr int face_indices[36] = {
+		0, 2, 1, 0, 3, 2,
+		4, 5, 6, 4, 6, 7,
+		0, 4, 7, 0, 7, 3,
+		1, 2, 6, 1, 6, 5,
+		0, 1, 5, 0, 5, 4,
+		3, 7, 6, 3, 6, 2,
+	};
+
+	for (int index : face_indices) {
+		r_faces.push_back(p_transform.xform(corners[index]));
+	}
+}
+
+Ref<TriangleMesh> OpenWorldTree3DGizmoPlugin::build_selection_mesh(OpenWorldTree3D *p_tree) {
+	Ref<TriangleMesh> triangle_mesh;
+	if (p_tree == nullptr) {
+		return triangle_mesh;
+	}
+
+	const Ref<OpenWorldTreeSpecies> species = p_tree->get_species();
+	const Ref<OpenWorldTreePlacementData> placement_data = p_tree->get_placement_data();
+	if (species.is_null() || placement_data.is_null() || species->get_variant_count() == 0) {
+		return triangle_mesh;
+	}
+
+	const PackedInt32Array seeds = placement_data->get_seeds();
+	const PackedInt32Array requested_variants = placement_data->get_variant_indices();
+	Vector<Vector3> faces;
+
+	for (int instance_index = 0; instance_index < placement_data->get_instance_count(); instance_index++) {
+		if (!placement_data->is_instance_enabled(instance_index)) {
+			continue;
+		}
+
+		const int requested_variant = instance_index < requested_variants.size() ? requested_variants[instance_index] : -1;
+		const int seed = instance_index < seeds.size() && seeds[instance_index] != 0 ? seeds[instance_index] : instance_index + 1;
+		const int variant_index = requested_variant >= 0 && requested_variant < species->get_variant_count() ? requested_variant : species->get_variant_index_for_seed(seed);
+		const Ref<OpenWorldTreeVariant> variant = species->get_variant(variant_index);
+		if (variant.is_null()) {
+			continue;
+		}
+
+		Ref<Mesh> selection_mesh;
+		for (int lod_index = 0; lod_index < 3; lod_index++) {
+			selection_mesh = variant->get_lod_mesh(lod_index);
+			if (selection_mesh.is_valid()) {
+				break;
+			}
+		}
+		if (selection_mesh.is_null()) {
+			continue;
+		}
+
+		_append_tree_selection_box(faces, selection_mesh->get_aabb(), placement_data->get_instance_transform(instance_index));
+	}
+
+	if (faces.is_empty()) {
+		return triangle_mesh;
+	}
+
+	triangle_mesh.instantiate();
+	triangle_mesh->create(faces);
+	return triangle_mesh;
+}
+
+bool OpenWorldTree3DGizmoPlugin::has_gizmo(Node3D *p_spatial) {
+	return Object::cast_to<OpenWorldTree3D>(p_spatial) != nullptr;
+}
+
+String OpenWorldTree3DGizmoPlugin::get_gizmo_name() const {
+	return "OpenWorldTree3D";
+}
+
+int OpenWorldTree3DGizmoPlugin::get_priority() const {
+	return -1;
+}
+
+void OpenWorldTree3DGizmoPlugin::redraw(EditorNode3DGizmo *p_gizmo) {
+	OpenWorldTree3D *tree_node = Object::cast_to<OpenWorldTree3D>(p_gizmo->get_node_3d());
+	p_gizmo->clear();
+
+	const Ref<TriangleMesh> selection_mesh = build_selection_mesh(tree_node);
+	if (selection_mesh.is_valid()) {
+		p_gizmo->add_collision_triangles(selection_mesh);
+	}
+}
 
 bool OpenWorldTerrain3DGizmoPlugin::has_gizmo(Node3D *p_spatial) {
 	return Object::cast_to<OpenWorldTerrain3D>(p_spatial) != nullptr;
@@ -195,6 +308,59 @@ void OpenWorldTerrainInspectorPlugin::set_settings_dock(OpenWorldTerrainSettings
 }
 
 OpenWorldTerrainInspectorPlugin::OpenWorldTerrainInspectorPlugin() {
+}
+
+bool OpenWorldTreeGeneratorInspectorPlugin::can_handle(Object *p_object) {
+    return Object::cast_to<OpenWorldTreeGenerator3D>(p_object) != nullptr;
+}
+
+void OpenWorldTreeGeneratorInspectorPlugin::_generate_tree(Object *p_object) {
+    OpenWorldTreeGenerator3D *generator = Object::cast_to<OpenWorldTreeGenerator3D>(p_object);
+    if (generator != nullptr) {
+        generator->generate_tree();
+    }
+}
+
+void OpenWorldTreeGeneratorInspectorPlugin::_randomize_seed(Object *p_object) {
+    OpenWorldTreeGenerator3D *generator = Object::cast_to<OpenWorldTreeGenerator3D>(p_object);
+    if (generator != nullptr) {
+        generator->randomize_seed();
+    }
+}
+
+void OpenWorldTreeGeneratorInspectorPlugin::_bake_variant(Object *p_object) {
+    OpenWorldTreeGenerator3D *generator = Object::cast_to<OpenWorldTreeGenerator3D>(p_object);
+    if (generator == nullptr) {
+        return;
+    }
+    if (generator->get_generated_mesh().is_null()) {
+        generator->generate_tree();
+    }
+    Ref<OpenWorldTreeVariant> variant = generator->create_baked_variant();
+    if (variant.is_valid()) {
+        EditorNode::get_singleton()->save_resource_as(variant);
+    }
+}
+
+void OpenWorldTreeGeneratorInspectorPlugin::parse_end(Object *p_object) {
+    if (!Object::cast_to<OpenWorldTreeGenerator3D>(p_object)) {
+        return;
+    }
+
+    Button *generate_button = memnew(EditorInspectorActionButton(TTRC("Generate Tree"), SNAME("MeshInstance3D")));
+    generate_button->set_tooltip_text(TTRC("Regenerate the static tree mesh from the current profile and seed."));
+    generate_button->connect(SceneStringName(pressed), callable_mp(this, &OpenWorldTreeGeneratorInspectorPlugin::_generate_tree).bind(p_object), CONNECT_DEFERRED);
+    add_custom_control(generate_button);
+
+    Button *randomize_button = memnew(EditorInspectorActionButton(TTRC("Randomize Seed"), SNAME("RandomNumberGenerator")));
+    randomize_button->set_tooltip_text(TTRC("Choose a new seed and generate another deterministic tree variation."));
+    randomize_button->connect(SceneStringName(pressed), callable_mp(this, &OpenWorldTreeGeneratorInspectorPlugin::_randomize_seed).bind(p_object), CONNECT_DEFERRED);
+    add_custom_control(randomize_button);
+
+    Button *bake_button = memnew(EditorInspectorActionButton(TTRC("Bake Variant..."), SNAME("Save")));
+    bake_button->set_tooltip_text(TTRC("Copy the generated mesh into an OpenWorldTreeVariant resource and save it."));
+    bake_button->connect(SceneStringName(pressed), callable_mp(this, &OpenWorldTreeGeneratorInspectorPlugin::_bake_variant).bind(p_object), CONNECT_DEFERRED);
+    add_custom_control(bake_button);
 }
 
 void OpenWorldTerrainEditorPlugin::_select_mode_pressed() {
@@ -672,6 +838,7 @@ void OpenWorldTerrainEditorPlugin::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_ENTER_TREE: {
 			add_node_3d_gizmo_plugin(gizmo_plugin);
+			add_node_3d_gizmo_plugin(tree_gizmo_plugin);
 			add_control_to_container(CONTAINER_SPATIAL_EDITOR_MENU, toolbar);
 			_attach_brush_overlay();
 			add_dock(settings_dock);
@@ -686,6 +853,7 @@ void OpenWorldTerrainEditorPlugin::_notification(int p_what) {
 			_detach_brush_overlay();
 			remove_dock(settings_dock);
 			remove_control_from_container(CONTAINER_SPATIAL_EDITOR_MENU, toolbar);
+			remove_node_3d_gizmo_plugin(tree_gizmo_plugin);
 			remove_node_3d_gizmo_plugin(gizmo_plugin);
 		} break;
 	}
@@ -813,10 +981,13 @@ void OpenWorldTerrainEditorPlugin::forward_3d_force_draw_over_viewport(Control *
 
 OpenWorldTerrainEditorPlugin::OpenWorldTerrainEditorPlugin() {
 	gizmo_plugin = Ref<OpenWorldTerrain3DGizmoPlugin>(memnew(OpenWorldTerrain3DGizmoPlugin));
+	tree_gizmo_plugin = Ref<OpenWorldTree3DGizmoPlugin>(memnew(OpenWorldTree3DGizmoPlugin));
 	settings_dock = memnew(OpenWorldTerrainSettingsDock);
 	inspector_plugin.instantiate();
 	inspector_plugin->set_settings_dock(settings_dock);
 	add_inspector_plugin(inspector_plugin);
+	tree_generator_inspector_plugin.instantiate();
+	add_inspector_plugin(tree_generator_inspector_plugin);
 
 	toolbar = memnew(HBoxContainer);
 	toolbar->hide();

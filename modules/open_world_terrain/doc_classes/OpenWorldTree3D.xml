@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="OpenWorldTree3D" inherits="Node3D" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>
+		Renders many static trees with variant- and distance-based MultiMesh buckets.
+	</brief_description>
+	<description>
+		[OpenWorldTree3D] renders one [OpenWorldTreeSpecies] using compact records from [OpenWorldTreePlacementData]. Every enabled tree is assigned to a variation and LOD MultiMesh bucket. Buckets are rebuilt only when assignments change. This node handles static rendering and queries; it intentionally does not create collision bodies, perform procedural scattering, or simulate cutting and falling.
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="force_lod_update">
+			<return type="void" />
+			<description>
+				Immediately recomputes camera-distance LOD assignments.
+			</description>
+		</method>
+		<method name="get_closest_instance_id" qualifiers="const">
+			<return type="int" />
+			<param index="0" name="global_position" type="Vector3" />
+			<param index="1" name="max_distance" type="float" />
+			<description>
+				Returns the stable ID of the closest enabled tree within [param max_distance], or [code]-1[/code]. This initial implementation performs a linear CPU search.
+			</description>
+		</method>
+		<method name="get_instance_global_transform" qualifiers="const">
+			<return type="Transform3D" />
+			<param index="0" name="instance_id" type="int" />
+			<description>
+				Returns the world transform of the tree with [param instance_id].
+			</description>
+		</method>
+		<method name="get_rendered_instance_count" qualifiers="const">
+			<return type="int" />
+			<description>
+				Returns the number of currently rendered instances across all MultiMesh buckets.
+			</description>
+		</method>
+		<method name="rebuild_tree_instances">
+			<return type="void" />
+			<description>
+				Recreates all render buckets and repopulates their instances.
+			</description>
+		</method>
+		<method name="set_tree_enabled">
+			<return type="void" />
+			<param index="0" name="instance_id" type="int" />
+			<param index="1" name="enabled" type="bool" />
+			<description>
+				Enables or disables the tree with [param instance_id]. A future harvesting system can disable a static instance before spawning an interactive scene.
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="camera_path" type="NodePath" setter="set_camera_path" getter="get_camera_path" default="NodePath(&quot;&quot;)">
+			Optional LOD camera. The viewport's active 3D camera is used when this path is empty or invalid.
+		</member>
+		<member name="lod_update_interval" type="float" setter="set_lod_update_interval" getter="get_lod_update_interval" default="0.25">
+			Seconds between camera-distance classification checks. GPU buffers change only when an instance changes bucket.
+		</member>
+		<member name="placement_data" type="OpenWorldTreePlacementData" setter="set_placement_data" getter="get_placement_data">
+			Compact local transforms and per-instance metadata.
+		</member>
+		<member name="rendering_enabled" type="bool" setter="set_rendering_enabled" getter="is_rendering_enabled" default="true">
+			Controls tree rendering without deleting placement records.
+		</member>
+		<member name="species" type="OpenWorldTreeSpecies" setter="set_species" getter="get_species">
+			Species and variation library rendered by this node.
+		</member>
+		<member name="visibility_layer" type="int" setter="set_visibility_layer" getter="get_visibility_layer" default="1">
+			3D render visibility layer used by generated MultiMesh instances.
+		</member>
+	</members>
+</class>

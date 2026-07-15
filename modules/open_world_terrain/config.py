@@ -7,7 +7,17 @@ def configure(env):
 
 
 def get_doc_classes():
-    return ["OpenWorldTerrain3D", "OpenWorldTerrainData", "OpenWorldTerrainLayer"]
+    return [
+        "OpenWorldTerrain3D",
+        "OpenWorldTerrainData",
+        "OpenWorldTerrainLayer",
+        "OpenWorldTreeVariant",
+        "OpenWorldTreeSpecies",
+        "OpenWorldTreePlacementData",
+        "OpenWorldTree3D",
+        "OpenWorldTreeGenerationProfile",
+        "OpenWorldTreeGenerator3D",
+    ]
 
 
 def get_doc_path():
