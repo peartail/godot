@@ -79,6 +79,24 @@ TEST_CASE("[OpenWorldTree] Placement data keeps stable IDs and enabled state") {
 	CHECK(remaining_id == second_id);
 }
 
+TEST_CASE("[OpenWorldTree] Generation profile uses editor auto-instantiation") {
+	OpenWorldTreeGenerator3D *generator = memnew(OpenWorldTreeGenerator3D);
+	CHECK(generator->get_generation_profile().is_null());
+
+	List<PropertyInfo> properties;
+	generator->get_property_list(&properties);
+	bool found_profile = false;
+	for (const PropertyInfo &property : properties) {
+		if (property.name == SNAME("generation_profile")) {
+			found_profile = true;
+			CHECK((property.usage & PROPERTY_USAGE_EDITOR_INSTANTIATE_OBJECT) != 0);
+			break;
+		}
+	}
+	CHECK(found_profile);
+	memdelete(generator);
+}
+
 TEST_CASE("[OpenWorldTree] Generator is deterministic and bakes two surfaces") {
     OpenWorldTreeGenerator3D *generator = memnew(OpenWorldTreeGenerator3D);
     generator->set_auto_generate(false);
@@ -118,6 +136,75 @@ TEST_CASE("[OpenWorldTree] Generator is deterministic and bakes two surfaces") {
     memdelete(generator);
 }
 
+TEST_CASE("[OpenWorldTree] Phase 3 generates deterministic LODs and wind weights") {
+	OpenWorldTreeGenerator3D *generator = memnew(OpenWorldTreeGenerator3D);
+	generator->set_auto_generate(false);
+	generator->set_lod1_quality(0.55);
+	generator->set_lod2_quality(0.18);
+	generator->set_lod1_distance(22.0);
+	generator->set_lod2_distance(48.0);
+	generator->set_max_distance(110.0);
+
+	Ref<OpenWorldTreeGenerationProfile> profile;
+	profile.instantiate();
+	profile->set_tree_height(7.0);
+	profile->set_trunk_segments(9);
+	profile->set_branch_segments(5);
+	profile->set_branch_interval(0.55);
+	profile->set_secondary_branch_count(1);
+	profile->set_canopy_blob_count(14);
+	generator->set_generation_profile(profile);
+	generator->set_seed(8801);
+	generator->set_wind_enabled(true);
+	generator->generate_tree();
+
+	Ref<ArrayMesh> lod0 = generator->get_generated_lod_mesh(0);
+	Ref<ArrayMesh> lod1 = generator->get_generated_lod_mesh(1);
+	Ref<ArrayMesh> lod2 = generator->get_generated_lod_mesh(2);
+	REQUIRE(lod0.is_valid());
+	REQUIRE(lod1.is_valid());
+	REQUIRE(lod2.is_valid());
+	CHECK(lod0->get_surface_count() == 2);
+	CHECK(lod1->get_surface_count() == 2);
+	CHECK(lod2->get_surface_count() == 2);
+	CHECK(lod0->surface_get_material(0).is_valid());
+	CHECK(lod0->surface_get_material(1).is_valid());
+
+	const Dictionary stats0 = generator->get_lod_statistics(0);
+	const Dictionary stats1 = generator->get_lod_statistics(1);
+	const Dictionary stats2 = generator->get_lod_statistics(2);
+	CHECK((int)stats1["triangles"] < (int)stats0["triangles"]);
+	CHECK((int)stats2["triangles"] < (int)stats1["triangles"]);
+	CHECK(lod0->get_aabb().size.y > 0.0);
+	CHECK(Math::is_equal_approx(lod0->get_aabb().size.y, lod1->get_aabb().size.y, (real_t)0.35));
+	CHECK(Math::is_equal_approx(lod0->get_aabb().size.y, lod2->get_aabb().size.y, (real_t)0.35));
+
+	const PackedColorArray trunk_wind = lod0->surface_get_arrays(0)[Mesh::ARRAY_COLOR];
+	const PackedColorArray foliage_wind = lod0->surface_get_arrays(1)[Mesh::ARRAY_COLOR];
+	REQUIRE_FALSE(trunk_wind.is_empty());
+	REQUIRE_FALSE(foliage_wind.is_empty());
+	CHECK(trunk_wind[0].r <= trunk_wind[trunk_wind.size() - 1].r);
+	CHECK(foliage_wind[0].b > 0.0);
+
+	const PackedVector3Array first_lod1_vertices = lod1->surface_get_arrays(0)[Mesh::ARRAY_VERTEX];
+	generator->generate_tree();
+	CHECK(generator->get_generated_lod_mesh(1)->surface_get_arrays(0)[Mesh::ARRAY_VERTEX] == first_lod1_vertices);
+
+	Ref<OpenWorldTreeVariant> baked = generator->create_baked_variant();
+	REQUIRE(baked.is_valid());
+	CHECK(baked->get_lod0_mesh().is_valid());
+	CHECK(baked->get_lod1_mesh().is_valid());
+	CHECK(baked->get_lod2_mesh().is_valid());
+	CHECK(baked->get_lod1_distance() == doctest::Approx(22.0));
+	CHECK(baked->get_lod2_distance() == doctest::Approx(48.0));
+	CHECK(baked->get_max_distance() == doctest::Approx(110.0));
+
+	generator->set_preview_lod(OpenWorldTreeGenerator3D::PREVIEW_LOD2);
+	CHECK(generator->get_mesh() == generator->get_generated_lod_mesh(2));
+
+	memdelete(generator);
+}
+
 TEST_CASE("[OpenWorldTree] Phase 2 archetypes create distinct static silhouettes") {
 	OpenWorldTreeGenerator3D *generator = memnew(OpenWorldTreeGenerator3D);
 	generator->set_auto_generate(false);
@@ -138,7 +225,7 @@ TEST_CASE("[OpenWorldTree] Phase 2 archetypes create distinct static silhouettes
 	Ref<ArrayMesh> temperate_mesh = generator->get_generated_mesh();
 	REQUIRE(temperate_mesh.is_valid());
 	REQUIRE(temperate_mesh->get_surface_count() == 2);
-	const AABB temperate_aabb = temperate_mesh->get_aabb();
+	const int temperate_trunk_vertices = ((PackedVector3Array)temperate_mesh->surface_get_arrays(0)[Mesh::ARRAY_VERTEX]).size();
 	const int temperate_foliage_vertices = ((PackedVector3Array)temperate_mesh->surface_get_arrays(1)[Mesh::ARRAY_VERTEX]).size();
 
 	profile->set_archetype(OpenWorldTreeGenerationProfile::ARCHETYPE_TROPICAL_BROADLEAF);
@@ -146,9 +233,8 @@ TEST_CASE("[OpenWorldTree] Phase 2 archetypes create distinct static silhouettes
 	Ref<ArrayMesh> tropical_mesh = generator->get_generated_mesh();
 	REQUIRE(tropical_mesh.is_valid());
 	REQUIRE(tropical_mesh->get_surface_count() == 2);
-	const AABB tropical_aabb = tropical_mesh->get_aabb();
-	const bool tropical_roots_expand_crown = tropical_aabb.size.x > temperate_aabb.size.x || tropical_aabb.size.z > temperate_aabb.size.z;
-	CHECK(tropical_roots_expand_crown);
+	const int tropical_trunk_vertices = ((PackedVector3Array)tropical_mesh->surface_get_arrays(0)[Mesh::ARRAY_VERTEX]).size();
+	CHECK(tropical_trunk_vertices > temperate_trunk_vertices);
 
 	profile->set_archetype(OpenWorldTreeGenerationProfile::ARCHETYPE_UMBRELLA);
 	generator->generate_tree();

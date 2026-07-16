@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="OpenWorldVineGenerator3D" inherits="MeshInstance3D" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>Generates deterministic low-poly vine paths and static LOD meshes.</brief_description>
+	<description>Agent-first authoring node. Use validate_request, generate_path, generate_vine, and create_baked_variant from GDScript, C#, or a headless project. Inspector actions call the same API.</description>
+	<tutorials></tutorials>
+	<methods>
+		<method name="clear_generated_vine"><return type="void" /><description>Clears path and LOD meshes.</description></method>
+		<method name="create_baked_variant" qualifiers="const"><return type="OpenWorldVineVariant" /><description>Returns an unsaved deep copy of all LODs and metadata.</description></method>
+		<method name="generate_path"><return type="OpenWorldVinePathData" /><description>Calculates and stores path data only.</description></method>
+		<method name="generate_vine"><return type="void" /><description>Generates path and all LOD meshes.</description></method>
+		<method name="get_generated_lod_mesh" qualifiers="const"><return type="ArrayMesh" /><param index="0" name="lod" type="int" /><description>Returns LOD0 through LOD2.</description></method>
+		<method name="get_generated_path" qualifiers="const"><return type="OpenWorldVinePathData" /><description>Returns the last calculated path.</description></method>
+		<method name="get_generation_report" qualifiers="const"><return type="Dictionary" /><description>Returns machine-readable validation, path, and LOD statistics.</description></method>
+		<method name="get_lod_statistics" qualifiers="const"><return type="Dictionary" /><param index="0" name="lod" type="int" /><description>Returns availability, surfaces, vertices, triangles, and AABB.</description></method>
+		<method name="randomize_seed"><return type="void" /><description>Changes request seed and regenerates.</description></method>
+		<method name="validate_request" qualifiers="const"><return type="Dictionary" /><description>Validates inputs without generating.</description></method>
+	</methods>
+	<members>
+		<member name="auto_generate" type="bool" setter="set_auto_generate" getter="is_auto_generate" default="true">Regenerates when the request changes.</member>
+		<member name="foliage_material" type="Material" setter="set_foliage_material" getter="get_foliage_material">Surface 1 material.</member>
+		<member name="generation_request" type="OpenWorldVineGenerationRequest" setter="set_generation_request" getter="get_generation_request">Agent-readable source request. Editor-created nodes auto-instantiate it; code-created nodes require assignment.</member>
+		<member name="lod1_distance" type="float" setter="set_lod1_distance" getter="get_lod1_distance" default="18.0">Baked LOD1 distance.</member><member name="lod2_distance" type="float" setter="set_lod2_distance" getter="get_lod2_distance" default="42.0">Baked LOD2 distance.</member><member name="max_distance" type="float" setter="set_max_distance" getter="get_max_distance" default="90.0">Baked maximum distance.</member>
+		<member name="preview_lod" type="int" setter="set_preview_lod" getter="get_preview_lod" enum="OpenWorldVineGenerator3D.PreviewLOD" default="0">Displayed generated LOD.</member><member name="stem_material" type="Material" setter="set_stem_material" getter="get_stem_material">Surface 0 material.</member><member name="wind_enabled" type="bool" setter="set_wind_enabled" getter="is_wind_enabled" default="false">Uses built-in cartoon wind preview materials.</member>
+	</members>
+	<signals><signal name="vine_generated"><param index="0" name="mesh" type="ArrayMesh" /><description>Emitted with LOD0 after generation.</description></signal></signals>
+	<constants><constant name="PREVIEW_LOD0" value="0" enum="PreviewLOD" /><constant name="PREVIEW_LOD1" value="1" enum="PreviewLOD" /><constant name="PREVIEW_LOD2" value="2" enum="PreviewLOD" /></constants>
+</class>

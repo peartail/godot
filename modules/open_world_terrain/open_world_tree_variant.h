@@ -5,6 +5,7 @@
 #pragma once
 
 #include "core/io/resource.h"
+#include "open_world_tree_support_graph.h"
 #include "scene/resources/material.h"
 #include "scene/resources/mesh.h"
 
@@ -21,6 +22,7 @@ class OpenWorldTreeVariant : public Resource {
 	Ref<Material> material_override;
 	real_t collision_radius = 0.5;
 	real_t collision_height = 2.0;
+	Ref<OpenWorldTreeSupportGraph> support_graph;
 
 protected:
 	static void _bind_methods();
@@ -56,4 +58,6 @@ public:
 	real_t get_collision_radius() const { return collision_radius; }
 	void set_collision_height(real_t p_height);
 	real_t get_collision_height() const { return collision_height; }
+	void set_support_graph(const Ref<OpenWorldTreeSupportGraph> &p_graph);
+	Ref<OpenWorldTreeSupportGraph> get_support_graph() const { return support_graph; }
 };

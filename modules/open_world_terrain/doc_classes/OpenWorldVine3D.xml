@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="OpenWorldVine3D" inherits="MeshInstance3D" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>Displays one baked unique vine with distance LOD.</brief_description>
+	<description>Switches a variant mesh at a configurable interval. This node does not regenerate paths at runtime.</description>
+	<tutorials></tutorials>
+	<methods><method name="force_lod_update"><return type="void" /><description>Immediately resolves camera distance and mesh.</description></method><method name="get_current_lod" qualifiers="const"><return type="int" /><description>Returns current LOD or -1 when culled.</description></method><method name="notify_support_lost"><return type="void" /><description>Applies the variant support-loss policy.</description></method></methods>
+	<members><member name="camera_path" type="NodePath" setter="set_camera_path" getter="get_camera_path">Optional explicit camera.</member><member name="lod_update_interval" type="float" setter="set_lod_update_interval" getter="get_lod_update_interval" default="0.25">Seconds between automatic updates.</member><member name="variant" type="OpenWorldVineVariant" setter="set_variant" getter="get_variant">Baked source.</member></members>
+	<signals><signal name="support_detach_requested"><description>Emitted for SUPPORT_DETACH. Gameplay code decides how to animate or replace the vine.</description></signal></signals>
+</class>

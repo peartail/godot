@@ -31,6 +31,9 @@
 		<member name="collision_radius" type="float" setter="set_collision_radius" getter="get_collision_radius" default="0.5">
 			Suggested radius in meters for a simplified trunk collision shape.
 		</member>
+		<member name="support_graph" type="OpenWorldTreeSupportGraph" setter="set_support_graph" getter="get_support_graph">
+			Baked trunk and branch centerlines used by TreeWrap vines and other attachments.
+		</member>
 		<member name="lod0_mesh" type="Mesh" setter="set_lod0_mesh" getter="get_lod0_mesh">
 			Highest-detail baked tree mesh.
 		</member>

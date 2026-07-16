@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="OpenWorldVineGenerationProfile" inherits="Resource" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>Stores reusable low-poly vine generation rules.</brief_description>
+	<description>Defines stem, leaf, support projection, LOD, and wind parameters. Use a request seed for deterministic variations.</description>
+	<tutorials></tutorials>
+	<members>
+		<member name="climbing_up_bias" type="float" setter="set_climbing_up_bias" getter="get_climbing_up_bias" default="0.72">Weight of world-up projected onto a climbing surface.</member>
+		<member name="hanging_sag" type="float" setter="set_hanging_sag" getter="get_hanging_sag" default="0.65">Downward sag applied to hanging paths.</member>
+		<member name="leaf_density" type="float" setter="set_leaf_density" getter="get_leaf_density" default="1.0">Deterministic probability of keeping each candidate leaf.</member>
+		<member name="leaf_size" type="float" setter="set_leaf_size" getter="get_leaf_size" default="0.24">Leaf card length.</member>
+		<member name="leaf_spacing" type="float" setter="set_leaf_spacing" getter="get_leaf_spacing" default="0.42">Desired spacing between leaf candidates.</member>
+		<member name="leaf_width_scale" type="float" setter="set_leaf_width_scale" getter="get_leaf_width_scale" default="0.62">Leaf width relative to length.</member>
+		<member name="lod1_quality" type="float" setter="set_lod1_quality" getter="get_lod1_quality" default="0.55">LOD1 geometry quality.</member>
+		<member name="lod2_quality" type="float" setter="set_lod2_quality" getter="get_lod2_quality" default="0.2">LOD2 geometry quality.</member>
+		<member name="max_slope_degrees" type="float" setter="set_max_slope_degrees" getter="get_max_slope_degrees" default="70.0">Reserved maximum accepted creeping slope.</member>
+		<member name="radial_sides" type="int" setter="set_radial_sides" getter="get_radial_sides" default="5">LOD0 tube side count.</member>
+		<member name="segment_length" type="float" setter="set_segment_length" getter="get_segment_length" default="0.35">Fixed deterministic path step.</member>
+		<member name="side_branch_count" type="int" setter="set_side_branch_count" getter="get_side_branch_count" default="2">Maximum generated side shoots.</member>
+		<member name="side_branch_length" type="float" setter="set_side_branch_length" getter="get_side_branch_length" default="1.2">Side shoot length.</member>
+		<member name="stem_radius" type="float" setter="set_stem_radius" getter="get_stem_radius" default="0.055">Primary stem base radius.</member>
+		<member name="support_probe_distance" type="float" setter="set_support_probe_distance" getter="get_support_probe_distance" default="0.75">Authoring-time support query distance.</member>
+		<member name="surface_gap_policy" type="int" setter="set_surface_gap_policy" getter="get_surface_gap_policy" enum="OpenWorldVineGenerationProfile.SurfaceGapPolicy" default="0">Action when surface projection fails.</member>
+		<member name="surface_offset" type="float" setter="set_surface_offset" getter="get_surface_offset" default="0.035">Distance maintained outside support geometry.</member>
+		<member name="tip_radius_scale" type="float" setter="set_tip_radius_scale" getter="get_tip_radius_scale" default="0.2">Tip radius relative to base.</member>
+		<member name="tree_wrap_branch_chance" type="float" setter="set_tree_wrap_branch_chance" getter="get_tree_wrap_branch_chance" default="0.2">Reserved deterministic chance to transfer onto a branch.</member>
+		<member name="tree_wrap_turns" type="float" setter="set_tree_wrap_turns" getter="get_tree_wrap_turns" default="3.0">Revolutions around the selected tree support path.</member>
+		<member name="turn_noise" type="float" setter="set_turn_noise" getter="get_turn_noise" default="0.22">Seeded lateral path variation.</member>
+		<member name="wind_speed" type="float" setter="set_wind_speed" getter="get_wind_speed" default="1.0">Preview wind time multiplier.</member>
+		<member name="wind_strength" type="float" setter="set_wind_strength" getter="get_wind_strength" default="0.18">Preview wind displacement.</member>
+	</members>
+	<constants><constant name="SURFACE_GAP_STOP" value="0" enum="SurfaceGapPolicy">Stop at the last attached anchor.</constant><constant name="SURFACE_GAP_SWITCH_TO_HANGING" value="1" enum="SurfaceGapPolicy">Continue as an unattached hanging path.</constant></constants>
+</class>

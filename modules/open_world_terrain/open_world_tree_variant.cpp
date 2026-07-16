@@ -3,6 +3,7 @@
 /**************************************************************************/
 
 #include "open_world_tree_variant.h"
+#include "open_world_tree_support_graph.h"
 
 #include "core/object/class_db.h"
 
@@ -134,6 +135,12 @@ void OpenWorldTreeVariant::set_collision_height(real_t p_height) {
 	emit_changed();
 }
 
+void OpenWorldTreeVariant::set_support_graph(const Ref<OpenWorldTreeSupportGraph> &p_graph) {
+	if (support_graph == p_graph) return;
+	support_graph = p_graph;
+	emit_changed();
+}
+
 void OpenWorldTreeVariant::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_variant_name", "name"), &OpenWorldTreeVariant::set_variant_name);
 	ClassDB::bind_method(D_METHOD("get_variant_name"), &OpenWorldTreeVariant::get_variant_name);
@@ -159,6 +166,8 @@ void OpenWorldTreeVariant::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_collision_radius"), &OpenWorldTreeVariant::get_collision_radius);
 	ClassDB::bind_method(D_METHOD("set_collision_height", "height"), &OpenWorldTreeVariant::set_collision_height);
 	ClassDB::bind_method(D_METHOD("get_collision_height"), &OpenWorldTreeVariant::get_collision_height);
+	ClassDB::bind_method(D_METHOD("set_support_graph", "graph"), &OpenWorldTreeVariant::set_support_graph);
+	ClassDB::bind_method(D_METHOD("get_support_graph"), &OpenWorldTreeVariant::get_support_graph);
 
 	ADD_PROPERTY(PropertyInfo(Variant::STRING, "variant_name"), "set_variant_name", "get_variant_name");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "source_seed"), "set_source_seed", "get_source_seed");
@@ -175,4 +184,5 @@ void OpenWorldTreeVariant::_bind_methods() {
 	ADD_GROUP("Collision Hint", "collision_");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "collision_radius", PROPERTY_HINT_RANGE, "0,1000,0.01,or_greater,suffix:m"), "set_collision_radius", "get_collision_radius");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "collision_height", PROPERTY_HINT_RANGE, "0,1000,0.01,or_greater,suffix:m"), "set_collision_height", "get_collision_height");
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "support_graph", PROPERTY_HINT_RESOURCE_TYPE, "OpenWorldTreeSupportGraph"), "set_support_graph", "get_support_graph");
 }

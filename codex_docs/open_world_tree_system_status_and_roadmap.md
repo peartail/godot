@@ -9,6 +9,11 @@
 - [벌목 상호작용 구조](open_world_tree_harvesting_architecture.md): `HarvestableTree3D`, stable ID, 정적/interactive 전환
 - [스타일라이즈드 생성기 1차 가이드](godot_stylized_tree_generator_mvp.md): 파라미터 설명과 에디터/API 사용법
 - [스타일라이즈드 생성기 2차 가이드](godot_stylized_tree_generator_phase2.md): Archetype, 열대 수형, root, Palm frond
+- [스타일라이즈드 생성기 3차 가이드](godot_stylized_tree_generator_phase3.md): LOD0/1/2 Bake, Wind 데이터와 카툰 preview
+- [3차 테스트 케이스](open_world_tree_phase3_test_cases.md): LOD, Wind, Bake 수동 검증 항목
+- [3차 테스트 샘플 구성](open_world_tree_phase3_test_sample_setup.md): 단일 나무, 거리 표식, 100개 군락 구성
+- [덩굴 시스템 개발 플랜](open_world_vine_system_plan.md) / [Agent-First 제작 지침](open_world_vine_agent_workflow.md): 텍스트·Headless 중심 생성, 표면 부착과 Bake 계획
+- [덩굴 현재 구현 현황](open_world_vine_system_current_status.md) / [Agent API](open_world_vine_agent_api.md) / [테스트 케이스](open_world_vine_test_cases.md)
 - [Blender 나무 제작 가이드](blender_stylized_tree_asset_guidelines.md): Blender 보조 자산 제작 규칙
 - [Blender GLB 익스포트 가이드](blender_tree_glb_export_guide.md): Godot 연결용 익스포트 설정
 
@@ -44,17 +49,22 @@ HarvestableTree3D
 
 상세 설계와 완료 기준은 [생성 및 렌더링 로드맵](open_world_tree_generation_roadmap.md)의 Phase 2를 참고한다.
 
+## 현재 개발 단계
+
+- Phase 1~3: 생성, 열대 수형, LOD, Wind와 정적 Bake 완료
+- Phase 3.5: 프리셋, 실제 게임용 material, UV/normal 규약과 제작 도구 보강 예정
+- Phase 4: `HarvestableTree3D`와 벌목 상태 전환 예정
+- Phase 5: cell streaming, spatial index와 benchmark 예정
+- Phase 6: biome/scatter 기반 월드 배치 도구 예정
+
+다음 구현 주제인 덩굴은 나무 생성기에 포함하지 않는다. 공통 seed/Bake/LOD 규약은 재사용하되 별도 profile, generator, variant를 갖는다.
+
 ## 권장 다음 단계
 
-1. Sample scene과 카툰 material
-2. Seed preview grid와 batch baker
-3. Tree archetype과 crown envelope 데이터 모델
-4. Tropical Broadleaf preset
-5. Palm frond generator
-6. Root module
-7. LOD와 wind
-8. HarvestableTree3D와 벌목
-9. Spatial index와 world streaming
+1. Phase 3.5 프리셋과 게임용 material 마감
+2. `HarvestableTree3D` 최소 기능과 stable ID 상태 저장
+3. 실제 숲 benchmark 후 billboard/streaming 필요성 결정
+4. 덩굴 시스템 Phase 0~1 프로토타입 병행
 
 ## 문서 길이 규칙
 

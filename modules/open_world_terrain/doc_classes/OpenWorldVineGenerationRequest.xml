@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="OpenWorldVineGenerationRequest" inherits="Resource" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>Agent-readable request describing one deterministic vine.</brief_description>
+	<description>All positions are local to the generator. Explicit anchors override the mode solver, allowing mouse-free precision authoring.</description>
+	<tutorials></tutorials>
+	<members>
+		<member name="branch_budget" type="int" setter="set_branch_budget" getter="get_branch_budget" default="2">Maximum side shoots for this request.</member>
+		<member name="desired_length" type="float" setter="set_desired_length" getter="get_desired_length" default="6.0">Requested path length.</member>
+		<member name="explicit_anchors" type="PackedVector3Array" setter="set_explicit_anchors" getter="get_explicit_anchors">Optional exact local path.</member>
+		<member name="explicit_normals" type="PackedVector3Array" setter="set_explicit_normals" getter="get_explicit_normals">Optional surface normals matching explicit anchors.</member>
+		<member name="mode" type="int" setter="set_mode" getter="get_mode" enum="OpenWorldVineGenerationRequest.VineMode" default="0">Path solver mode.</member>
+		<member name="profile" type="OpenWorldVineGenerationProfile" setter="set_profile" getter="get_profile">Reusable generation rules.</member>
+		<member name="seed" type="int" setter="set_seed" getter="get_seed" default="1207">Deterministic variation seed.</member>
+		<member name="start_direction" type="Vector3" setter="set_start_direction" getter="get_start_direction" default="Vector3(0, 0, -1)">Initial local path direction.</member>
+		<member name="start_position" type="Vector3" setter="set_start_position" getter="get_start_position" default="Vector3(0, 0, 0)">Local start position.</member>
+		<member name="support_path" type="NodePath" setter="set_support_path" getter="get_support_path">Support node relative to the generator.</member>
+		<member name="support_stable_id" type="int" setter="set_support_stable_id" getter="get_support_stable_id" default="0">Optional gameplay persistence key.</member>
+		<member name="target_enabled" type="bool" setter="set_target_enabled" getter="is_target_enabled" default="false">Uses target_position for Hanging.</member>
+		<member name="target_position" type="Vector3" setter="set_target_position" getter="get_target_position" default="Vector3(0, 0, 0)">Optional local end point.</member>
+	</members>
+	<constants><constant name="MODE_CREEPING" value="0" enum="VineMode">Ground-following solver.</constant><constant name="MODE_CLIMBING" value="1" enum="VineMode">Mesh surface climbing solver.</constant><constant name="MODE_HANGING" value="2" enum="VineMode">Free hanging solver.</constant><constant name="MODE_TREE_WRAP" value="3" enum="VineMode">Generated-tree support graph solver.</constant></constants>
+</class>

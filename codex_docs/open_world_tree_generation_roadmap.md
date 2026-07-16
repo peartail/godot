@@ -101,6 +101,16 @@ Archetype은 메시 생성기를 완전히 분리하는 타입이 아니라, tru
 
 ## Phase 3 — LOD와 Wind
 
+현재 완료:
+
+- 생성 규칙 기반 LOD0/LOD1/LOD2
+- 세 LOD와 거리의 일괄 Variant Bake
+- RGBA Wind vertex color 규약
+- 기본 카툰 wind material과 강제 preview
+- LOD 통계 API와 Inspector 표시
+
+Billboard/impostor와 texture wind material은 후속 품질 작업이다.
+
 개발 항목:
 
 - LOD1 branch/canopy 단순화
@@ -153,13 +163,13 @@ Archetype은 메시 생성기를 완전히 분리하는 타입이 아니라, tru
 
 열대 biome에서는 Tropical Broadleaf, Palm, Mangrove Species를 밀도와 지형 조건에 따라 혼합할 수 있어야 한다.
 
-## 권장 다음 작업
+## 현재 우선순위
 
-1. Phase 1.5 sample scene과 preview grid
-2. `archetype`과 crown envelope 데이터 모델 설계
-3. Tropical Broadleaf/우산형 preset으로 기존 blob 방식 검증
-4. Palm용 frond generator를 별도 foliage module로 구현
-5. Buttress/prop root module 추가
-6. 수형이 안정된 후 LOD와 wind 규약 확정
+1. Phase 3.5 제작 안정화: 공식 preset, sample scene, texture material, UV/normal 규약
+2. Phase 4 벌목: 정적/interactive 전환, collision, damage, drop과 상태 저장
+3. 실제 숲 benchmark로 billboard와 Phase 5 streaming의 필요 수준 결정
+4. Phase 6 biome/scatter 제작 도구
 
-초기 열대 나무 구현은 `Tropical Broadleaf`와 `Palm` 두 종류가 적당하다. 전자는 현재 시스템의 확장성을 검증하고, 후자는 일반 branch/canopy와 다른 생성 모듈 조합을 검증할 수 있다.
+Leaf card, Palm leaflet, Banyan aerial root와 지형 적응 root는 시각 품질 항목이다. 벌목 구현의 선행 조건으로 취급하지 않는다.
+
+덩굴 시스템은 이 로드맵에 추가하지 않고 [별도 개발 플랜](open_world_vine_system_plan.md)으로 관리한다.

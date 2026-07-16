@@ -1998,6 +1998,7 @@ Dictionary OpenWorldTerrain3D::get_brush_hit(const Vector3 &p_ray_origin, const 
 				return tile_origin + Vector3((real_t)p_x * texel_world_size, terrain_data->get_tile_height(cell, p_x, p_y) * terrain_data->get_height_scale(), (real_t)p_y * texel_world_size);
 			};
 			Vector3 best_position;
+			Vector3 best_normal = Vector3::UP;
 			real_t best_distance = Math::INF;
 			bool found = false;
 
@@ -2014,6 +2015,8 @@ Dictionary OpenWorldTerrain3D::get_brush_hit(const Vector3 &p_ray_origin, const 
 						if (distance < best_distance) {
 							best_distance = distance;
 							best_position = intersection;
+							best_normal = (v01 - v00).cross(v10 - v00).normalized();
+							if (best_normal.y < 0.0) best_normal = -best_normal;
 							found = true;
 						}
 					}
@@ -2022,6 +2025,8 @@ Dictionary OpenWorldTerrain3D::get_brush_hit(const Vector3 &p_ray_origin, const 
 						if (distance < best_distance) {
 							best_distance = distance;
 							best_position = intersection;
+							best_normal = (v01 - v10).cross(v11 - v10).normalized();
+							if (best_normal.y < 0.0) best_normal = -best_normal;
 							found = true;
 						}
 					}
@@ -2031,6 +2036,8 @@ Dictionary OpenWorldTerrain3D::get_brush_hit(const Vector3 &p_ray_origin, const 
 			if (found) {
 				hit["position"] = get_global_transform().xform(best_position);
 				hit["local_position"] = best_position;
+				hit["local_normal"] = best_normal;
+				hit["normal"] = get_global_transform().basis.inverse().transposed().xform(best_normal).normalized();
 				hit["distance"] = best_distance;
 				return hit;
 			}

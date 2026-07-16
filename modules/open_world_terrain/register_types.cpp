@@ -15,6 +15,13 @@
 #include "modules/open_world_terrain/open_world_tree_placement_data.h"
 #include "modules/open_world_terrain/open_world_tree_species.h"
 #include "modules/open_world_terrain/open_world_tree_variant.h"
+#include "modules/open_world_terrain/open_world_tree_support_graph.h"
+#include "modules/open_world_terrain/open_world_vine_3d.h"
+#include "modules/open_world_terrain/open_world_vine_generation_profile.h"
+#include "modules/open_world_terrain/open_world_vine_generation_request.h"
+#include "modules/open_world_terrain/open_world_vine_generator_3d.h"
+#include "modules/open_world_terrain/open_world_vine_path_data.h"
+#include "modules/open_world_terrain/open_world_vine_variant.h"
 
 #ifdef TOOLS_ENABLED
 #include "modules/open_world_terrain/editor/open_world_terrain_editor_plugin.h"
@@ -31,12 +38,19 @@ void initialize_open_world_terrain_module(ModuleInitializationLevel p_level) {
 		GDREGISTER_CLASS(OpenWorldTerrainLayer);
 		GDREGISTER_CLASS(OpenWorldTerrainData);
 		GDREGISTER_CLASS(OpenWorldTerrain3D);
+		GDREGISTER_CLASS(OpenWorldTreeSupportGraph);
 		GDREGISTER_CLASS(OpenWorldTreeVariant);
 		GDREGISTER_CLASS(OpenWorldTreeSpecies);
 		GDREGISTER_CLASS(OpenWorldTreePlacementData);
 		GDREGISTER_CLASS(OpenWorldTree3D);
 		GDREGISTER_CLASS(OpenWorldTreeGenerationProfile);
 		GDREGISTER_CLASS(OpenWorldTreeGenerator3D);
+		GDREGISTER_CLASS(OpenWorldVineGenerationProfile);
+		GDREGISTER_CLASS(OpenWorldVineGenerationRequest);
+		GDREGISTER_CLASS(OpenWorldVinePathData);
+		GDREGISTER_CLASS(OpenWorldVineVariant);
+		GDREGISTER_CLASS(OpenWorldVineGenerator3D);
+		GDREGISTER_CLASS(OpenWorldVine3D);
 	}
 
 #ifdef TOOLS_ENABLED

@@ -53,6 +53,9 @@ Profile과 seed로 정적 `ArrayMesh`를 생성하는 제작 노드다.
 - crown envelope와 secondary branch
 - trunk flare, buttress root, prop root
 - Palm 양면 frond ribbon
+- 결정론적 LOD0/LOD1/LOD2 생성과 일괄 Bake
+- Wind vertex color와 기본 카툰 wind preview
+- 강제 LOD preview와 triangle 통계
 - 동일 profile/seed에 대한 결정론적 결과
 - surface 0: trunk와 branch
 - surface 1: foliage
@@ -73,7 +76,7 @@ Inspector 액션:
 - material override
 - 충돌 반지름/높이 메타데이터
 
-현재 Generator의 자동 Bake는 LOD0을 생성한다.
+현재 Generator의 자동 Bake는 활성화된 LOD0/LOD1/LOD2와 전환 거리를 함께 저장한다.
 
 ### `OpenWorldTreeSpecies`
 
@@ -120,8 +123,8 @@ Species와 PlacementData를 이용하는 대량 정적 렌더러다.
 
 ## 검증 결과
 
-- OpenWorldTree 테스트 5개 통과
-- Assertion 32개 통과
+- OpenWorldTree 테스트 8개 통과
+- Assertion 74개 통과
 - Windows Mono editor 개발 빌드 성공
 - Mono glue 및 Debug/Release C# assemblies 생성 성공
 - Generator/Profile agent docs 조회 성공
@@ -132,7 +135,30 @@ Species와 PlacementData를 이용하는 대량 정적 렌더러다.
 2. seed 기반 Variant 결정론
 3. stable ID와 enabled 상태
 4. Generator 정점 결정론과 두 surface Bake
-5. Scene View selection mesh
+5. LOD0/LOD1/LOD2 결정론과 triangle 감소
+6. Wind vertex color 배열과 채널 범위
+7. 세 LOD와 거리의 Variant Bake
+8. Scene View selection mesh
+
+## 현재 개발 판단
+
+생성기 자체는 게임 프로젝트에서 Variant를 제작하고 배치해 볼 수 있는 단계다. 다음 핵심 목표는 생성 기능을 무한히 확장하는 것이 아니라 정적 나무를 벌목 가능한 개체로 승격하는 Phase 4다.
+
+먼저 마감할 Phase 3.5 항목:
+
+- 수종별 공식 `OpenWorldTreeGenerationProfile` preset과 sample scene
+- texture와 Wind 규약을 함께 사용하는 게임용 trunk/foliage material
+- bark/foliage UV와 smooth/faceted normal 규약 확정
+- multi-seed preview와 선택 seed batch Bake
+- 전체 archetype의 LOD 전환 visual QA
+
+이후 우선 구현:
+
+- `HarvestableTree3D`와 trunk collision proxy
+- stable ID 기반 정적/interactive 전환
+- 체력, damage, 낙하와 규격화된 resource drop
+- harvested/respawn 상태 저장
+- 실제 숲 benchmark 후 spatial index와 streaming
 
 ## 현재 제한
 
@@ -140,14 +166,15 @@ Species와 PlacementData를 이용하는 대량 정적 렌더러다.
 - Banyan aerial root와 지형 적응 root 없음
 - canopy가 blob 조합으로 제한됨
 - 개별 leaf card와 Palm leaflet 분할 없음
-- 자동 LOD1/LOD2와 billboard 없음
-- wind channel/shader 없음
-- 자동 collision과 벌목 물리 없음
-- spatial index와 cell streaming 없음
+- LOD2 billboard/impostor와 texture bake 없음
+- 기본 wind shader는 단색 preview용이며 texture shader 확장 필요
+- 자동 collision/벌목 물리 및 spatial index/cell streaming 없음
 
 ## 관련 문서
 
 - [트리 시스템 문서 인덱스](open_world_tree_system_status_and_roadmap.md)
 - [생성기 제작 가이드](godot_stylized_tree_generator_mvp.md)
+- [3차 LOD/Wind 가이드](godot_stylized_tree_generator_phase3.md)
 - [향후 생성/렌더링 로드맵](open_world_tree_generation_roadmap.md)
 - [벌목 상호작용 구조](open_world_tree_harvesting_architecture.md)
+- [덩굴 시스템 별도 개발 플랜](open_world_vine_system_plan.md)

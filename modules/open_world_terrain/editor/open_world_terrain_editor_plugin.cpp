@@ -17,7 +17,9 @@
 #include "scene/gui/box_container.h"
 #include "scene/gui/button.h"
 #include "scene/gui/control.h"
+#include "scene/gui/label.h"
 #include "scene/gui/option_button.h"
+#include "core/io/json.h"
 #include "scene/gui/panel_container.h"
 
 static void _append_tree_selection_box(Vector<Vector3> &r_faces, const AABB &p_aabb, const Transform3D &p_transform) {
@@ -358,9 +360,46 @@ void OpenWorldTreeGeneratorInspectorPlugin::parse_end(Object *p_object) {
     add_custom_control(randomize_button);
 
     Button *bake_button = memnew(EditorInspectorActionButton(TTRC("Bake Variant..."), SNAME("Save")));
-    bake_button->set_tooltip_text(TTRC("Copy the generated mesh into an OpenWorldTreeVariant resource and save it."));
+    bake_button->set_tooltip_text(TTRC("Bake LOD0, LOD1, and LOD2 into an OpenWorldTreeVariant resource and save it."));
     bake_button->connect(SceneStringName(pressed), callable_mp(this, &OpenWorldTreeGeneratorInspectorPlugin::_bake_variant).bind(p_object), CONNECT_DEFERRED);
     add_custom_control(bake_button);
+
+    OpenWorldTreeGenerator3D *generator = Object::cast_to<OpenWorldTreeGenerator3D>(p_object);
+    Label *statistics_label = memnew(Label);
+    statistics_label->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+    if (generator != nullptr && generator->get_generated_lod_mesh(0).is_valid()) {
+        String statistics;
+        for (int lod = 0; lod < 3; lod++) {
+            const Dictionary values = generator->get_lod_statistics(lod);
+            if ((bool)values["available"]) {
+                statistics += vformat("LOD%d: %d vertices / %d triangles", lod, (int)values["vertices"], (int)values["triangles"]);
+            } else {
+                statistics += vformat("LOD%d: disabled", lod);
+            }
+            if (lod < 2) {
+                statistics += "\n";
+            }
+        }
+        statistics_label->set_text(statistics);
+    } else {
+        statistics_label->set_text(TTRC("Generate the tree to inspect LOD statistics."));
+    }
+    statistics_label->set_tooltip_text(TTRC("Use Preview LOD to force an editor view. Statistics refresh when the Inspector is rebuilt."));
+    add_custom_control(statistics_label);
+}
+
+bool OpenWorldVineGeneratorInspectorPlugin::can_handle(Object *p_object) { return Object::cast_to<OpenWorldVineGenerator3D>(p_object) != nullptr; }
+void OpenWorldVineGeneratorInspectorPlugin::_validate_vine(Object *p_object) { OpenWorldVineGenerator3D *generator = Object::cast_to<OpenWorldVineGenerator3D>(p_object); if (generator) generator->validate_request(); }
+void OpenWorldVineGeneratorInspectorPlugin::_generate_vine(Object *p_object) { OpenWorldVineGenerator3D *generator = Object::cast_to<OpenWorldVineGenerator3D>(p_object); if (generator) generator->generate_vine(); }
+void OpenWorldVineGeneratorInspectorPlugin::_randomize_seed(Object *p_object) { OpenWorldVineGenerator3D *generator = Object::cast_to<OpenWorldVineGenerator3D>(p_object); if (generator) generator->randomize_seed(); }
+void OpenWorldVineGeneratorInspectorPlugin::_bake_variant(Object *p_object) { OpenWorldVineGenerator3D *generator = Object::cast_to<OpenWorldVineGenerator3D>(p_object); if (!generator) return; if (generator->get_generated_lod_mesh(0).is_null()) generator->generate_vine(); Ref<OpenWorldVineVariant> variant = generator->create_baked_variant(); if (variant.is_valid()) EditorNode::get_singleton()->save_resource_as(variant); }
+void OpenWorldVineGeneratorInspectorPlugin::parse_end(Object *p_object) {
+	OpenWorldVineGenerator3D *generator = Object::cast_to<OpenWorldVineGenerator3D>(p_object); if (!generator) return;
+	Button *validate_button = memnew(EditorInspectorActionButton(TTRC("Validate Vine Request"), SNAME("Search"))); validate_button->connect(SceneStringName(pressed), callable_mp(this, &OpenWorldVineGeneratorInspectorPlugin::_validate_vine).bind(p_object), CONNECT_DEFERRED); add_custom_control(validate_button);
+	Button *generate_button = memnew(EditorInspectorActionButton(TTRC("Generate Vine"), SNAME("MeshInstance3D"))); generate_button->connect(SceneStringName(pressed), callable_mp(this, &OpenWorldVineGeneratorInspectorPlugin::_generate_vine).bind(p_object), CONNECT_DEFERRED); add_custom_control(generate_button);
+	Button *randomize_button = memnew(EditorInspectorActionButton(TTRC("Randomize Seed"), SNAME("RandomNumberGenerator"))); randomize_button->connect(SceneStringName(pressed), callable_mp(this, &OpenWorldVineGeneratorInspectorPlugin::_randomize_seed).bind(p_object), CONNECT_DEFERRED); add_custom_control(randomize_button);
+	Button *bake_button = memnew(EditorInspectorActionButton(TTRC("Bake Vine Variant..."), SNAME("Save"))); bake_button->connect(SceneStringName(pressed), callable_mp(this, &OpenWorldVineGeneratorInspectorPlugin::_bake_variant).bind(p_object), CONNECT_DEFERRED); add_custom_control(bake_button);
+	Label *report_label = memnew(Label); report_label->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART); Dictionary report = generator->get_generation_report(); report_label->set_text(report.is_empty() ? TTRC("Use the public API or actions above to generate an Agent-First report.") : JSON::stringify(report, "  ")); add_custom_control(report_label);
 }
 
 void OpenWorldTerrainEditorPlugin::_select_mode_pressed() {
@@ -988,6 +1027,8 @@ OpenWorldTerrainEditorPlugin::OpenWorldTerrainEditorPlugin() {
 	add_inspector_plugin(inspector_plugin);
 	tree_generator_inspector_plugin.instantiate();
 	add_inspector_plugin(tree_generator_inspector_plugin);
+	vine_generator_inspector_plugin.instantiate();
+	add_inspector_plugin(vine_generator_inspector_plugin);
 
 	toolbar = memnew(HBoxContainer);
 	toolbar->hide();

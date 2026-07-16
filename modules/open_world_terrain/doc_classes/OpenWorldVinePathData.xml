@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="OpenWorldVinePathData" inherits="Resource" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>Stores baked local vine anchors and support metadata.</brief_description>
+	<description>Paths, normals, and attached flags are parallel arrays. Path zero is primary and later paths are side shoots.</description>
+	<tutorials></tutorials>
+	<methods>
+		<method name="add_path"><return type="void" /><param index="0" name="points" type="PackedVector3Array" /><param index="1" name="normals" type="PackedVector3Array" default="PackedVector3Array()" /><param index="2" name="attached" type="PackedByteArray" default="PackedByteArray()" /><param index="3" name="parent_path" type="int" default="-1" /><param index="4" name="support_segment" type="int" default="-1" /><description>Adds one path and parallel metadata.</description></method>
+		<method name="clear"><return type="void" /><description>Removes every path.</description></method>
+		<method name="get_path_attached_flags" qualifiers="const"><return type="PackedByteArray" /><param index="0" name="index" type="int" /><description>Returns fixed/free flags.</description></method>
+		<method name="get_path_count" qualifiers="const"><return type="int" /><description>Returns primary plus side path count.</description></method>
+		<method name="get_path_normals" qualifiers="const"><return type="PackedVector3Array" /><param index="0" name="index" type="int" /><description>Returns local support normals.</description></method>
+		<method name="get_path_points" qualifiers="const"><return type="PackedVector3Array" /><param index="0" name="index" type="int" /><description>Returns local anchors.</description></method>
+		<method name="get_total_length" qualifiers="const"><return type="float" /><description>Returns total polyline length.</description></method>
+	</methods>
+	<members><member name="attached_flags" type="Array" setter="set_attached_flags" getter="get_attached_flags">PackedByteArray per path.</member><member name="normals" type="Array" setter="set_normals" getter="get_normals">PackedVector3Array per path.</member><member name="parent_paths" type="PackedInt32Array" setter="set_parent_paths" getter="get_parent_paths">Parent path indices.</member><member name="paths" type="Array" setter="set_paths" getter="get_paths">PackedVector3Array paths.</member><member name="support_segments" type="PackedInt32Array" setter="set_support_segments" getter="get_support_segments">Tree support segment indices.</member></members>
+</class>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="OpenWorldTreeSupportGraph" inherits="Resource" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>Stores generated tree centerlines and radii for attached systems.</brief_description>
+	<description>Path zero is the trunk. Primary branches reference it through parent_paths and attachment_ratios.</description>
+	<tutorials></tutorials>
+	<methods><method name="add_path"><return type="void" /><param index="0" name="points" type="PackedVector3Array" /><param index="1" name="radii" type="PackedFloat32Array" /><param index="2" name="parent_path" type="int" default="-1" /><param index="3" name="attachment_ratio" type="float" default="0.0" /><description>Adds a support path.</description></method><method name="clear"><return type="void" /><description>Clears graph data.</description></method><method name="get_path_count" qualifiers="const"><return type="int" /></method><method name="get_path_points" qualifiers="const"><return type="PackedVector3Array" /><param index="0" name="index" type="int" /></method><method name="get_path_radii" qualifiers="const"><return type="PackedFloat32Array" /><param index="0" name="index" type="int" /></method></methods>
+	<members><member name="attachment_ratios" type="PackedFloat32Array" setter="set_attachment_ratios" getter="get_attachment_ratios" /><member name="parent_paths" type="PackedInt32Array" setter="set_parent_paths" getter="get_parent_paths" /><member name="paths" type="Array" setter="set_paths" getter="get_paths" /><member name="radii" type="Array" setter="set_radii" getter="get_radii" /></members>
+</class>

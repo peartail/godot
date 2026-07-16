@@ -91,7 +91,7 @@
 			<param index="0" name="ray_origin" type="Vector3" />
 			<param index="1" name="ray_direction" type="Vector3" />
 			<description>
-				Intersects a world-space ray against the CPU height field and returns hit information for editor tools.
+				Intersects a world-space ray against the CPU height field. The result contains [code]position[/code], [code]local_position[/code], [code]normal[/code], [code]local_normal[/code], and [code]distance[/code].
 			</description>
 		</method>
 		<method name="has_grid_cell" qualifiers="const">

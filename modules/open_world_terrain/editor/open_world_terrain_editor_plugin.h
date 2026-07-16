@@ -7,6 +7,7 @@
 #include "../open_world_terrain_3d.h"
 #include "../open_world_tree_3d.h"
 #include "../open_world_tree_generator_3d.h"
+#include "../open_world_vine_generator_3d.h"
 
 #include "core/templates/hash_map.h"
 #include "editor/docks/editor_dock.h"
@@ -94,6 +95,17 @@ public:
     virtual void parse_end(Object *p_object) override;
 };
 
+class OpenWorldVineGeneratorInspectorPlugin : public EditorInspectorPlugin {
+	GDCLASS(OpenWorldVineGeneratorInspectorPlugin, EditorInspectorPlugin);
+	void _validate_vine(Object *p_object);
+	void _generate_vine(Object *p_object);
+	void _randomize_seed(Object *p_object);
+	void _bake_variant(Object *p_object);
+public:
+	virtual bool can_handle(Object *p_object) override;
+	virtual void parse_end(Object *p_object) override;
+};
+
 class OpenWorldTerrainEditorPlugin : public EditorPlugin {
 	GDCLASS(OpenWorldTerrainEditorPlugin, EditorPlugin);
 
@@ -121,6 +133,7 @@ class OpenWorldTerrainEditorPlugin : public EditorPlugin {
 	Ref<OpenWorldTree3DGizmoPlugin> tree_gizmo_plugin;
 	Ref<OpenWorldTerrainInspectorPlugin> inspector_plugin;
 	Ref<OpenWorldTreeGeneratorInspectorPlugin> tree_generator_inspector_plugin;
+	Ref<OpenWorldVineGeneratorInspectorPlugin> vine_generator_inspector_plugin;
 	OpenWorldTerrainSettingsDock *settings_dock = nullptr;
 
 	OpenWorldTerrain3D *terrain = nullptr;

@@ -17,6 +17,13 @@ def get_doc_classes():
         "OpenWorldTree3D",
         "OpenWorldTreeGenerationProfile",
         "OpenWorldTreeGenerator3D",
+        "OpenWorldTreeSupportGraph",
+        "OpenWorldVineGenerationProfile",
+        "OpenWorldVineGenerationRequest",
+        "OpenWorldVinePathData",
+        "OpenWorldVineVariant",
+        "OpenWorldVineGenerator3D",
+        "OpenWorldVine3D",
     ]
 
 
