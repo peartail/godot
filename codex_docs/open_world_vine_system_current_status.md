@@ -138,3 +138,4 @@ Inspector 버튼은 같은 공개 API를 호출하는 선택 기능이다.
 - [Agent-First 제작 지침](open_world_vine_agent_workflow.md)
 - [Agent API 가이드](open_world_vine_agent_api.md)
 - [테스트 케이스](open_world_vine_test_cases.md)
+- [테스트 샘플 생성](open_world_vine_test_sample_setup.md)
