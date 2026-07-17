@@ -26,11 +26,13 @@ alwaysApply: true
 # 빌드 (Windows / PowerShell)
 
 ```powershell
-scons platform=windows target=editor dev_build=yes module_mono_enabled=yes -j4
+.\scripts\build.ps1
+.\scripts\build.ps1 -Preset terrain
+.\scripts\build.ps1 -MonoGlue
 ```
 
-- 특정 모듈 비활성화: `module_<이름>_enabled=no`
-- ClassDB 메서드/프로퍼티 변경 후 Mono glue 재생성이 필요할 수 있다.
+- 특정 모듈 비활성화: `-ExtraArgs "module_<이름>_enabled=no"`
+- ClassDB 메서드/프로퍼티 변경 후 `-MonoGlue` 또는 `-Preset mono-glue`.
 
 # 작업 원칙
 
