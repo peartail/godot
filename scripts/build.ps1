@@ -42,6 +42,9 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+# scons가 stderr에 경고(예: ANGLE/AccessKit 의존성 미설치)를 출력해도
+# PowerShell 7.4+가 이를 치명적 오류로 승격시키지 않도록 한다. 종료 코드로만 판단한다.
+$PSNativeCommandUseErrorActionPreference = $false
 
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 Set-Location $RepoRoot
@@ -57,13 +60,22 @@ function Write-Step {
 function Invoke-SCons {
     param([string[]] $SConsArgs)
 
-    $command = Get-Command scons -ErrorAction SilentlyContinue
-    if ($command) {
-        Write-Host "scons $($SConsArgs -join ' ')" -ForegroundColor DarkGray
-        & scons @SConsArgs
-    } else {
-        Write-Host "python -m SCons $($SConsArgs -join ' ')" -ForegroundColor DarkGray
-        & python -m SCons @SConsArgs
+    # scons는 경고를 stderr로 출력한다. Windows PowerShell 5.1에서는 $ErrorActionPreference='Stop'과
+    # 결합될 때 네이티브 명령의 stderr가 종료 오류(NativeCommandError)로 승격되어 빌드가 중단된다.
+    # 이 구간에서만 'Continue'로 낮추고, 성공/실패는 종료 코드로만 판단한다.
+    $previousEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $command = Get-Command scons -ErrorAction SilentlyContinue
+        if ($command) {
+            Write-Host "scons $($SConsArgs -join ' ')" -ForegroundColor DarkGray
+            & scons @SConsArgs
+        } else {
+            Write-Host "python -m SCons $($SConsArgs -join ' ')" -ForegroundColor DarkGray
+            & python -m SCons @SConsArgs
+        }
+    } finally {
+        $ErrorActionPreference = $previousEap
     }
 
     if ($LASTEXITCODE -ne 0) {
@@ -77,21 +89,29 @@ function Invoke-MonoGlue {
     }
 
     Write-Step 'Mono glue regeneration'
-    & $GodotConsole --headless --generate-mono-glue modules\mono\glue
+    $previousEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $GodotConsole --headless --generate-mono-glue modules\mono\glue
+    } finally {
+        $ErrorActionPreference = $previousEap
+    }
     if ($LASTEXITCODE -ne 0) {
         throw "Mono glue generation failed with exit code $LASTEXITCODE"
     }
 
-    Write-Step 'Mono assemblies'
-    & python modules\mono\build_scripts\build_assemblies.py --godot-output-dir bin --godot-platform windows --dev-debug
-    if ($LASTEXITCODE -ne 0) {
-        throw "Mono assemblies build failed with exit code $LASTEXITCODE"
-    }
+    Invoke-AssembliesOnly
 }
 
 function Invoke-AssembliesOnly {
     Write-Step 'Mono assemblies'
-    & python modules\mono\build_scripts\build_assemblies.py --godot-output-dir bin --godot-platform windows --dev-debug
+    $previousEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & python modules\mono\build_scripts\build_assemblies.py --godot-output-dir bin --godot-platform windows --dev-debug
+    } finally {
+        $ErrorActionPreference = $previousEap
+    }
     if ($LASTEXITCODE -ne 0) {
         throw "Mono assemblies build failed with exit code $LASTEXITCODE"
     }
