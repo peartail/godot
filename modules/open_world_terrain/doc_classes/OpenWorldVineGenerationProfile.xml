@@ -4,10 +4,21 @@
 	<description>Defines stem, leaf, support projection, LOD, and wind parameters. Use a request seed for deterministic variations.</description>
 	<tutorials></tutorials>
 	<members>
+		<member name="branch_junction_length" type="float" setter="set_branch_junction_length" getter="get_branch_junction_length" default="0.18">Length of the overlapping branch collar measured beyond the parent surface. Set to zero to disable collars.</member>
+		<member name="branch_junction_scale" type="float" setter="set_branch_junction_scale" getter="get_branch_junction_scale" default="1.4">Maximum collar radius relative to the side branch radius.</member>
+		<member name="bramble_ground_anchor_ratio" type="float" setter="set_bramble_ground_anchor_ratio" getter="get_bramble_ground_anchor_ratio" default="0.4">Fraction of bramble stems rooted near the base plane and fixed for wind.</member>
+		<member name="bramble_height" type="float" setter="set_bramble_height" getter="get_bramble_height" default="1.0">Height of the bramble generation ellipsoid.</member>
+		<member name="bramble_radius" type="float" setter="set_bramble_radius" getter="get_bramble_radius" default="1.4">Horizontal radius of the bramble generation ellipsoid.</member>
+		<member name="bramble_stem_count" type="int" setter="set_bramble_stem_count" getter="get_bramble_stem_count" default="9">Maximum independent tangled stems. Request branch_budget plus one also limits the result.</member>
+		<member name="bramble_surface_bias" type="float" setter="set_bramble_surface_bias" getter="get_bramble_surface_bias" default="0.55">Bias from dense interior paths toward the outer silhouette.</member>
+		<member name="bramble_tangle_strength" type="float" setter="set_bramble_tangle_strength" getter="get_bramble_tangle_strength" default="0.7">Amount of seeded turning and interweaving applied to bramble stems.</member>
 		<member name="climbing_up_bias" type="float" setter="set_climbing_up_bias" getter="get_climbing_up_bias" default="0.72">Weight of world-up projected onto a climbing surface.</member>
 		<member name="hanging_sag" type="float" setter="set_hanging_sag" getter="get_hanging_sag" default="0.65">Downward sag applied to hanging paths.</member>
 		<member name="leaf_density" type="float" setter="set_leaf_density" getter="get_leaf_density" default="1.0">Deterministic probability of keeping each candidate leaf.</member>
+		<member name="leaf_cluster_card_count" type="int" setter="set_leaf_cluster_card_count" getter="get_leaf_cluster_card_count" default="3">LOD0 double-sided cards per leaf cluster. Lower LODs reduce this count.</member>
+		<member name="leaf_cluster_spread" type="float" setter="set_leaf_cluster_spread" getter="get_leaf_cluster_spread" default="0.28">Radial separation of cards inside a cluster relative to leaf size.</member>
 		<member name="leaf_size" type="float" setter="set_leaf_size" getter="get_leaf_size" default="0.24">Leaf card length.</member>
+		<member name="leaf_size_variation" type="float" setter="set_leaf_size_variation" getter="get_leaf_size_variation" default="0.16">Seeded relative size variation inside leaf clusters.</member>
 		<member name="leaf_spacing" type="float" setter="set_leaf_spacing" getter="get_leaf_spacing" default="0.42">Desired spacing between leaf candidates.</member>
 		<member name="leaf_width_scale" type="float" setter="set_leaf_width_scale" getter="get_leaf_width_scale" default="0.62">Leaf width relative to length.</member>
 		<member name="lod1_quality" type="float" setter="set_lod1_quality" getter="get_lod1_quality" default="0.55">LOD1 geometry quality.</member>
@@ -21,6 +32,9 @@
 		<member name="support_probe_distance" type="float" setter="set_support_probe_distance" getter="get_support_probe_distance" default="0.75">Authoring-time support query distance.</member>
 		<member name="surface_gap_policy" type="int" setter="set_surface_gap_policy" getter="get_surface_gap_policy" enum="OpenWorldVineGenerationProfile.SurfaceGapPolicy" default="0">Action when surface projection fails.</member>
 		<member name="surface_offset" type="float" setter="set_surface_offset" getter="get_surface_offset" default="0.035">Distance maintained outside support geometry.</member>
+		<member name="thorn_density" type="float" setter="set_thorn_density" getter="get_thorn_density" default="0.0">Deterministic probability of retaining each thorn candidate. Zero disables thorns.</member>
+		<member name="thorn_size" type="float" setter="set_thorn_size" getter="get_thorn_size" default="0.09">Thorn length measured from the stem surface.</member>
+		<member name="thorn_spacing" type="float" setter="set_thorn_spacing" getter="get_thorn_spacing" default="0.55">Distance between thorn candidates. LOD1 increases this spacing and LOD2 omits thorns.</member>
 		<member name="tip_radius_scale" type="float" setter="set_tip_radius_scale" getter="get_tip_radius_scale" default="0.2">Tip radius relative to base.</member>
 		<member name="tree_wrap_branch_chance" type="float" setter="set_tree_wrap_branch_chance" getter="get_tree_wrap_branch_chance" default="0.2">Reserved deterministic chance to transfer onto a branch.</member>
 		<member name="tree_wrap_turns" type="float" setter="set_tree_wrap_turns" getter="get_tree_wrap_turns" default="3.0">Revolutions around the selected tree support path.</member>

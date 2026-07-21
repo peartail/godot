@@ -63,9 +63,12 @@ func _configure_profile() -> void:
     profile.radial_sides = 5
     profile.segment_length = 0.25
     profile.side_branch_count = 2
-    profile.leaf_spacing = 0.35
-    profile.leaf_density = 1.0
-    profile.surface_offset = 0.04
+	profile.leaf_spacing = 0.35
+	profile.leaf_density = 1.0
+	profile.leaf_cluster_card_count = 4
+	profile.thorn_density = 0.55
+	profile.thorn_spacing = 0.45
+	profile.surface_offset = 0.04
     profile.support_probe_distance = 0.8
     profile.surface_gap_policy = OpenWorldVineGenerationProfile.SURFACE_GAP_SWITCH_TO_HANGING
 
@@ -165,4 +168,4 @@ func _bake_tree_wrap() -> void:
   --script res://tools/create_vine_test_samples.gd
 ```
 
-완료 후 `vine_test_samples.tscn`을 열고 [테스트 케이스](open_world_vine_test_cases.md)의 TC-01~08을 확인한다.
+완료 후 `vine_test_samples.tscn`을 열고 [테스트 케이스](open_world_vine_test_cases.md)의 TC-01~09를 확인한다. Bramble은 [전용 가이드](open_world_vine_bramble_guide.md)의 headless 샘플로 생성한다.

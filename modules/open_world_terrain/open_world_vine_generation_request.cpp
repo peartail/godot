@@ -14,7 +14,7 @@
 		name = value; emit_changed(); \
 	}
 
-REQUEST_SETTER(VineMode, mode, (VineMode)CLAMP((int)p_value, 0, 3));
+REQUEST_SETTER(VineMode, mode, (VineMode)CLAMP((int)p_value, 0, 4));
 REQUEST_SETTER(int, seed, p_value);
 REQUEST_SETTER(const Vector3 &, start_position, p_value);
 REQUEST_SETTER(const Vector3 &, start_direction, p_value.is_zero_approx() ? Vector3::FORWARD : p_value.normalized());
@@ -44,13 +44,14 @@ void OpenWorldVineGenerationRequest::_bind_methods() {
 	BIND_ENUM_CONSTANT(MODE_CLIMBING);
 	BIND_ENUM_CONSTANT(MODE_HANGING);
 	BIND_ENUM_CONSTANT(MODE_TREE_WRAP);
+	BIND_ENUM_CONSTANT(MODE_BRAMBLE);
 
 	#define REQUEST_BIND(method, type, hint, hint_string) \
 		ClassDB::bind_method(D_METHOD("set_" #method, "value"), &OpenWorldVineGenerationRequest::set_##method); \
 		ClassDB::bind_method(D_METHOD("get_" #method), &OpenWorldVineGenerationRequest::get_##method); \
 		ADD_PROPERTY(PropertyInfo(type, #method, hint, hint_string), "set_" #method, "get_" #method)
 
-	REQUEST_BIND(mode, Variant::INT, PROPERTY_HINT_ENUM, "Creeping,Climbing,Hanging,Tree Wrap");
+	REQUEST_BIND(mode, Variant::INT, PROPERTY_HINT_ENUM, "Creeping,Climbing,Hanging,Tree Wrap,Bramble");
 	REQUEST_BIND(seed, Variant::INT, PROPERTY_HINT_NONE, "");
 	ClassDB::bind_method(D_METHOD("set_profile", "profile"), &OpenWorldVineGenerationRequest::set_profile);
 	ClassDB::bind_method(D_METHOD("get_profile"), &OpenWorldVineGenerationRequest::get_profile);

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="OpenWorldPlacementBrushPreset" inherits="Resource" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>Reusable shape, total density, filters, and weighted recipes for area replacement.</brief_description>
+	<description>
+		Defines a top-down world-XZ footprint. Density is the requested total number of placements per 100 square meters; enabled entry weights divide that total. If the requested count exceeds [member max_objects_per_operation], validation fails before existing placements are removed.
+	</description>
+	<methods>
+		<method name="add_entry"><return type="void" /><param index="0" name="entry" type="OpenWorldPlacementBrushEntry" /></method>
+		<method name="get_entry" qualifiers="const"><return type="OpenWorldPlacementBrushEntry" /><param index="0" name="index" type="int" /></method>
+		<method name="get_entry_count" qualifiers="const"><return type="int" /></method>
+		<method name="get_footprint_area" qualifiers="const"><return type="float" /></method>
+		<method name="get_requested_object_count" qualifiers="const"><return type="int" /></method>
+		<method name="remove_entry_at"><return type="void" /><param index="0" name="index" type="int" /></method>
+		<method name="validate_preset" qualifiers="const"><return type="Dictionary" /><description>Returns structured validation plus area, density, requested count, operation limit, and total weight.</description></method>
+	</methods>
+	<members>
+		<member name="density_per_100_square_meters" type="float" setter="set_density_per_100_square_meters" getter="get_density_per_100_square_meters" default="5.0">Requested total density before terrain and spacing rejection.</member>
+		<member name="display_name" type="String" setter="set_display_name" getter="get_display_name" />
+		<member name="entries" type="Array" setter="set_entries" getter="get_entries" />
+		<member name="height_max" type="float" setter="set_height_max" getter="get_height_max" default="1000000.0" />
+		<member name="height_min" type="float" setter="set_height_min" getter="get_height_min" default="-1000000.0" />
+		<member name="max_objects_per_operation" type="int" setter="set_max_objects_per_operation" getter="get_max_objects_per_operation" default="500">Safety limit checked before area replacement.</member>
+		<member name="minimum_spacing" type="float" setter="set_minimum_spacing" getter="get_minimum_spacing" default="2.0" />
+		<member name="shape" type="int" setter="set_shape" getter="get_shape" enum="OpenWorldPlacementBrushPreset.BrushShape" default="0" />
+		<member name="size" type="Vector2" setter="set_size" getter="get_size" default="Vector2(20, 20)">Full width and depth in meters.</member>
+		<member name="slope_max_degrees" type="float" setter="set_slope_max_degrees" getter="get_slope_max_degrees" default="60.0" />
+		<member name="slope_min_degrees" type="float" setter="set_slope_min_degrees" getter="get_slope_min_degrees" default="0.0" />
+		<member name="stable_id" type="String" setter="set_stable_id" getter="get_stable_id" />
+		<member name="yaw_degrees" type="float" setter="set_yaw_degrees" getter="get_yaw_degrees" default="0.0" />
+	</members>
+	<constants>
+		<constant name="SHAPE_CIRCLE" value="0" enum="BrushShape" />
+		<constant name="SHAPE_RECTANGLE" value="1" enum="BrushShape" />
+		<constant name="SHAPE_ELLIPSE" value="2" enum="BrushShape" />
+	</constants>
+</class>
+

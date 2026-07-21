@@ -7,7 +7,7 @@
 #define VSET(type, name, expression) void OpenWorldVineVariant::set_##name(type p_value) { auto value = (expression); if (name == value) return; name = value; emit_changed(); }
 VSET(const String &, variant_name, p_value);
 VSET(int, source_seed, p_value);
-VSET(OpenWorldVineGenerationRequest::VineMode, source_mode, (OpenWorldVineGenerationRequest::VineMode)CLAMP((int)p_value, 0, 3));
+VSET(OpenWorldVineGenerationRequest::VineMode, source_mode, (OpenWorldVineGenerationRequest::VineMode)CLAMP((int)p_value, 0, 4));
 VSET(real_t, lod1_distance, MAX((real_t)0.0, p_value));
 VSET(real_t, lod2_distance, MAX(lod1_distance, p_value));
 VSET(real_t, max_distance, MAX(lod2_distance, p_value));
@@ -27,7 +27,7 @@ void OpenWorldVineVariant::_bind_methods() {
 	#undef VBIND
 	ClassDB::bind_method(D_METHOD("get_lod_mesh", "lod"), &OpenWorldVineVariant::get_lod_mesh); ClassDB::bind_method(D_METHOD("get_lod_index_for_distance", "distance"), &OpenWorldVineVariant::get_lod_index_for_distance);
 	ADD_PROPERTY(PropertyInfo(Variant::STRING, "variant_name"), "set_variant_name", "get_variant_name"); ADD_PROPERTY(PropertyInfo(Variant::INT, "source_seed"), "set_source_seed", "get_source_seed");
-	ADD_PROPERTY(PropertyInfo(Variant::INT, "source_mode", PROPERTY_HINT_ENUM, "Creeping,Climbing,Hanging,Tree Wrap"), "set_source_mode", "get_source_mode");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "source_mode", PROPERTY_HINT_ENUM, "Creeping,Climbing,Hanging,Tree Wrap,Bramble"), "set_source_mode", "get_source_mode");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "lod0_mesh", PROPERTY_HINT_RESOURCE_TYPE, "Mesh"), "set_lod0_mesh", "get_lod0_mesh"); ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "lod1_mesh", PROPERTY_HINT_RESOURCE_TYPE, "Mesh"), "set_lod1_mesh", "get_lod1_mesh"); ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "lod2_mesh", PROPERTY_HINT_RESOURCE_TYPE, "Mesh"), "set_lod2_mesh", "get_lod2_mesh");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "lod1_distance", PROPERTY_HINT_RANGE, "0,10000,0.5,suffix:m"), "set_lod1_distance", "get_lod1_distance"); ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "lod2_distance", PROPERTY_HINT_RANGE, "0,10000,0.5,suffix:m"), "set_lod2_distance", "get_lod2_distance"); ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "max_distance", PROPERTY_HINT_RANGE, "0,10000,0.5,suffix:m"), "set_max_distance", "get_max_distance");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "support_stable_id", PROPERTY_HINT_RANGE, "0,2147483647,1"), "set_support_stable_id", "get_support_stable_id"); ADD_PROPERTY(PropertyInfo(Variant::INT, "support_lost_policy", PROPERTY_HINT_ENUM, "Keep,Hide,Detach"), "set_support_lost_policy", "get_support_lost_policy");

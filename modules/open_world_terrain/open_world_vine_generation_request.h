@@ -18,6 +18,7 @@ public:
 		MODE_CLIMBING,
 		MODE_HANGING,
 		MODE_TREE_WRAP,
+		MODE_BRAMBLE,
 	};
 
 private:

@@ -18,5 +18,5 @@
 		<member name="target_enabled" type="bool" setter="set_target_enabled" getter="is_target_enabled" default="false">Uses target_position for Hanging.</member>
 		<member name="target_position" type="Vector3" setter="set_target_position" getter="get_target_position" default="Vector3(0, 0, 0)">Optional local end point.</member>
 	</members>
-	<constants><constant name="MODE_CREEPING" value="0" enum="VineMode">Ground-following solver.</constant><constant name="MODE_CLIMBING" value="1" enum="VineMode">Mesh surface climbing solver.</constant><constant name="MODE_HANGING" value="2" enum="VineMode">Free hanging solver.</constant><constant name="MODE_TREE_WRAP" value="3" enum="VineMode">Generated-tree support graph solver.</constant></constants>
+	<constants><constant name="MODE_CREEPING" value="0" enum="VineMode">Ground-following solver.</constant><constant name="MODE_CLIMBING" value="1" enum="VineMode">Mesh surface climbing solver.</constant><constant name="MODE_HANGING" value="2" enum="VineMode">Free hanging solver.</constant><constant name="MODE_TREE_WRAP" value="3" enum="VineMode">Generated-tree support graph solver.</constant><constant name="MODE_BRAMBLE" value="4" enum="VineMode">Self-supporting tangled shrub solver that needs no support node.</constant></constants>
 </class>

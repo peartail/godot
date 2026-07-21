@@ -1,0 +1,18 @@
+[gd_resource type="OpenWorldRockGenerationRequest" load_steps=2 format=3]
+
+[sub_resource type="OpenWorldRockGenerationProfile" id="Profile_slab"]
+point_count = 40
+roughness = 0.14
+axis_scale = Vector3(1.2, 0.7, 1.0)
+bottom_flatten = 0.28
+strata_strength = 0.32
+lod1_quality = 0.6
+lod2_point_count = 10
+
+[resource]
+mode = 1
+seed = 8802
+profile = SubResource("Profile_slab")
+size = Vector3(3.2, 1.2, 2.4)
+stable_id = "sample-slab-8802"
+tags = PackedStringArray("path", "stone")

@@ -9,6 +9,17 @@
 #include "modules/open_world_terrain/open_world_terrain_3d.h"
 #include "modules/open_world_terrain/open_world_terrain_data.h"
 #include "modules/open_world_terrain/open_world_terrain_layer.h"
+#include "modules/open_world_terrain/open_world_placement_brush_3d.h"
+#include "modules/open_world_terrain/open_world_placement_brush_entry.h"
+#include "modules/open_world_terrain/open_world_placement_brush_preset.h"
+#include "modules/open_world_terrain/open_world_placement_data.h"
+#include "modules/open_world_terrain/open_world_rock_generation_profile.h"
+#include "modules/open_world_terrain/open_world_rock_generation_request.h"
+#include "modules/open_world_terrain/open_world_rock_generator_3d.h"
+#include "modules/open_world_terrain/open_world_rock_placement_data.h"
+#include "modules/open_world_terrain/open_world_rock_topology_data.h"
+#include "modules/open_world_terrain/open_world_rock_variant.h"
+#include "modules/open_world_terrain/open_world_rock_variant_library.h"
 #include "modules/open_world_terrain/open_world_tree_3d.h"
 #include "modules/open_world_terrain/open_world_tree_generation_profile.h"
 #include "modules/open_world_terrain/open_world_tree_generator_3d.h"
@@ -38,6 +49,10 @@ void initialize_open_world_terrain_module(ModuleInitializationLevel p_level) {
 		GDREGISTER_CLASS(OpenWorldTerrainLayer);
 		GDREGISTER_CLASS(OpenWorldTerrainData);
 		GDREGISTER_CLASS(OpenWorldTerrain3D);
+		GDREGISTER_CLASS(OpenWorldPlacementBrushEntry);
+		GDREGISTER_CLASS(OpenWorldPlacementBrushPreset);
+		GDREGISTER_CLASS(OpenWorldPlacementData);
+		GDREGISTER_CLASS(OpenWorldPlacementBrush3D);
 		GDREGISTER_CLASS(OpenWorldTreeSupportGraph);
 		GDREGISTER_CLASS(OpenWorldTreeVariant);
 		GDREGISTER_CLASS(OpenWorldTreeSpecies);
@@ -51,6 +66,13 @@ void initialize_open_world_terrain_module(ModuleInitializationLevel p_level) {
 		GDREGISTER_CLASS(OpenWorldVineVariant);
 		GDREGISTER_CLASS(OpenWorldVineGenerator3D);
 		GDREGISTER_CLASS(OpenWorldVine3D);
+		GDREGISTER_CLASS(OpenWorldRockGenerationProfile);
+		GDREGISTER_CLASS(OpenWorldRockGenerationRequest);
+		GDREGISTER_CLASS(OpenWorldRockTopologyData);
+		GDREGISTER_CLASS(OpenWorldRockVariant);
+		GDREGISTER_CLASS(OpenWorldRockVariantLibrary);
+		GDREGISTER_CLASS(OpenWorldRockPlacementData);
+		GDREGISTER_CLASS(OpenWorldRockGenerator3D);
 	}
 
 #ifdef TOOLS_ENABLED

@@ -147,6 +147,18 @@ Node3D
 - `success=false`
 - 해결 가능한 error code와 속성명 출력
 
+## TC-09 Bramble
+
+[BRAMBLE 생성 가이드](open_world_vine_bramble_guide.md)의 샘플을 실행한다.
+
+- support 없이 validation 성공
+- 같은 seed에서 path 배열 동일
+- 실제 path 수가 `min(stem_count, branch_budget + 1)`과 동일
+- 모든 anchor가 radius·height 범위 내부
+- LOD0은 stem/foliage 두 surface와 가시 포함
+- LOD2에서 줄기·잎·가시 통계 감소
+- Bake·재로드 후 `source_mode == MODE_BRAMBLE`
+
 ## Headless 완료 기준
 
 1. 텍스트 Request 작성

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="OpenWorldRockGenerationProfile" inherits="Resource" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>Reusable deterministic low-poly rock shape rules.</brief_description>
+	<description>Controls point sampling, flattening, facets, lobes, LOD, and collision without viewport authoring.</description>
+	<tutorials></tutorials>
+	<members>
+		<member name="asymmetry" type="float" setter="set_asymmetry" getter="get_asymmetry" default="0.15">Directional radial bias.</member>
+		<member name="axis_scale" type="Vector3" setter="set_axis_scale" getter="get_axis_scale" default="Vector3(1, 0.8, 1)">Profile-space ellipsoid scale.</member>
+		<member name="bottom_flatten" type="float" setter="set_bottom_flatten" getter="get_bottom_flatten" default="0.18">Fraction of the lower height projected to the base plane.</member>
+		<member name="collision_point_limit" type="int" setter="set_collision_point_limit" getter="get_collision_point_limit" default="12">Maximum requested convex collision points.</member>
+		<member name="directional_facet_strength" type="float" setter="set_directional_facet_strength" getter="get_directional_facet_strength" default="0.1">Axis-aligned facet displacement.</member>
+		<member name="ground_inset" type="float" setter="set_ground_inset" getter="get_ground_inset" default="0.03">Depth of the common base plane below the origin.</member>
+		<member name="lobe_count" type="int" setter="set_lobe_count" getter="get_lobe_count" default="1">Overlapping convex point-cloud lobes.</member>
+		<member name="lobe_overlap" type="float" setter="set_lobe_overlap" getter="get_lobe_overlap" default="0.65">Overlap ratio between lobes.</member>
+		<member name="lod1_quality" type="float" setter="set_lod1_quality" getter="get_lod1_quality" default="0.6">LOD1 source-point ratio.</member>
+		<member name="lod2_point_count" type="int" setter="set_lod2_point_count" getter="get_lod2_point_count" default="10">LOD2 source-point target.</member>
+		<member name="point_count" type="int" setter="set_point_count" getter="get_point_count" default="32">LOD0 source-point count.</member>
+		<member name="roughness" type="float" setter="set_roughness" getter="get_roughness" default="0.22">Seeded radial variation.</member>
+		<member name="strata_direction" type="Vector3" setter="set_strata_direction" getter="get_strata_direction" default="Vector3(0, 1, 0)">Normalized layer direction.</member>
+		<member name="strata_strength" type="float" setter="set_strata_strength" getter="get_strata_strength" default="0.12">Layer displacement and slab quantization strength.</member>
+	</members>
+</class>

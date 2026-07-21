@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="OpenWorldRockVariantLibrary" inherits="Resource" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>Biome-keyed static rock bake library.</brief_description>
+	<description>Selection is deterministic for a biome and seed. Parallel biome_names and variants arrays remain text-serializable.</description>
+	<tutorials></tutorials>
+	<methods><method name="add_variant"><return type="void" /><param index="0" name="biome" type="String" /><param index="1" name="variant" type="OpenWorldRockVariant" /><description>Adds one biome entry.</description></method><method name="get_variant" qualifiers="const"><return type="OpenWorldRockVariant" /><param index="0" name="index" type="int" /></method><method name="get_variant_count" qualifiers="const"><return type="int" /></method><method name="select_variant" qualifiers="const"><return type="OpenWorldRockVariant" /><param index="0" name="biome" type="String" /><param index="1" name="seed" type="int" /><description>Selects deterministically without global RNG state.</description></method><method name="validate_library" qualifiers="const"><return type="Dictionary" /><description>Returns structured entry errors.</description></method></methods>
+	<members><member name="biome_names" type="PackedStringArray" setter="set_biome_names" getter="get_biome_names">Biome key per variant.</member><member name="variants" type="Array" setter="set_variants" getter="get_variants">OpenWorldRockVariant entries.</member></members>
+</class>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="OpenWorldRockTopologyData" inherits="Resource" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>Canonical point cloud and convex hull output.</brief_description>
+	<description>Serializable intermediate data shared by validation, mesh generation, LOD, reports, and tests.</description>
+	<tutorials></tutorials>
+	<methods><method name="get_base_contact_count" qualifiers="const"><return type="int" /><param index="0" name="epsilon" type="float" default="0.0001" /><description>Counts hull vertices on the base plane.</description></method><method name="get_triangle_count" qualifiers="const"><return type="int" /><description>Returns canonical hull triangle count.</description></method></methods>
+	<members>
+		<member name="base_plane" type="float" setter="set_base_plane" getter="get_base_plane" default="0.0">Common local Y base plane.</member><member name="face_groups" type="PackedInt32Array" setter="set_face_groups" getter="get_face_groups">Up, down, or side group per triangle.</member><member name="hull_indices" type="PackedInt32Array" setter="set_hull_indices" getter="get_hull_indices">Canonical outward triangle indices.</member><member name="hull_vertices" type="PackedVector3Array" setter="set_hull_vertices" getter="get_hull_vertices">Lexicographically sorted hull vertices.</member><member name="local_bounds" type="AABB" setter="set_local_bounds" getter="get_local_bounds">Hull bounds.</member><member name="source_points" type="PackedVector3Array" setter="set_source_points" getter="get_source_points">Flattened source cloud.</member><member name="source_seed" type="int" setter="set_source_seed" getter="get_source_seed" default="0">Source seed.</member><member name="topology_hash" type="String" setter="set_topology_hash" getter="get_topology_hash">Quantized FNV topology hash.</member>
+	</members>
+</class>

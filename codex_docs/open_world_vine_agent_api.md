@@ -121,6 +121,15 @@ if ((bool)validation["success"]) {
 - 트리의 `get_generated_support_graph()`를 사용한다.
 - 트리 Variant에도 graph가 함께 Bake된다.
 
+### Bramble
+
+- support 없이 둥글게 얽힌 독립형 가시덤불을 생성한다.
+- `start_position`은 덤불 밑면 중심이다.
+- `desired_length`는 줄기 하나의 목표 길이다.
+- 실제 줄기 수는 `min(bramble_stem_count, branch_budget + 1)`이다.
+- `bramble_radius`, `bramble_height`, `bramble_tangle_strength`로 실루엣을 제어한다.
+- 상세 샘플은 [BRAMBLE 가이드](open_world_vine_bramble_guide.md)를 참고한다.
+
 ## 명시 Anchor
 
 `explicit_anchors`에 두 점 이상을 넣으면 mode solver와 support query를 건너뛴다.
@@ -146,3 +155,17 @@ request.explicit_anchors = PackedVector3Array([
 - `lod0`, `lod1`, `lod2`
 
 각 LOD Dictionary는 surface, vertex, triangle과 AABB 통계를 제공한다.
+
+## 품질·Decoration 파라미터
+
+- `leaf_cluster_card_count`: LOD0 클러스터 카드 수
+- `leaf_cluster_spread`: 카드 사이 방사형 간격
+- `leaf_size_variation`: seed 기반 카드 크기 편차
+- `thorn_density`: 가시 후보 유지 확률, 0이면 비활성
+- `thorn_spacing`, `thorn_size`: 가시 간격과 길이
+- `branch_junction_scale`: 가지 collar 최대 굵기
+- `branch_junction_length`: collar 길이, 0이면 비활성
+- `bramble_surface_bias`: 내부 밀도와 외곽 실루엣 사이의 편향
+- `bramble_ground_anchor_ratio`: 바닥에 고정되어 Wind R값을 낮게 갖는 줄기 비율
+
+가시와 collar는 Surface 0, 잎 클러스터는 Surface 1을 유지한다. LOD1은 카드와 가시를 줄이고 LOD2는 단일 잎 카드와 가시 없는 ribbon을 사용한다. LOD report에는 `leaf_clusters`, `leaf_cards`, `thorns`, `junctions`가 포함된다.

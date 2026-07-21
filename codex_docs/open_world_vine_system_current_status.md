@@ -22,13 +22,16 @@ Profile + Request + Support
 
 - low-poly stem과 taper
 - side shoot와 leaf card
+- LOD별 다중 카드 leaf cluster
+- 선택형 stem thorn decoration
+- branch collar 기반 표면 접합 보강
 - support projection 규칙
-- gap, slope, hanging과 TreeWrap 설정
+- gap, slope, Hanging, TreeWrap과 Bramble 설정
 - LOD와 Wind 설정
 
 ### `OpenWorldVineGenerationRequest`
 
-- Creeping, Climbing, Hanging, TreeWrap mode
+- Creeping, Climbing, Hanging, TreeWrap, Bramble mode
 - profile, seed, 시작·목표·길이
 - 상대 support `NodePath`와 stable ID
 - 마우스를 대체하는 explicit anchor/normal
@@ -49,6 +52,7 @@ Profile + Request + Support
 - MeshInstance TriangleMesh projection
 - OpenWorldTerrain height-field projection
 - Tree support graph 기반 TreeWrap
+- support 없는 타원형 자가 얽힘 Bramble
 - parallel-transport low-poly stem
 - 양면 leaf card
 - LOD0/1/2와 Wind vertex color
@@ -117,8 +121,8 @@ Inspector 버튼은 같은 공개 API를 호출하는 선택 기능이다.
 - runtime 성장과 surface 재탐색 없음
 - 임의 imported tree stem 분석 없음
 - TreeWrap은 생성 트리 support graph만 사용
-- side shoot는 단순 겹침 접합
-- leaf cluster, 꽃과 열매 decoration 없음
+- branch collar는 겹침 기반이며 watertight boolean 접합은 아님
+- 꽃과 열매 decoration 없음
 - cell batching과 streaming 없음
 - DETACH 실제 물리는 gameplay 시스템 책임
 - runtime 절단과 잎별 collision 없음
@@ -126,8 +130,8 @@ Inspector 버튼은 같은 공개 API를 호출하는 선택 기능이다.
 ## 검증 상태
 
 - Windows Mono editor, tests enabled, `-j1` 빌드 성공
-- 엔진 전체 1,371 test cases 성공
-- 전체 425,906 assertions 성공
+- 엔진 전체 1,373 test cases 성공
+- 전체 427,055 assertions 성공
 - Mono glue 및 Debug/Release API assemblies 재생성 성공
 - Headless 초기화와 agent class docs 조회 성공
 - ANGLE dependency 안내와 기존 draw-context 메시 외 덩굴 실패 없음
@@ -139,3 +143,4 @@ Inspector 버튼은 같은 공개 API를 호출하는 선택 기능이다.
 - [Agent API 가이드](open_world_vine_agent_api.md)
 - [테스트 케이스](open_world_vine_test_cases.md)
 - [테스트 샘플 생성](open_world_vine_test_sample_setup.md)
+- [BRAMBLE 생성 가이드](open_world_vine_bramble_guide.md)

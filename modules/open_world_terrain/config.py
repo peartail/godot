@@ -3,7 +3,7 @@ def can_build(env, platform):
 
 
 def configure(env):
-    pass
+    env.module_add_dependencies("open_world_terrain", ["simple_terrain"])
 
 
 def get_doc_classes():
@@ -11,6 +11,10 @@ def get_doc_classes():
         "OpenWorldTerrain3D",
         "OpenWorldTerrainData",
         "OpenWorldTerrainLayer",
+        "OpenWorldPlacementBrushEntry",
+        "OpenWorldPlacementBrushPreset",
+        "OpenWorldPlacementData",
+        "OpenWorldPlacementBrush3D",
         "OpenWorldTreeVariant",
         "OpenWorldTreeSpecies",
         "OpenWorldTreePlacementData",
@@ -24,6 +28,13 @@ def get_doc_classes():
         "OpenWorldVineVariant",
         "OpenWorldVineGenerator3D",
         "OpenWorldVine3D",
+        "OpenWorldRockGenerationProfile",
+        "OpenWorldRockGenerationRequest",
+        "OpenWorldRockTopologyData",
+        "OpenWorldRockVariant",
+        "OpenWorldRockVariantLibrary",
+        "OpenWorldRockPlacementData",
+        "OpenWorldRockGenerator3D",
     ]
 
 

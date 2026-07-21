@@ -1,0 +1,17 @@
+[gd_resource type="OpenWorldRockGenerationRequest" load_steps=2 format=3]
+
+[sub_resource type="OpenWorldRockGenerationProfile" id="Profile_boulder"]
+point_count = 36
+roughness = 0.24
+bottom_flatten = 0.22
+strata_strength = 0.08
+lod1_quality = 0.6
+lod2_point_count = 10
+
+[resource]
+mode = 0
+seed = 8801
+profile = SubResource("Profile_boulder")
+size = Vector3(2.4, 1.7, 2.1)
+stable_id = "sample-boulder-8801"
+tags = PackedStringArray("field", "mineable")

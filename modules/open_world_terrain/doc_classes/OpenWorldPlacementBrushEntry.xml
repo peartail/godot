@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="OpenWorldPlacementBrushEntry" inherits="Resource" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>A weighted procedural content recipe used by a world placement brush.</brief_description>
+	<description>
+		An entry selects Tree, Vine, or Rock generation and supplies the matching reusable profile or request template. A preset may contain multiple entries of the same kind. Phase 1 accepts only [constant CONTENT_VINE] entries whose request mode is [constant OpenWorldVineGenerationRequest.MODE_BRAMBLE].
+	</description>
+	<methods>
+		<method name="validate_entry" qualifiers="const">
+			<return type="Dictionary" />
+			<description>Returns a structured report containing [code]success[/code], [code]errors[/code], and [code]error_codes[/code].</description>
+		</method>
+	</methods>
+	<members>
+		<member name="align_to_surface_normal" type="bool" setter="set_align_to_surface_normal" getter="is_aligning_to_surface_normal" default="false">Aligns local up to the sampled terrain normal.</member>
+		<member name="content_kind" type="int" setter="set_content_kind" getter="get_content_kind" enum="OpenWorldPlacementBrushEntry.ContentKind" default="0">Procedural generator category.</member>
+		<member name="enabled" type="bool" setter="set_enabled" getter="is_enabled" default="true">Whether this entry participates in weighted selection.</member>
+		<member name="max_scale" type="Vector3" setter="set_max_scale" getter="get_max_scale" default="Vector3(1, 1, 1)">Maximum deterministic scale.</member>
+		<member name="min_scale" type="Vector3" setter="set_min_scale" getter="get_min_scale" default="Vector3(1, 1, 1)">Minimum deterministic scale.</member>
+		<member name="minimum_spacing_override" type="float" setter="set_minimum_spacing_override" getter="get_minimum_spacing_override" default="0.0">Minimum spacing used when greater than the preset spacing.</member>
+		<member name="random_yaw" type="bool" setter="set_random_yaw" getter="is_random_yaw_enabled" default="true">Applies deterministic random yaw.</member>
+		<member name="rock_request_template" type="OpenWorldRockGenerationRequest" setter="set_rock_request_template" getter="get_rock_request_template">Template duplicated for Rock results.</member>
+		<member name="stable_id" type="String" setter="set_stable_id" getter="get_stable_id">Stable recipe identifier stored by placement records.</member>
+		<member name="surface_offset" type="float" setter="set_surface_offset" getter="get_surface_offset" default="0.0">Offset along the sampled terrain normal.</member>
+		<member name="tree_profile" type="OpenWorldTreeGenerationProfile" setter="set_tree_profile" getter="get_tree_profile">Shared Tree generation profile.</member>
+		<member name="vine_request_template" type="OpenWorldVineGenerationRequest" setter="set_vine_request_template" getter="get_vine_request_template">Bramble request template duplicated for Vine results.</member>
+		<member name="weight" type="float" setter="set_weight" getter="get_weight" default="1.0">Relative share of the preset total density.</member>
+	</members>
+	<constants>
+		<constant name="CONTENT_TREE" value="0" enum="ContentKind">Tree generator entry.</constant>
+		<constant name="CONTENT_VINE" value="1" enum="ContentKind">Vine generator entry; Phase 1 supports Bramble only.</constant>
+		<constant name="CONTENT_ROCK" value="2" enum="ContentKind">Rock generator entry.</constant>
+	</constants>
+</class>
+

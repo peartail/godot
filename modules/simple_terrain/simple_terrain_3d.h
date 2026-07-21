@@ -298,6 +298,7 @@ public:
 	Dictionary apply_brush_with_delta(const Vector3 &p_world_position, real_t p_radius, real_t p_strength, BrushOperation p_operation);
 	void apply_height_patch(const PackedInt32Array &p_indices, const PackedFloat32Array &p_heights);
 	Dictionary get_brush_hit(const Vector3 &p_ray_origin, const Vector3 &p_ray_direction) const;
+	Dictionary sample_surface_at_world_xz(const Vector3 &p_world_position, real_t p_max_distance = 100000.0) const;
 	PackedVector3Array get_chunk_debug_lines() const;
 	virtual Ref<TriangleMesh> generate_triangle_mesh() const override;
 	virtual AABB get_aabb() const override;

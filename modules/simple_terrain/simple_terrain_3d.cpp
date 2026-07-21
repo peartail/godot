@@ -2608,6 +2608,30 @@ Dictionary SimpleTerrain3D::get_brush_hit(const Vector3 &p_ray_origin, const Vec
 	}
 
 }
+
+Dictionary SimpleTerrain3D::sample_surface_at_world_xz(const Vector3 &p_world_position, real_t p_max_distance) const {
+	Dictionary result;
+	result["success"] = false;
+	if (p_max_distance <= 0.0 || simple_terrain_data.is_null() || !_has_created_tiles()) {
+		result["error_code"] = "INVALID_DATA";
+		return result;
+	}
+	Dictionary hit = get_brush_hit(p_world_position + Vector3::UP * (p_max_distance * 0.5), Vector3::DOWN);
+	if (hit.is_empty() || (real_t)hit.get("distance", Math::INF) > p_max_distance) {
+		result["error_code"] = "TILE_MISSING";
+		return result;
+	}
+	const Vector3 local_position = hit["local_position"];
+	const real_t tile_world_size = (real_t)simple_terrain_data->get_tile_size() * simple_terrain_data->get_cell_size();
+	result["success"] = true;
+	result["position"] = hit["position"];
+	result["local_position"] = local_position;
+	result["normal"] = hit["normal"];
+	result["height"] = ((Vector3)hit["position"]).y;
+	result["tile_cell"] = Vector2i(Math::floor(local_position.x / tile_world_size), Math::floor(local_position.z / tile_world_size));
+	result["distance"] = hit["distance"];
+	return result;
+}
 PackedVector3Array SimpleTerrain3D::get_chunk_debug_lines() const {
 	PackedVector3Array lines;
 	if (simple_terrain_data.is_null() || chunks.is_empty()) {
@@ -2816,6 +2840,7 @@ void SimpleTerrain3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("apply_brush_with_delta", "world_position", "radius", "strength", "operation"), &SimpleTerrain3D::apply_brush_with_delta);
 	ClassDB::bind_method(D_METHOD("apply_height_patch", "indices", "heights"), &SimpleTerrain3D::apply_height_patch);
 	ClassDB::bind_method(D_METHOD("get_brush_hit", "ray_origin", "ray_direction"), &SimpleTerrain3D::get_brush_hit);
+	ClassDB::bind_method(D_METHOD("sample_surface_at_world_xz", "world_position", "max_distance"), &SimpleTerrain3D::sample_surface_at_world_xz, DEFVAL(100000.0));
 	ClassDB::bind_method(D_METHOD("get_chunk_debug_lines"), &SimpleTerrain3D::get_chunk_debug_lines);
 
 	// Core terrain data and render chunk controls.

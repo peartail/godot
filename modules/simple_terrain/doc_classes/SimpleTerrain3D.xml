@@ -106,6 +106,14 @@
 				Intersects a ray against generated terrain tiles. The returned dictionary contains [code]position[/code], [code]local_position[/code], [code]normal[/code], and [code]distance[/code] when a hit is found.
 			</description>
 		</method>
+		<method name="sample_surface_at_world_xz" qualifiers="const">
+			<return type="Dictionary" />
+			<param index="0" name="world_position" type="Vector3" />
+			<param index="1" name="max_distance" type="float" default="100000.0" />
+			<description>
+				Projects vertically through [param world_position] and returns a terrain surface sample without requiring collision or viewport picking. A successful result contains [code]success[/code], [code]position[/code], [code]normal[/code], [code]height[/code], and [code]tile_cell[/code]. A failed result contains [code]success = false[/code] and an [code]error_code[/code].
+			</description>
+		</method>
 		<method name="get_chunk_debug_lines" qualifiers="const">
 			<return type="PackedVector3Array" />
 			<description>

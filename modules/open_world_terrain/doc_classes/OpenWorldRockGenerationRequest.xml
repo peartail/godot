@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="OpenWorldRockGenerationRequest" inherits="Resource" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>Text-serializable request for one deterministic rock.</brief_description>
+	<description>Explicit points bypass automatic sampling. All points and dimensions are local to the generator.</description>
+	<tutorials></tutorials>
+	<members>
+		<member name="explicit_points" type="PackedVector3Array" setter="set_explicit_points" getter="get_explicit_points">Optional exact point cloud with at least twelve non-coplanar points for three strictly decreasing LODs.</member>
+		<member name="mode" type="int" setter="set_mode" getter="get_mode" enum="OpenWorldRockGenerationRequest.RockMode" default="0">Boulder, slab, or shard deformation.</member>
+		<member name="primary_axis" type="Vector3" setter="set_primary_axis" getter="get_primary_axis" default="Vector3(0, 1, 0)">Shard elongation and taper axis.</member>
+		<member name="profile" type="OpenWorldRockGenerationProfile" setter="set_profile" getter="get_profile">Reusable generation rules.</member>
+		<member name="seed" type="int" setter="set_seed" getter="get_seed" default="1207">Deterministic variation seed.</member>
+		<member name="size" type="Vector3" setter="set_size" getter="get_size" default="Vector3(2, 1.5, 2)">Local bounding size before variation.</member>
+		<member name="stable_id" type="String" setter="set_stable_id" getter="get_stable_id">Gameplay persistence key copied into a bake.</member>
+		<member name="tags" type="PackedStringArray" setter="set_tags" getter="get_tags">Gameplay tags copied into a bake.</member>
+	</members>
+	<constants><constant name="MODE_BOULDER" value="0" enum="RockMode">Rounded irregular mass.</constant><constant name="MODE_SLAB" value="1" enum="RockMode">Low layered slab.</constant><constant name="MODE_SHARD" value="2" enum="RockMode">Elongated tapered shard.</constant></constants>
+</class>
