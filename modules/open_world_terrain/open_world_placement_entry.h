@@ -1,5 +1,5 @@
 /**************************************************************************/
-/*  open_world_placement_brush_entry.h                                    */
+/*  open_world_placement_entry.h                                    */
 /**************************************************************************/
 
 #pragma once
@@ -9,9 +9,10 @@
 #include "open_world_vine_generation_request.h"
 
 #include "core/io/resource.h"
+#include "scene/resources/material.h"
 
-class OpenWorldPlacementBrushEntry : public Resource {
-	GDCLASS(OpenWorldPlacementBrushEntry, Resource);
+class OpenWorldPlacementEntry : public Resource {
+	GDCLASS(OpenWorldPlacementEntry, Resource);
 	RES_BASE_EXTENSION("owplacemententry");
 
 public:
@@ -35,6 +36,10 @@ private:
 	Ref<OpenWorldTreeGenerationProfile> tree_profile;
 	Ref<OpenWorldVineGenerationRequest> vine_request_template;
 	Ref<OpenWorldRockGenerationRequest> rock_request_template;
+	Ref<Material> trunk_material;
+	Ref<Material> foliage_material;
+	Ref<Material> stem_material;
+	Ref<Material> preview_material;
 
 protected:
 	static void _bind_methods();
@@ -66,9 +71,17 @@ public:
 	Ref<OpenWorldVineGenerationRequest> get_vine_request_template() const { return vine_request_template; }
 	void set_rock_request_template(const Ref<OpenWorldRockGenerationRequest> &p_value);
 	Ref<OpenWorldRockGenerationRequest> get_rock_request_template() const { return rock_request_template; }
+	void set_trunk_material(const Ref<Material> &p_value);
+	Ref<Material> get_trunk_material() const { return trunk_material; }
+	void set_foliage_material(const Ref<Material> &p_value);
+	Ref<Material> get_foliage_material() const { return foliage_material; }
+	void set_stem_material(const Ref<Material> &p_value);
+	Ref<Material> get_stem_material() const { return stem_material; }
+	void set_preview_material(const Ref<Material> &p_value);
+	Ref<Material> get_preview_material() const { return preview_material; }
 
 	Dictionary validate_entry() const;
 };
 
-VARIANT_ENUM_CAST(OpenWorldPlacementBrushEntry::ContentKind);
+VARIANT_ENUM_CAST(OpenWorldPlacementEntry::ContentKind);
 

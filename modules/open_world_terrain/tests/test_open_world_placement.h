@@ -1,12 +1,12 @@
 /**************************************************************************/
-/*  test_open_world_placement_brush.h                                     */
+/*  test_open_world_placement.h                                     */
 /**************************************************************************/
 
 #pragma once
 
-#include "../open_world_placement_brush_3d.h"
-#include "../open_world_placement_brush_entry.h"
-#include "../open_world_placement_brush_preset.h"
+#include "../open_world_placement_3d.h"
+#include "../open_world_placement_entry.h"
+#include "../open_world_placement_preset.h"
 #include "../open_world_placement_data.h"
 #include "../open_world_tree_generation_profile.h"
 
@@ -14,26 +14,26 @@
 #include "scene/main/scene_tree.h"
 #include "tests/test_macros.h"
 
-namespace TestOpenWorldPlacementBrush {
+namespace TestOpenWorldPlacement {
 
-static Ref<OpenWorldPlacementBrushEntry> make_tree_entry(const String &p_id = "tree") {
+static Ref<OpenWorldPlacementEntry> make_tree_entry(const String &p_id = "tree") {
 	Ref<OpenWorldTreeGenerationProfile> profile;
 	profile.instantiate();
 	profile->set_tree_height(4.0);
 	profile->set_trunk_segments(5);
-	Ref<OpenWorldPlacementBrushEntry> entry;
+	Ref<OpenWorldPlacementEntry> entry;
 	entry.instantiate();
 	entry->set_stable_id(p_id);
-	entry->set_content_kind(OpenWorldPlacementBrushEntry::CONTENT_TREE);
+	entry->set_content_kind(OpenWorldPlacementEntry::CONTENT_TREE);
 	entry->set_tree_profile(profile);
 	return entry;
 }
 
-static Ref<OpenWorldPlacementBrushPreset> make_tree_preset() {
-	Ref<OpenWorldPlacementBrushPreset> preset;
+static Ref<OpenWorldPlacementPreset> make_tree_preset() {
+	Ref<OpenWorldPlacementPreset> preset;
 	preset.instantiate();
 	preset->set_stable_id("forest-test");
-	preset->set_shape(OpenWorldPlacementBrushPreset::SHAPE_RECTANGLE);
+	preset->set_shape(OpenWorldPlacementPreset::SHAPE_RECTANGLE);
 	preset->set_size(Vector2(4.0, 4.0));
 	preset->set_density_per_100_square_meters(6.25); // Exactly one requested placement.
 	preset->set_minimum_spacing(0.0);
@@ -42,8 +42,8 @@ static Ref<OpenWorldPlacementBrushPreset> make_tree_preset() {
 }
 
 TEST_CASE("[OpenWorldPlacement] Presets support multiple weighted entries and structured limits") {
-	Ref<OpenWorldPlacementBrushPreset> preset = make_tree_preset();
-	Ref<OpenWorldPlacementBrushEntry> second = make_tree_entry("tree-young");
+	Ref<OpenWorldPlacementPreset> preset = make_tree_preset();
+	Ref<OpenWorldPlacementEntry> second = make_tree_entry("tree-young");
 	second->set_weight(3.0);
 	preset->add_entry(second);
 	Dictionary valid = preset->validate_preset();
@@ -67,10 +67,10 @@ TEST_CASE("[OpenWorldPlacement] Phase 1 accepts Bramble and rejects other vine m
 	request.instantiate();
 	request->set_profile(profile);
 	request->set_mode(OpenWorldVineGenerationRequest::MODE_BRAMBLE);
-	Ref<OpenWorldPlacementBrushEntry> entry;
+	Ref<OpenWorldPlacementEntry> entry;
 	entry.instantiate();
 	entry->set_stable_id("bramble");
-	entry->set_content_kind(OpenWorldPlacementBrushEntry::CONTENT_VINE);
+	entry->set_content_kind(OpenWorldPlacementEntry::CONTENT_VINE);
 	entry->set_vine_request_template(request);
 	CHECK((bool)entry->validate_entry()["success"]);
 	request->set_mode(OpenWorldVineGenerationRequest::MODE_CREEPING);
@@ -83,7 +83,7 @@ TEST_CASE("[SceneTree][OpenWorldPlacement] Placement records remain authoritativ
 	SceneTree *tree = SceneTree::get_singleton();
 	REQUIRE(tree != nullptr);
 	Node3D *test_root = memnew(Node3D);
-	test_root->set_name("PlacementBrushTestRoot");
+	test_root->set_name("PlacementTestRoot");
 	tree->get_root()->add_child(test_root);
 
 	SimpleTerrain3D *terrain = memnew(SimpleTerrain3D);
@@ -94,29 +94,29 @@ TEST_CASE("[SceneTree][OpenWorldPlacement] Placement records remain authoritativ
 	terrain->create_tile(Vector2i(0, 0));
 	terrain->reset_flat_terrain();
 
-	OpenWorldPlacementBrush3D *brush = memnew(OpenWorldPlacementBrush3D);
-	brush->set_name("Brush");
-	test_root->add_child(brush);
-	brush->set_terrain_path(NodePath("../Terrain"));
-	brush->set_active_preset(make_tree_preset());
+	OpenWorldPlacement3D *placement = memnew(OpenWorldPlacement3D);
+	placement->set_name("Placement");
+	test_root->add_child(placement);
+	placement->set_terrain_path(NodePath("../Terrain"));
+	placement->set_active_preset(make_tree_preset());
 
-	Dictionary first = brush->apply_brush(Vector3(6.0, 0.0, 6.0), Ref<OpenWorldPlacementBrushPreset>(), 101);
+	Dictionary first = placement->apply_placement(Vector3(6.0, 0.0, 6.0), Ref<OpenWorldPlacementPreset>(), 101);
 	REQUIRE((bool)first["success"]);
 	CHECK((int)first["accepted_count"] == 1);
-	REQUIRE(brush->get_placement_data().is_valid());
-	CHECK(brush->get_placement_data()->get_placement_count() == 1);
-	const String first_id = brush->get_placement_data()->get_stable_ids()[0];
+	REQUIRE(placement->get_placement_data().is_valid());
+	CHECK(placement->get_placement_data()->get_placement_count() == 1);
+	const String first_id = placement->get_placement_data()->get_stable_ids()[0];
 
-	Dictionary second_apply = brush->apply_brush(Vector3(6.0, 0.0, 6.0), Ref<OpenWorldPlacementBrushPreset>(), 202);
+	Dictionary second_apply = placement->apply_placement(Vector3(6.0, 0.0, 6.0), Ref<OpenWorldPlacementPreset>(), 202);
 	REQUIRE((bool)second_apply["success"]);
 	CHECK((int)second_apply["replacement_count"] == 1);
-	CHECK(brush->get_placement_data()->get_placement_count() == 1);
-	CHECK(brush->get_placement_data()->get_stable_ids()[0] != first_id);
-	CHECK((bool)brush->get_placement_data()->validate_data()["success"]);
+	CHECK(placement->get_placement_data()->get_placement_count() == 1);
+	CHECK(placement->get_placement_data()->get_stable_ids()[0] != first_id);
+	CHECK((bool)placement->get_placement_data()->validate_data()["success"]);
 
 	tree->get_root()->remove_child(test_root);
 	memdelete(test_root);
 }
 
-} // namespace TestOpenWorldPlacementBrush
+} // namespace TestOpenWorldPlacement
 

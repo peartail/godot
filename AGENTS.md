@@ -21,11 +21,14 @@ Use `scripts/build.ps1` instead of hand-written `scons` commands (see `.cursor/s
 .\scripts\build.ps1 -Preset terrain
 .\scripts\build.ps1 -MonoGlue
 .\scripts\build.ps1 -Preset mono-glue
+.\scripts\build.ps1 -Preset terrain -PublicApi -PublicApiClasses OpenWorldPlacement3D,OpenWorldPlacementEntry
+.\scripts\build.ps1 -Preset public-api -PublicApiClasses OpenWorldPlacement3D
 ```
 
 - Default: Mono editor dev build (`-Jobs 1` on Windows/MSVC to avoid PDB conflicts).
 - OpenWorldTerrain work: `-Preset terrain`.
 - ClassDB / binding changes: `-MonoGlue` after build, or `-Preset mono-glue` alone.
+- Public ClassDB/XML changes: follow `.cursor/skills/godot-public-api/SKILL.md`. Prefer `-PublicApi -PublicApiClasses ...` so MonoGlue and agent-docs verification run in the same build. Use `-Preset public-api` to verify agent-docs without rebuilding.
 
 ## Agent-Readable Engine Docs
 

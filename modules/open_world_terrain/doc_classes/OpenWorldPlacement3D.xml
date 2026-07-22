@@ -1,23 +1,24 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<class name="OpenWorldPlacementBrush3D" inherits="Node3D" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
-	<brief_description>Projects deterministic mixed procedural placement operations onto SimpleTerrain3D.</brief_description>
+<class name="OpenWorldPlacement3D" inherits="Node3D" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
+	<brief_description>Applies deterministic mixed procedural placements with optional SimpleTerrain3D surface projection.</brief_description>
 	<description>
-		A brush operation removes only managed placements whose anchors are inside the preset footprint, then creates replacement Tree, Bramble, and Rock records and scene nodes. Surviving managed placements outside the footprint participate in minimum-spacing rejection. Generated nodes are derived from [member placement_data].
+		An apply operation removes only managed placements whose anchors are inside the preset footprint, then creates replacement Tree, Bramble, and Rock records and scene nodes. Surviving managed placements outside the footprint participate in minimum-spacing rejection. Generated nodes are derived from [member placement_data].
+		[member terrain_path] is optional. When unset (or unresolved), candidates are placed on a flat horizontal plane at the apply center height with upward normals.
 	</description>
 	<methods>
-		<method name="apply_brush"><return type="Dictionary" /><param index="0" name="world_position" type="Vector3" /><param index="1" name="preset" type="OpenWorldPlacementBrushPreset" default="null" /><param index="2" name="seed" type="int" default="0" /><description>Transactionally replaces managed placements in the projected footprint. Seed 0 uses [member default_seed].</description></method>
+		<method name="apply_placement"><return type="Dictionary" /><param index="0" name="world_position" type="Vector3" /><param index="1" name="preset" type="OpenWorldPlacementPreset" default="null" /><param index="2" name="seed" type="int" default="0" /><description>Transactionally replaces managed placements in the projected footprint. Seed 0 uses [member default_seed].</description></method>
 		<method name="clear_generated"><return type="Dictionary" /><description>Deletes owned generated nodes without deleting placement records.</description></method>
 		<method name="clear_placements"><return type="Dictionary" /><description>Deletes owned generated nodes and placement records.</description></method>
 		<method name="get_generation_report" qualifiers="const"><return type="Dictionary" /></method>
-		<method name="preview_brush" qualifiers="const"><return type="Dictionary" /><param index="0" name="world_position" type="Vector3" /><param index="1" name="preset" type="OpenWorldPlacementBrushPreset" default="null" /><param index="2" name="seed" type="int" default="0" /><description>Solves candidates and replacement counts without mutating scene or placement data.</description></method>
+		<method name="preview_placement" qualifiers="const"><return type="Dictionary" /><param index="0" name="world_position" type="Vector3" /><param index="1" name="preset" type="OpenWorldPlacementPreset" default="null" /><param index="2" name="seed" type="int" default="0" /><description>Solves candidates and replacement counts without mutating scene or placement data.</description></method>
 		<method name="rebuild_generated"><return type="Dictionary" /><description>Recreates all owned generated nodes from placement records.</description></method>
 	</methods>
 	<members>
-		<member name="active_preset" type="OpenWorldPlacementBrushPreset" setter="set_active_preset" getter="get_active_preset" />
+		<member name="active_preset" type="OpenWorldPlacementPreset" setter="set_active_preset" getter="get_active_preset" />
 		<member name="default_seed" type="int" setter="set_default_seed" getter="get_default_seed" default="1207" />
 		<member name="output_parent_path" type="NodePath" setter="set_output_parent_path" getter="get_output_parent_path">Optional output parent. An empty path uses this node.</member>
 		<member name="placement_data" type="OpenWorldPlacementData" setter="set_placement_data" getter="get_placement_data" />
-		<member name="terrain_path" type="NodePath" setter="set_terrain_path" getter="get_terrain_path">Target [SimpleTerrain3D].</member>
+		<member name="terrain_path" type="NodePath" setter="set_terrain_path" getter="get_terrain_path">Optional [SimpleTerrain3D] used for surface projection. Empty path places on a flat plane.</member>
 	</members>
 </class>
 

@@ -1121,15 +1121,24 @@ bool SimpleTerrainInspectorPlugin::can_handle(Object *p_object) {
 }
 
 void SimpleTerrainInspectorPlugin::_open_world_objects(Object *p_object) {
+#if !SIMPLE_WORLD_PLACEMENT_EDITOR_ENABLED
+	(void)p_object;
+	return;
+#else
 	SimpleTerrain3D *terrain_node = Object::cast_to<SimpleTerrain3D>(p_object);
 	if (terrain_node == nullptr || placement_dock == nullptr) {
 		return;
 	}
 	placement_dock->edit(terrain_node);
 	EditorDockManager::get_singleton()->focus_dock(placement_dock);
+#endif
 }
 
 void SimpleTerrainInspectorPlugin::parse_end(Object *p_object) {
+#if !SIMPLE_WORLD_PLACEMENT_EDITOR_ENABLED
+	(void)p_object;
+	return;
+#else
 	if (!Object::cast_to<SimpleTerrain3D>(p_object)) {
 		return;
 	}
@@ -1140,6 +1149,7 @@ void SimpleTerrainInspectorPlugin::parse_end(Object *p_object) {
 	button->set_tooltip_text(TTRC("Open the SimpleTerrain world object registration dock."));
 	button->connect(SceneStringName(pressed), callable_mp(this, &SimpleTerrainInspectorPlugin::_open_world_objects).bind(p_object), CONNECT_DEFERRED);
 	add_custom_control(button);
+#endif
 }
 
 void SimpleTerrainInspectorPlugin::set_placement_dock(SimpleWorldPlacementDock *p_dock) {
@@ -1219,6 +1229,11 @@ void SimpleTerrainEditorPlugin::_edit_mode_pressed() {
 }
 
 void SimpleTerrainEditorPlugin::_placement_mode_pressed() {
+#if !SIMPLE_WORLD_PLACEMENT_EDITOR_ENABLED
+	placement_mode = false;
+	_update_toolbar();
+	return;
+#else
 	terrain_mode = false;
 	placement_mode = terrain != nullptr || placement_node != nullptr;
 	painting = false;
@@ -1230,6 +1245,7 @@ void SimpleTerrainEditorPlugin::_placement_mode_pressed() {
 		EditorDockManager::get_singleton()->focus_dock(placement_dock);
 	}
 	_update_toolbar();
+#endif
 }
 
 void SimpleTerrainEditorPlugin::_operation_selected(int p_index) {
@@ -1276,6 +1292,9 @@ void SimpleTerrainEditorPlugin::_update_toolbar() {
 	if (toolbar == nullptr || brush_overlay_panel == nullptr || placement_overlay_panel == nullptr || select_mode_button == nullptr || edit_mode_button == nullptr || placement_mode_button == nullptr || operation_button == nullptr || radius_slider == nullptr || strength_slider == nullptr || placement_size_slider == nullptr || flat_button == nullptr || random_button == nullptr || bake_navigation_button == nullptr || bake_dynamic_navigation_button == nullptr) {
 		return;
 	}
+#if !SIMPLE_WORLD_PLACEMENT_EDITOR_ENABLED
+	placement_mode = false;
+#endif
 	const bool has_terrain = terrain != nullptr;
 	const bool has_placement_owner = terrain != nullptr || placement_node != nullptr;
 	// The toolbar remains allocated for the lifetime of the plugin, but it is
@@ -1285,7 +1304,14 @@ void SimpleTerrainEditorPlugin::_update_toolbar() {
 	placement_overlay_panel->set_visible(has_placement_owner && placement_mode);
 	select_mode_button->set_disabled(!has_placement_owner);
 	edit_mode_button->set_disabled(!has_terrain);
+#if SIMPLE_WORLD_PLACEMENT_EDITOR_ENABLED
 	placement_mode_button->set_disabled(!has_placement_owner);
+	placement_mode_button->set_visible(true);
+#else
+	placement_mode_button->set_disabled(true);
+	placement_mode_button->set_visible(false);
+	placement_overlay_panel->set_visible(false);
+#endif
 	select_mode_button->set_pressed_no_signal(!terrain_mode && !placement_mode && has_placement_owner);
 	edit_mode_button->set_pressed_no_signal(terrain_mode && has_terrain);
 	placement_mode_button->set_pressed_no_signal(placement_mode && has_placement_owner);
@@ -1392,6 +1418,11 @@ void SimpleTerrainEditorPlugin::_set_placement_arrays(SimpleWorldPlacementData *
 }
 
 void SimpleTerrainEditorPlugin::_place_selected_profile(Camera3D *p_camera, const Vector2 &p_mouse_position) {
+#if !SIMPLE_WORLD_PLACEMENT_EDITOR_ENABLED
+	(void)p_camera;
+	(void)p_mouse_position;
+	return;
+#else
 	Node3D *placement_parent = _get_current_placement_parent();
 	if (placement_parent == nullptr || !placement_parent->is_inside_tree() || p_camera == nullptr) {
 		return;
@@ -1512,6 +1543,7 @@ void SimpleTerrainEditorPlugin::_place_selected_profile(Camera3D *p_camera, cons
 	}
 	placement_dock->edit(placement_parent);
 	_update_toolbar();
+#endif
 }
 void SimpleTerrainEditorPlugin::_attach_brush_overlay() {
 	Node3DEditorViewport *viewport = Node3DEditor::get_singleton()->get_editor_viewport(0);
@@ -1877,22 +1909,30 @@ void SimpleTerrainEditorPlugin::_notification(int p_what) {
 			add_node_3d_gizmo_plugin(gizmo_plugin);
 			add_inspector_plugin(inspector_plugin);
 			add_control_to_container(CONTAINER_SPATIAL_EDITOR_MENU, toolbar);
+#if SIMPLE_WORLD_PLACEMENT_EDITOR_ENABLED
 			add_dock(placement_dock);
 			placement_dock->close();
-			_attach_brush_overlay();
 			_attach_placement_overlay();
+#endif
+			_attach_brush_overlay();
 			set_input_event_forwarding_always_enabled();
 			set_force_draw_over_forwarding_enabled();
 			select_mode_button->set_button_icon(select_mode_button->get_editor_theme_icon(SNAME("ToolSelect")));
 			edit_mode_button->set_button_icon(edit_mode_button->get_editor_theme_icon(SNAME("Edit")));
 			placement_mode_button->set_button_icon(placement_mode_button->get_editor_theme_icon(SNAME("Instance")));
+#if !SIMPLE_WORLD_PLACEMENT_EDITOR_ENABLED
+			placement_mode_button->hide();
+			placement_overlay_panel->hide();
+#endif
 			_update_toolbar();
 		} break;
 
 		case NOTIFICATION_EXIT_TREE: {
+#if SIMPLE_WORLD_PLACEMENT_EDITOR_ENABLED
 			_detach_placement_overlay();
-			_detach_brush_overlay();
 			remove_dock(placement_dock);
+#endif
+			_detach_brush_overlay();
 			remove_control_from_container(CONTAINER_SPATIAL_EDITOR_MENU, toolbar);
 			remove_node_3d_gizmo_plugin(gizmo_plugin);
 			remove_inspector_plugin(inspector_plugin);
@@ -1905,12 +1945,20 @@ void SimpleTerrainEditorPlugin::_bind_methods() {
 }
 
 bool SimpleTerrainEditorPlugin::handles(Object *p_object) const {
+#if SIMPLE_WORLD_PLACEMENT_EDITOR_ENABLED
 	return Object::cast_to<SimpleTerrain3D>(p_object) != nullptr || Object::cast_to<SimpleWorldPlacement3D>(p_object) != nullptr;
+#else
+	return Object::cast_to<SimpleTerrain3D>(p_object) != nullptr;
+#endif
 }
 
 void SimpleTerrainEditorPlugin::edit(Object *p_object) {
 	terrain = Object::cast_to<SimpleTerrain3D>(p_object);
+#if SIMPLE_WORLD_PLACEMENT_EDITOR_ENABLED
 	placement_node = Object::cast_to<SimpleWorldPlacement3D>(p_object);
+#else
+	placement_node = nullptr;
+#endif
 	if (terrain == nullptr && placement_node == nullptr) {
 		terrain_mode = false;
 		placement_mode = false;
@@ -1918,7 +1966,9 @@ void SimpleTerrainEditorPlugin::edit(Object *p_object) {
 		_clear_pending_create_cell();
 		_clear_cursor_preview();
 	}
+#if SIMPLE_WORLD_PLACEMENT_EDITOR_ENABLED
 	placement_dock->edit(_get_current_placement_parent());
+#endif
 	_update_toolbar();
 }
 
@@ -1930,11 +1980,14 @@ void SimpleTerrainEditorPlugin::clear() {
 	painting = false;
 	_clear_pending_create_cell();
 	_clear_cursor_preview();
+#if SIMPLE_WORLD_PLACEMENT_EDITOR_ENABLED
 	placement_dock->edit(nullptr);
+#endif
 	_update_toolbar();
 }
 
 EditorPlugin::AfterGUIInput SimpleTerrainEditorPlugin::forward_3d_gui_input(Camera3D *p_camera, const Ref<InputEvent> &p_event) {
+#if SIMPLE_WORLD_PLACEMENT_EDITOR_ENABLED
 	if (placement_mode) {
 		_clear_pending_create_cell();
 		_clear_cursor_preview();
@@ -1948,6 +2001,9 @@ EditorPlugin::AfterGUIInput SimpleTerrainEditorPlugin::forward_3d_gui_input(Came
 		}
 		return AFTER_GUI_INPUT_PASS;
 	}
+#else
+	(void)placement_mode;
+#endif
 
 	if (!terrain_mode || terrain == nullptr) {
 		_clear_pending_create_cell();

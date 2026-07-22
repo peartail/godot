@@ -2846,9 +2846,10 @@ void SimpleTerrain3D::_bind_methods() {
 	// Core terrain data and render chunk controls.
 	ADD_GROUP("Data", "");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "simple_terrain_data", PROPERTY_HINT_RESOURCE_TYPE, "SimpleTerrainData"), "set_simple_terrain_data", "get_simple_terrain_data");
-	ADD_GROUP("World Placement", "world_placement_");
-	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "world_placement_library", PROPERTY_HINT_RESOURCE_TYPE, "SimpleWorldPlacementLibrary"), "set_world_placement_library", "get_world_placement_library");
-	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "world_placement_data", PROPERTY_HINT_RESOURCE_TYPE, "SimpleWorldPlacementData"), "set_world_placement_data", "get_world_placement_data");
+	// Legacy SimpleWorld placement: hide from Inspector (B). Keep STORAGE for scene load until cleanup.
+	// Group omitted while properties are editor-hidden to avoid an empty Inspector section.
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "world_placement_library", PROPERTY_HINT_RESOURCE_TYPE, "SimpleWorldPlacementLibrary", PROPERTY_USAGE_NO_EDITOR), "set_world_placement_library", "get_world_placement_library");
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "world_placement_data", PROPERTY_HINT_RESOURCE_TYPE, "SimpleWorldPlacementData", PROPERTY_USAGE_NO_EDITOR), "set_world_placement_data", "get_world_placement_data");
 	ADD_GROUP("Terrain", "");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "cell_size", PROPERTY_HINT_RANGE, "0.01,100,0.01,or_greater"), "set_cell_size", "get_cell_size");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "chunk_size", PROPERTY_HINT_RANGE, "1,256,1,or_greater"), "set_chunk_size", "get_chunk_size");

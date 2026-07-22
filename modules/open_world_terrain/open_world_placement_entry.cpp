@@ -1,13 +1,13 @@
 /**************************************************************************/
-/*  open_world_placement_brush_entry.cpp                                  */
+/*  open_world_placement_entry.cpp                                  */
 /**************************************************************************/
 
-#include "open_world_placement_brush_entry.h"
+#include "open_world_placement_entry.h"
 
 #include "core/object/class_db.h"
 
 #define PLACEMENT_ENTRY_SETTER(type, name, expression) \
-	void OpenWorldPlacementBrushEntry::set_##name(type p_value) { \
+	void OpenWorldPlacementEntry::set_##name(type p_value) { \
 		type value = expression; \
 		if (name == value) { \
 			return; \
@@ -29,7 +29,7 @@ PLACEMENT_ENTRY_SETTER(real_t, minimum_spacing_override, MAX((real_t)0.0, p_valu
 
 #undef PLACEMENT_ENTRY_SETTER
 
-void OpenWorldPlacementBrushEntry::set_tree_profile(const Ref<OpenWorldTreeGenerationProfile> &p_value) {
+void OpenWorldPlacementEntry::set_tree_profile(const Ref<OpenWorldTreeGenerationProfile> &p_value) {
 	if (tree_profile == p_value) {
 		return;
 	}
@@ -37,7 +37,7 @@ void OpenWorldPlacementBrushEntry::set_tree_profile(const Ref<OpenWorldTreeGener
 	emit_changed();
 }
 
-void OpenWorldPlacementBrushEntry::set_vine_request_template(const Ref<OpenWorldVineGenerationRequest> &p_value) {
+void OpenWorldPlacementEntry::set_vine_request_template(const Ref<OpenWorldVineGenerationRequest> &p_value) {
 	if (vine_request_template == p_value) {
 		return;
 	}
@@ -45,7 +45,7 @@ void OpenWorldPlacementBrushEntry::set_vine_request_template(const Ref<OpenWorld
 	emit_changed();
 }
 
-void OpenWorldPlacementBrushEntry::set_rock_request_template(const Ref<OpenWorldRockGenerationRequest> &p_value) {
+void OpenWorldPlacementEntry::set_rock_request_template(const Ref<OpenWorldRockGenerationRequest> &p_value) {
 	if (rock_request_template == p_value) {
 		return;
 	}
@@ -53,7 +53,39 @@ void OpenWorldPlacementBrushEntry::set_rock_request_template(const Ref<OpenWorld
 	emit_changed();
 }
 
-Dictionary OpenWorldPlacementBrushEntry::validate_entry() const {
+void OpenWorldPlacementEntry::set_trunk_material(const Ref<Material> &p_value) {
+	if (trunk_material == p_value) {
+		return;
+	}
+	trunk_material = p_value;
+	emit_changed();
+}
+
+void OpenWorldPlacementEntry::set_foliage_material(const Ref<Material> &p_value) {
+	if (foliage_material == p_value) {
+		return;
+	}
+	foliage_material = p_value;
+	emit_changed();
+}
+
+void OpenWorldPlacementEntry::set_stem_material(const Ref<Material> &p_value) {
+	if (stem_material == p_value) {
+		return;
+	}
+	stem_material = p_value;
+	emit_changed();
+}
+
+void OpenWorldPlacementEntry::set_preview_material(const Ref<Material> &p_value) {
+	if (preview_material == p_value) {
+		return;
+	}
+	preview_material = p_value;
+	emit_changed();
+}
+
+Dictionary OpenWorldPlacementEntry::validate_entry() const {
 	Dictionary report;
 	PackedStringArray errors;
 	PackedStringArray error_codes;
@@ -100,34 +132,42 @@ Dictionary OpenWorldPlacementBrushEntry::validate_entry() const {
 	return report;
 }
 
-void OpenWorldPlacementBrushEntry::_bind_methods() {
-	ClassDB::bind_method(D_METHOD("set_stable_id", "value"), &OpenWorldPlacementBrushEntry::set_stable_id);
-	ClassDB::bind_method(D_METHOD("get_stable_id"), &OpenWorldPlacementBrushEntry::get_stable_id);
-	ClassDB::bind_method(D_METHOD("set_content_kind", "value"), &OpenWorldPlacementBrushEntry::set_content_kind);
-	ClassDB::bind_method(D_METHOD("get_content_kind"), &OpenWorldPlacementBrushEntry::get_content_kind);
-	ClassDB::bind_method(D_METHOD("set_enabled", "value"), &OpenWorldPlacementBrushEntry::set_enabled);
-	ClassDB::bind_method(D_METHOD("is_enabled"), &OpenWorldPlacementBrushEntry::is_enabled);
-	ClassDB::bind_method(D_METHOD("set_weight", "value"), &OpenWorldPlacementBrushEntry::set_weight);
-	ClassDB::bind_method(D_METHOD("get_weight"), &OpenWorldPlacementBrushEntry::get_weight);
-	ClassDB::bind_method(D_METHOD("set_min_scale", "value"), &OpenWorldPlacementBrushEntry::set_min_scale);
-	ClassDB::bind_method(D_METHOD("get_min_scale"), &OpenWorldPlacementBrushEntry::get_min_scale);
-	ClassDB::bind_method(D_METHOD("set_max_scale", "value"), &OpenWorldPlacementBrushEntry::set_max_scale);
-	ClassDB::bind_method(D_METHOD("get_max_scale"), &OpenWorldPlacementBrushEntry::get_max_scale);
-	ClassDB::bind_method(D_METHOD("set_random_yaw", "value"), &OpenWorldPlacementBrushEntry::set_random_yaw);
-	ClassDB::bind_method(D_METHOD("is_random_yaw_enabled"), &OpenWorldPlacementBrushEntry::is_random_yaw_enabled);
-	ClassDB::bind_method(D_METHOD("set_align_to_surface_normal", "value"), &OpenWorldPlacementBrushEntry::set_align_to_surface_normal);
-	ClassDB::bind_method(D_METHOD("is_aligning_to_surface_normal"), &OpenWorldPlacementBrushEntry::is_aligning_to_surface_normal);
-	ClassDB::bind_method(D_METHOD("set_surface_offset", "value"), &OpenWorldPlacementBrushEntry::set_surface_offset);
-	ClassDB::bind_method(D_METHOD("get_surface_offset"), &OpenWorldPlacementBrushEntry::get_surface_offset);
-	ClassDB::bind_method(D_METHOD("set_minimum_spacing_override", "value"), &OpenWorldPlacementBrushEntry::set_minimum_spacing_override);
-	ClassDB::bind_method(D_METHOD("get_minimum_spacing_override"), &OpenWorldPlacementBrushEntry::get_minimum_spacing_override);
-	ClassDB::bind_method(D_METHOD("set_tree_profile", "value"), &OpenWorldPlacementBrushEntry::set_tree_profile);
-	ClassDB::bind_method(D_METHOD("get_tree_profile"), &OpenWorldPlacementBrushEntry::get_tree_profile);
-	ClassDB::bind_method(D_METHOD("set_vine_request_template", "value"), &OpenWorldPlacementBrushEntry::set_vine_request_template);
-	ClassDB::bind_method(D_METHOD("get_vine_request_template"), &OpenWorldPlacementBrushEntry::get_vine_request_template);
-	ClassDB::bind_method(D_METHOD("set_rock_request_template", "value"), &OpenWorldPlacementBrushEntry::set_rock_request_template);
-	ClassDB::bind_method(D_METHOD("get_rock_request_template"), &OpenWorldPlacementBrushEntry::get_rock_request_template);
-	ClassDB::bind_method(D_METHOD("validate_entry"), &OpenWorldPlacementBrushEntry::validate_entry);
+void OpenWorldPlacementEntry::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("set_stable_id", "value"), &OpenWorldPlacementEntry::set_stable_id);
+	ClassDB::bind_method(D_METHOD("get_stable_id"), &OpenWorldPlacementEntry::get_stable_id);
+	ClassDB::bind_method(D_METHOD("set_content_kind", "value"), &OpenWorldPlacementEntry::set_content_kind);
+	ClassDB::bind_method(D_METHOD("get_content_kind"), &OpenWorldPlacementEntry::get_content_kind);
+	ClassDB::bind_method(D_METHOD("set_enabled", "value"), &OpenWorldPlacementEntry::set_enabled);
+	ClassDB::bind_method(D_METHOD("is_enabled"), &OpenWorldPlacementEntry::is_enabled);
+	ClassDB::bind_method(D_METHOD("set_weight", "value"), &OpenWorldPlacementEntry::set_weight);
+	ClassDB::bind_method(D_METHOD("get_weight"), &OpenWorldPlacementEntry::get_weight);
+	ClassDB::bind_method(D_METHOD("set_min_scale", "value"), &OpenWorldPlacementEntry::set_min_scale);
+	ClassDB::bind_method(D_METHOD("get_min_scale"), &OpenWorldPlacementEntry::get_min_scale);
+	ClassDB::bind_method(D_METHOD("set_max_scale", "value"), &OpenWorldPlacementEntry::set_max_scale);
+	ClassDB::bind_method(D_METHOD("get_max_scale"), &OpenWorldPlacementEntry::get_max_scale);
+	ClassDB::bind_method(D_METHOD("set_random_yaw", "value"), &OpenWorldPlacementEntry::set_random_yaw);
+	ClassDB::bind_method(D_METHOD("is_random_yaw_enabled"), &OpenWorldPlacementEntry::is_random_yaw_enabled);
+	ClassDB::bind_method(D_METHOD("set_align_to_surface_normal", "value"), &OpenWorldPlacementEntry::set_align_to_surface_normal);
+	ClassDB::bind_method(D_METHOD("is_aligning_to_surface_normal"), &OpenWorldPlacementEntry::is_aligning_to_surface_normal);
+	ClassDB::bind_method(D_METHOD("set_surface_offset", "value"), &OpenWorldPlacementEntry::set_surface_offset);
+	ClassDB::bind_method(D_METHOD("get_surface_offset"), &OpenWorldPlacementEntry::get_surface_offset);
+	ClassDB::bind_method(D_METHOD("set_minimum_spacing_override", "value"), &OpenWorldPlacementEntry::set_minimum_spacing_override);
+	ClassDB::bind_method(D_METHOD("get_minimum_spacing_override"), &OpenWorldPlacementEntry::get_minimum_spacing_override);
+	ClassDB::bind_method(D_METHOD("set_tree_profile", "value"), &OpenWorldPlacementEntry::set_tree_profile);
+	ClassDB::bind_method(D_METHOD("get_tree_profile"), &OpenWorldPlacementEntry::get_tree_profile);
+	ClassDB::bind_method(D_METHOD("set_vine_request_template", "value"), &OpenWorldPlacementEntry::set_vine_request_template);
+	ClassDB::bind_method(D_METHOD("get_vine_request_template"), &OpenWorldPlacementEntry::get_vine_request_template);
+	ClassDB::bind_method(D_METHOD("set_rock_request_template", "value"), &OpenWorldPlacementEntry::set_rock_request_template);
+	ClassDB::bind_method(D_METHOD("get_rock_request_template"), &OpenWorldPlacementEntry::get_rock_request_template);
+	ClassDB::bind_method(D_METHOD("set_trunk_material", "value"), &OpenWorldPlacementEntry::set_trunk_material);
+	ClassDB::bind_method(D_METHOD("get_trunk_material"), &OpenWorldPlacementEntry::get_trunk_material);
+	ClassDB::bind_method(D_METHOD("set_foliage_material", "value"), &OpenWorldPlacementEntry::set_foliage_material);
+	ClassDB::bind_method(D_METHOD("get_foliage_material"), &OpenWorldPlacementEntry::get_foliage_material);
+	ClassDB::bind_method(D_METHOD("set_stem_material", "value"), &OpenWorldPlacementEntry::set_stem_material);
+	ClassDB::bind_method(D_METHOD("get_stem_material"), &OpenWorldPlacementEntry::get_stem_material);
+	ClassDB::bind_method(D_METHOD("set_preview_material", "value"), &OpenWorldPlacementEntry::set_preview_material);
+	ClassDB::bind_method(D_METHOD("get_preview_material"), &OpenWorldPlacementEntry::get_preview_material);
+	ClassDB::bind_method(D_METHOD("validate_entry"), &OpenWorldPlacementEntry::validate_entry);
 
 	BIND_ENUM_CONSTANT(CONTENT_TREE);
 	BIND_ENUM_CONSTANT(CONTENT_VINE);
@@ -146,4 +186,10 @@ void OpenWorldPlacementBrushEntry::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "tree_profile", PROPERTY_HINT_RESOURCE_TYPE, "OpenWorldTreeGenerationProfile"), "set_tree_profile", "get_tree_profile");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "vine_request_template", PROPERTY_HINT_RESOURCE_TYPE, "OpenWorldVineGenerationRequest"), "set_vine_request_template", "get_vine_request_template");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "rock_request_template", PROPERTY_HINT_RESOURCE_TYPE, "OpenWorldRockGenerationRequest"), "set_rock_request_template", "get_rock_request_template");
+
+	ADD_GROUP("Materials", "material_");
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "trunk_material", PROPERTY_HINT_RESOURCE_TYPE, "Material"), "set_trunk_material", "get_trunk_material");
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "foliage_material", PROPERTY_HINT_RESOURCE_TYPE, "Material"), "set_foliage_material", "get_foliage_material");
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "stem_material", PROPERTY_HINT_RESOURCE_TYPE, "Material"), "set_stem_material", "get_stem_material");
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "preview_material", PROPERTY_HINT_RESOURCE_TYPE, "Material"), "set_preview_material", "get_preview_material");
 }

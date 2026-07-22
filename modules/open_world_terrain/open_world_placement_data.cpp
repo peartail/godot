@@ -38,7 +38,7 @@ Dictionary OpenWorldPlacementData::get_placement(int p_index) const {
 	return result;
 }
 
-void OpenWorldPlacementData::add_placement(const String &p_stable_id, const Ref<OpenWorldPlacementBrushEntry> &p_entry, const Vector3 &p_position, const Vector3 &p_rotation, const Vector3 &p_scale, const Vector3 &p_terrain_normal, int p_seed, real_t p_spacing_radius) {
+void OpenWorldPlacementData::add_placement(const String &p_stable_id, const Ref<OpenWorldPlacementEntry> &p_entry, const Vector3 &p_position, const Vector3 &p_rotation, const Vector3 &p_scale, const Vector3 &p_terrain_normal, int p_seed, real_t p_spacing_radius) {
 	ERR_FAIL_COND_MSG(p_stable_id.is_empty(), "Placement stable_id must not be empty.");
 	ERR_FAIL_COND_MSG(p_entry.is_null(), "Placement source entry must not be null.");
 	stable_ids.push_back(p_stable_id);
@@ -81,6 +81,25 @@ void OpenWorldPlacementData::clear_placements() {
 	emit_changed();
 }
 
+void OpenWorldPlacementData::assign_from(const Ref<OpenWorldPlacementData> &p_other) {
+	if (p_other.is_null()) {
+		clear_placements();
+		return;
+	}
+	if (p_other.ptr() == this) {
+		return;
+	}
+	stable_ids = p_other->stable_ids;
+	source_entries = p_other->source_entries.duplicate();
+	positions = p_other->positions;
+	rotations = p_other->rotations;
+	scales = p_other->scales;
+	terrain_normals = p_other->terrain_normals;
+	seeds = p_other->seeds;
+	spacing_radii = p_other->spacing_radii;
+	emit_changed();
+}
+
 Dictionary OpenWorldPlacementData::validate_data() const {
 	Dictionary report;
 	PackedStringArray errors;
@@ -106,7 +125,7 @@ Dictionary OpenWorldPlacementData::validate_data() const {
 			errors.push_back(vformat("STABLE_ID_DUPLICATE: '%s'.", stable_ids[i]));
 		}
 		ids.insert(stable_ids[i]);
-		Ref<OpenWorldPlacementBrushEntry> entry = source_entries[i];
+		Ref<OpenWorldPlacementEntry> entry = source_entries[i];
 		if (entry.is_null()) {
 			error_codes.push_back("SOURCE_ENTRY_MISSING");
 			errors.push_back(vformat("SOURCE_ENTRY_MISSING: placement %d.", i));
@@ -141,10 +160,11 @@ void OpenWorldPlacementData::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("remove_placement_at", "index"), &OpenWorldPlacementData::remove_placement_at);
 	ClassDB::bind_method(D_METHOD("find_placement", "stable_id"), &OpenWorldPlacementData::find_placement);
 	ClassDB::bind_method(D_METHOD("clear_placements"), &OpenWorldPlacementData::clear_placements);
+	ClassDB::bind_method(D_METHOD("assign_from", "other"), &OpenWorldPlacementData::assign_from);
 	ClassDB::bind_method(D_METHOD("validate_data"), &OpenWorldPlacementData::validate_data);
 
 	ADD_PROPERTY(PropertyInfo(Variant::PACKED_STRING_ARRAY, "stable_ids", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE | PROPERTY_USAGE_INTERNAL), "set_stable_ids", "get_stable_ids");
-	ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "source_entries", PROPERTY_HINT_ARRAY_TYPE, "OpenWorldPlacementBrushEntry", PROPERTY_USAGE_STORAGE | PROPERTY_USAGE_INTERNAL), "set_source_entries", "get_source_entries");
+	ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "source_entries", PROPERTY_HINT_ARRAY_TYPE, "OpenWorldPlacementEntry", PROPERTY_USAGE_STORAGE | PROPERTY_USAGE_INTERNAL), "set_source_entries", "get_source_entries");
 	ADD_PROPERTY(PropertyInfo(Variant::PACKED_VECTOR3_ARRAY, "positions", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE | PROPERTY_USAGE_INTERNAL), "set_positions", "get_positions");
 	ADD_PROPERTY(PropertyInfo(Variant::PACKED_VECTOR3_ARRAY, "rotations", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE | PROPERTY_USAGE_INTERNAL), "set_rotations", "get_rotations");
 	ADD_PROPERTY(PropertyInfo(Variant::PACKED_VECTOR3_ARRAY, "scales", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE | PROPERTY_USAGE_INTERNAL), "set_scales", "get_scales");

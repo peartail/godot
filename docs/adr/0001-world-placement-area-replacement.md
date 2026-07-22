@@ -1,3 +1,5 @@
-# Store placement results instead of persistent brush stamps
+# Store placement results via area replacement
 
-World placement brush clicks are destructive area-replacement operations, not persistent layered stamps. Each operation removes managed placements whose anchors lie inside its projected footprint and saves the new individual placement records plus their generated scene nodes; this avoids replay-order dependencies and lets future tile/MultiMesh backends consume the same authoritative records. Brush presets remain reusable inputs, terrain streaming stays separate, and Phase 1 supports only self-supporting Bramble vines because other vine modes require an independent surface/support density workflow.
+World Placement applies are destructive area-replacement operations, not persistent layered stamps and not continuous brush strokes. Each apply removes managed placements whose anchors lie inside its projected footprint and saves the new individual placement records plus their generated scene nodes; this avoids replay-order dependencies and lets future tile/MultiMesh backends consume the same authoritative records. Placement presets remain reusable inputs, terrain streaming stays separate, and Phase 1 supports only self-supporting Bramble vines because other vine modes require an independent surface/support density workflow.
+
+Domain docs: `module_docs/world_placement/`.

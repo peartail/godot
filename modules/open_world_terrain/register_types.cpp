@@ -9,9 +9,9 @@
 #include "modules/open_world_terrain/open_world_terrain_3d.h"
 #include "modules/open_world_terrain/open_world_terrain_data.h"
 #include "modules/open_world_terrain/open_world_terrain_layer.h"
-#include "modules/open_world_terrain/open_world_placement_brush_3d.h"
-#include "modules/open_world_terrain/open_world_placement_brush_entry.h"
-#include "modules/open_world_terrain/open_world_placement_brush_preset.h"
+#include "modules/open_world_terrain/open_world_placement_3d.h"
+#include "modules/open_world_terrain/open_world_placement_entry.h"
+#include "modules/open_world_terrain/open_world_placement_preset.h"
 #include "modules/open_world_terrain/open_world_placement_data.h"
 #include "modules/open_world_terrain/open_world_rock_generation_profile.h"
 #include "modules/open_world_terrain/open_world_rock_generation_request.h"
@@ -36,6 +36,7 @@
 
 #ifdef TOOLS_ENABLED
 #include "modules/open_world_terrain/editor/open_world_terrain_editor_plugin.h"
+#include "modules/open_world_terrain/editor/open_world_placement_editor_plugin.h"
 #include "editor/editor_node.h"
 #endif
 
@@ -49,10 +50,14 @@ void initialize_open_world_terrain_module(ModuleInitializationLevel p_level) {
 		GDREGISTER_CLASS(OpenWorldTerrainLayer);
 		GDREGISTER_CLASS(OpenWorldTerrainData);
 		GDREGISTER_CLASS(OpenWorldTerrain3D);
-		GDREGISTER_CLASS(OpenWorldPlacementBrushEntry);
-		GDREGISTER_CLASS(OpenWorldPlacementBrushPreset);
+		GDREGISTER_CLASS(OpenWorldPlacementEntry);
+		GDREGISTER_CLASS(OpenWorldPlacementPreset);
 		GDREGISTER_CLASS(OpenWorldPlacementData);
-		GDREGISTER_CLASS(OpenWorldPlacementBrush3D);
+		GDREGISTER_CLASS(OpenWorldPlacement3D);
+		// Saved resources / scenes may still reference the pre-rename Brush type names.
+		ClassDB::add_compatibility_class("OpenWorldPlacementBrushEntry", "OpenWorldPlacementEntry");
+		ClassDB::add_compatibility_class("OpenWorldPlacementBrushPreset", "OpenWorldPlacementPreset");
+		ClassDB::add_compatibility_class("OpenWorldPlacementBrush3D", "OpenWorldPlacement3D");
 		GDREGISTER_CLASS(OpenWorldTreeSupportGraph);
 		GDREGISTER_CLASS(OpenWorldTreeVariant);
 		GDREGISTER_CLASS(OpenWorldTreeSpecies);
@@ -79,6 +84,8 @@ void initialize_open_world_terrain_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_EDITOR) {
 		GDREGISTER_VIRTUAL_CLASS(OpenWorldTerrainEditorPlugin);
 		EditorPlugins::add_by_type<OpenWorldTerrainEditorPlugin>();
+		GDREGISTER_VIRTUAL_CLASS(OpenWorldPlacementEditorPlugin);
+		EditorPlugins::add_by_type<OpenWorldPlacementEditorPlugin>();
 	}
 #endif
 }

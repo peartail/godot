@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <class name="OpenWorldPlacementData" inherits="Resource" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../doc/class.xsd">
-	<brief_description>Authoritative individual records produced by world placement brush operations.</brief_description>
+	<brief_description>Authoritative individual records produced by World Placement apply operations.</brief_description>
 	<description>Stores source entries, anchors, transforms, terrain normals, deterministic seeds, and spacing radii independently from terrain height data and generated scene nodes.</description>
 	<methods>
-		<method name="add_placement"><return type="void" /><param index="0" name="stable_id" type="String" /><param index="1" name="entry" type="OpenWorldPlacementBrushEntry" /><param index="2" name="position" type="Vector3" /><param index="3" name="rotation" type="Vector3" /><param index="4" name="scale" type="Vector3" /><param index="5" name="terrain_normal" type="Vector3" /><param index="6" name="seed" type="int" /><param index="7" name="spacing_radius" type="float" /></method>
+		<method name="add_placement"><return type="void" /><param index="0" name="stable_id" type="String" /><param index="1" name="entry" type="OpenWorldPlacementEntry" /><param index="2" name="position" type="Vector3" /><param index="3" name="rotation" type="Vector3" /><param index="4" name="scale" type="Vector3" /><param index="5" name="terrain_normal" type="Vector3" /><param index="6" name="seed" type="int" /><param index="7" name="spacing_radius" type="float" /></method>
+		<method name="assign_from"><return type="void" /><param index="0" name="other" type="OpenWorldPlacementData" /><description>Copies all placement arrays from another data resource. Used by editor undo/redo snapshots.</description></method>
 		<method name="clear_placements"><return type="void" /></method>
 		<method name="find_placement" qualifiers="const"><return type="int" /><param index="0" name="stable_id" type="String" /></method>
 		<method name="get_placement" qualifiers="const"><return type="Dictionary" /><param index="0" name="index" type="int" /></method>

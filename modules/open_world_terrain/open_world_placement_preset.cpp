@@ -1,15 +1,15 @@
 /**************************************************************************/
-/*  open_world_placement_brush_preset.cpp                                 */
+/*  open_world_placement_preset.cpp                                 */
 /**************************************************************************/
 
-#include "open_world_placement_brush_preset.h"
+#include "open_world_placement_preset.h"
 
 #include "core/math/math_funcs.h"
 #include "core/object/class_db.h"
 #include "core/templates/hash_set.h"
 
 #define PLACEMENT_PRESET_SETTER(type, name, expression) \
-	void OpenWorldPlacementBrushPreset::set_##name(type p_value) { \
+	void OpenWorldPlacementPreset::set_##name(type p_value) { \
 		type value = expression; \
 		if (name == value) { \
 			return; \
@@ -20,7 +20,7 @@
 
 PLACEMENT_PRESET_SETTER(String, stable_id, p_value.strip_edges());
 PLACEMENT_PRESET_SETTER(String, display_name, p_value);
-PLACEMENT_PRESET_SETTER(BrushShape, shape, (BrushShape)CLAMP((int)p_value, 0, 2));
+PLACEMENT_PRESET_SETTER(PlacementShape, shape, (PlacementShape)CLAMP((int)p_value, 0, 2));
 PLACEMENT_PRESET_SETTER(Vector2, size, Vector2(MAX((real_t)0.01, Math::abs(p_value.x)), MAX((real_t)0.01, Math::abs(p_value.y))));
 PLACEMENT_PRESET_SETTER(real_t, yaw_degrees, Math::fposmod(p_value, (real_t)360.0));
 PLACEMENT_PRESET_SETTER(real_t, density_per_100_square_meters, MAX((real_t)0.0, p_value));
@@ -33,29 +33,29 @@ PLACEMENT_PRESET_SETTER(int, max_objects_per_operation, MAX(1, p_value));
 
 #undef PLACEMENT_PRESET_SETTER
 
-void OpenWorldPlacementBrushPreset::set_entries(const Array &p_value) {
+void OpenWorldPlacementPreset::set_entries(const Array &p_value) {
 	entries = p_value;
 	emit_changed();
 }
 
-void OpenWorldPlacementBrushPreset::add_entry(const Ref<OpenWorldPlacementBrushEntry> &p_entry) {
+void OpenWorldPlacementPreset::add_entry(const Ref<OpenWorldPlacementEntry> &p_entry) {
 	ERR_FAIL_COND(p_entry.is_null());
 	entries.push_back(p_entry);
 	emit_changed();
 }
 
-void OpenWorldPlacementBrushPreset::remove_entry_at(int p_index) {
+void OpenWorldPlacementPreset::remove_entry_at(int p_index) {
 	ERR_FAIL_INDEX(p_index, entries.size());
 	entries.remove_at(p_index);
 	emit_changed();
 }
 
-Ref<OpenWorldPlacementBrushEntry> OpenWorldPlacementBrushPreset::get_entry(int p_index) const {
-	ERR_FAIL_INDEX_V(p_index, entries.size(), Ref<OpenWorldPlacementBrushEntry>());
+Ref<OpenWorldPlacementEntry> OpenWorldPlacementPreset::get_entry(int p_index) const {
+	ERR_FAIL_INDEX_V(p_index, entries.size(), Ref<OpenWorldPlacementEntry>());
 	return entries[p_index];
 }
 
-real_t OpenWorldPlacementBrushPreset::get_footprint_area() const {
+real_t OpenWorldPlacementPreset::get_footprint_area() const {
 	switch (shape) {
 		case SHAPE_CIRCLE: {
 			const real_t radius = size.x * 0.5;
@@ -69,11 +69,11 @@ real_t OpenWorldPlacementBrushPreset::get_footprint_area() const {
 	}
 }
 
-int OpenWorldPlacementBrushPreset::get_requested_object_count() const {
+int OpenWorldPlacementPreset::get_requested_object_count() const {
 	return MAX(0, (int)Math::round(get_footprint_area() * density_per_100_square_meters / 100.0));
 }
 
-Dictionary OpenWorldPlacementBrushPreset::validate_preset() const {
+Dictionary OpenWorldPlacementPreset::validate_preset() const {
 	Dictionary report;
 	PackedStringArray errors;
 	PackedStringArray error_codes;
@@ -95,7 +95,7 @@ Dictionary OpenWorldPlacementBrushPreset::validate_preset() const {
 	real_t total_weight = 0.0;
 	HashSet<String> ids;
 	for (int i = 0; i < entries.size(); i++) {
-		Ref<OpenWorldPlacementBrushEntry> entry = entries[i];
+		Ref<OpenWorldPlacementEntry> entry = entries[i];
 		if (entry.is_null()) {
 			add_error("ENTRY_MISSING", vformat("entry %d is null.", i));
 			continue;
@@ -136,8 +136,8 @@ Dictionary OpenWorldPlacementBrushPreset::validate_preset() const {
 	return report;
 }
 
-void OpenWorldPlacementBrushPreset::_bind_methods() {
-#define BIND_ACCESSOR(name) ClassDB::bind_method(D_METHOD("set_" #name, "value"), &OpenWorldPlacementBrushPreset::set_##name); ClassDB::bind_method(D_METHOD("get_" #name), &OpenWorldPlacementBrushPreset::get_##name)
+void OpenWorldPlacementPreset::_bind_methods() {
+#define BIND_ACCESSOR(name) ClassDB::bind_method(D_METHOD("set_" #name, "value"), &OpenWorldPlacementPreset::set_##name); ClassDB::bind_method(D_METHOD("get_" #name), &OpenWorldPlacementPreset::get_##name)
 	BIND_ACCESSOR(stable_id);
 	BIND_ACCESSOR(display_name);
 	BIND_ACCESSOR(shape);
@@ -152,13 +152,13 @@ void OpenWorldPlacementBrushPreset::_bind_methods() {
 	BIND_ACCESSOR(max_objects_per_operation);
 	BIND_ACCESSOR(entries);
 #undef BIND_ACCESSOR
-	ClassDB::bind_method(D_METHOD("add_entry", "entry"), &OpenWorldPlacementBrushPreset::add_entry);
-	ClassDB::bind_method(D_METHOD("remove_entry_at", "index"), &OpenWorldPlacementBrushPreset::remove_entry_at);
-	ClassDB::bind_method(D_METHOD("get_entry_count"), &OpenWorldPlacementBrushPreset::get_entry_count);
-	ClassDB::bind_method(D_METHOD("get_entry", "index"), &OpenWorldPlacementBrushPreset::get_entry);
-	ClassDB::bind_method(D_METHOD("get_footprint_area"), &OpenWorldPlacementBrushPreset::get_footprint_area);
-	ClassDB::bind_method(D_METHOD("get_requested_object_count"), &OpenWorldPlacementBrushPreset::get_requested_object_count);
-	ClassDB::bind_method(D_METHOD("validate_preset"), &OpenWorldPlacementBrushPreset::validate_preset);
+	ClassDB::bind_method(D_METHOD("add_entry", "entry"), &OpenWorldPlacementPreset::add_entry);
+	ClassDB::bind_method(D_METHOD("remove_entry_at", "index"), &OpenWorldPlacementPreset::remove_entry_at);
+	ClassDB::bind_method(D_METHOD("get_entry_count"), &OpenWorldPlacementPreset::get_entry_count);
+	ClassDB::bind_method(D_METHOD("get_entry", "index"), &OpenWorldPlacementPreset::get_entry);
+	ClassDB::bind_method(D_METHOD("get_footprint_area"), &OpenWorldPlacementPreset::get_footprint_area);
+	ClassDB::bind_method(D_METHOD("get_requested_object_count"), &OpenWorldPlacementPreset::get_requested_object_count);
+	ClassDB::bind_method(D_METHOD("validate_preset"), &OpenWorldPlacementPreset::validate_preset);
 
 	BIND_ENUM_CONSTANT(SHAPE_CIRCLE);
 	BIND_ENUM_CONSTANT(SHAPE_RECTANGLE);
@@ -176,5 +176,5 @@ void OpenWorldPlacementBrushPreset::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "slope_min_degrees", PROPERTY_HINT_RANGE, "0,180,0.1,degrees"), "set_slope_min_degrees", "get_slope_min_degrees");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "slope_max_degrees", PROPERTY_HINT_RANGE, "0,180,0.1,degrees"), "set_slope_max_degrees", "get_slope_max_degrees");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "max_objects_per_operation", PROPERTY_HINT_RANGE, "1,100000,1,or_greater"), "set_max_objects_per_operation", "get_max_objects_per_operation");
-	ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "entries", PROPERTY_HINT_ARRAY_TYPE, "OpenWorldPlacementBrushEntry"), "set_entries", "get_entries");
+	ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "entries", PROPERTY_HINT_ARRAY_TYPE, "OpenWorldPlacementEntry"), "set_entries", "get_entries");
 }

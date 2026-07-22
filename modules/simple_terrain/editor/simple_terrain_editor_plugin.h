@@ -8,6 +8,7 @@
 #include "../simple_world_placement_data.h"
 #include "../simple_world_placement_library.h"
 #include "../simple_world_placement_3d.h"
+#include "../simple_world_placement_legacy.h"
 
 #include "editor/docks/editor_dock.h"
 #include "editor/inspector/editor_inspector.h"

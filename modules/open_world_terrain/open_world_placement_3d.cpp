@@ -1,8 +1,8 @@
 /**************************************************************************/
-/*  open_world_placement_brush_3d.cpp                                     */
+/*  open_world_placement_3d.cpp                                     */
 /**************************************************************************/
 
-#include "open_world_placement_brush_3d.h"
+#include "open_world_placement_3d.h"
 
 #include "open_world_rock_generator_3d.h"
 #include "open_world_tree_generator_3d.h"
@@ -27,23 +27,56 @@ static Vector3 _random_scale(RandomPCG &p_random, const Vector3 &p_min, const Ve
 static real_t _distance_xz(const Vector3 &p_a, const Vector3 &p_b) {
 	return Vector2(p_a.x, p_a.z).distance_to(Vector2(p_b.x, p_b.z));
 }
+
+static void _apply_entry_materials_to_tree(OpenWorldTreeGenerator3D *p_tree, const Ref<OpenWorldPlacementEntry> &p_entry) {
+	if (p_tree == nullptr || p_entry.is_null()) {
+		return;
+	}
+	if (p_entry->get_trunk_material().is_valid()) {
+		p_tree->set_trunk_material(p_entry->get_trunk_material());
+	}
+	if (p_entry->get_foliage_material().is_valid()) {
+		p_tree->set_foliage_material(p_entry->get_foliage_material());
+	}
+}
+
+static void _apply_entry_materials_to_rock(OpenWorldRockGenerator3D *p_rock, const Ref<OpenWorldPlacementEntry> &p_entry) {
+	if (p_rock == nullptr || p_entry.is_null()) {
+		return;
+	}
+	if (p_entry->get_preview_material().is_valid()) {
+		p_rock->set_preview_material(p_entry->get_preview_material());
+	}
+}
+
+static void _apply_entry_materials_to_vine(OpenWorldVineGenerator3D *p_vine, const Ref<OpenWorldPlacementEntry> &p_entry) {
+	if (p_vine == nullptr || p_entry.is_null()) {
+		return;
+	}
+	if (p_entry->get_stem_material().is_valid()) {
+		p_vine->set_stem_material(p_entry->get_stem_material());
+	}
+	if (p_entry->get_foliage_material().is_valid()) {
+		p_vine->set_foliage_material(p_entry->get_foliage_material());
+	}
+}
 } // namespace
 
-SimpleTerrain3D *OpenWorldPlacementBrush3D::_resolve_terrain() const {
+SimpleTerrain3D *OpenWorldPlacement3D::_resolve_terrain() const {
 	if (terrain_path.is_empty()) {
 		return nullptr;
 	}
 	return Object::cast_to<SimpleTerrain3D>(get_node_or_null(terrain_path));
 }
 
-Node3D *OpenWorldPlacementBrush3D::_resolve_output_parent() const {
+Node3D *OpenWorldPlacement3D::_resolve_output_parent() const {
 	if (output_parent_path.is_empty()) {
-		return const_cast<OpenWorldPlacementBrush3D *>(this);
+		return const_cast<OpenWorldPlacement3D *>(this);
 	}
 	return Object::cast_to<Node3D>(get_node_or_null(output_parent_path));
 }
 
-Node3D *OpenWorldPlacementBrush3D::_get_generated_root() const {
+Node3D *OpenWorldPlacement3D::_get_generated_root() const {
 	Node3D *output = _resolve_output_parent();
 	if (output == nullptr) {
 		return nullptr;
@@ -58,7 +91,7 @@ Node3D *OpenWorldPlacementBrush3D::_get_generated_root() const {
 	return nullptr;
 }
 
-Node3D *OpenWorldPlacementBrush3D::_get_or_create_generated_root() {
+Node3D *OpenWorldPlacement3D::_get_or_create_generated_root() {
 	Node3D *root = _get_generated_root();
 	if (root) {
 		return root;
@@ -73,7 +106,7 @@ Node3D *OpenWorldPlacementBrush3D::_get_or_create_generated_root() {
 	return root;
 }
 
-void OpenWorldPlacementBrush3D::_assign_scene_owner(Node *p_node, Node3D *p_output_parent) const {
+void OpenWorldPlacement3D::_assign_scene_owner(Node *p_node, Node3D *p_output_parent) const {
 	ERR_FAIL_NULL(p_node);
 	ERR_FAIL_NULL(p_output_parent);
 	Node *scene_owner = p_output_parent->get_owner();
@@ -83,7 +116,7 @@ void OpenWorldPlacementBrush3D::_assign_scene_owner(Node *p_node, Node3D *p_outp
 	p_node->set_owner(scene_owner);
 }
 
-bool OpenWorldPlacementBrush3D::_contains_world_xz(const Vector3 &p_position, const Vector3 &p_center, const Ref<OpenWorldPlacementBrushPreset> &p_preset) const {
+bool OpenWorldPlacement3D::_contains_world_xz(const Vector3 &p_position, const Vector3 &p_center, const Ref<OpenWorldPlacementPreset> &p_preset) const {
 	const real_t yaw = Math::deg_to_rad(p_preset->get_yaw_degrees());
 	const real_t c = Math::cos(-yaw);
 	const real_t s = Math::sin(-yaw);
@@ -91,49 +124,49 @@ bool OpenWorldPlacementBrush3D::_contains_world_xz(const Vector3 &p_position, co
 	const Vector2 local(delta.x * c - delta.y * s, delta.x * s + delta.y * c);
 	const Vector2 half_size = p_preset->get_size() * 0.5;
 	switch (p_preset->get_shape()) {
-		case OpenWorldPlacementBrushPreset::SHAPE_CIRCLE: {
+		case OpenWorldPlacementPreset::SHAPE_CIRCLE: {
 			return local.length_squared() <= half_size.x * half_size.x;
 		}
-		case OpenWorldPlacementBrushPreset::SHAPE_ELLIPSE: {
+		case OpenWorldPlacementPreset::SHAPE_ELLIPSE: {
 			const real_t x = local.x / half_size.x;
 			const real_t y = local.y / half_size.y;
 			return x * x + y * y <= 1.0;
 		}
-		case OpenWorldPlacementBrushPreset::SHAPE_RECTANGLE:
+		case OpenWorldPlacementPreset::SHAPE_RECTANGLE:
 		default:
 			return Math::abs(local.x) <= half_size.x && Math::abs(local.y) <= half_size.y;
 	}
 }
 
-Vector2 OpenWorldPlacementBrush3D::_sample_footprint(RandomPCG &r_random, const Ref<OpenWorldPlacementBrushPreset> &p_preset) const {
+Vector2 OpenWorldPlacement3D::_sample_footprint(RandomPCG &r_random, const Ref<OpenWorldPlacementPreset> &p_preset) const {
 	const Vector2 half_size = p_preset->get_size() * 0.5;
 	Vector2 local;
-	if (p_preset->get_shape() == OpenWorldPlacementBrushPreset::SHAPE_RECTANGLE) {
+	if (p_preset->get_shape() == OpenWorldPlacementPreset::SHAPE_RECTANGLE) {
 		local = Vector2(r_random.random(-half_size.x, half_size.x), r_random.random(-half_size.y, half_size.y));
 	} else {
 		const real_t radius = Math::sqrt(r_random.randf());
 		const real_t angle = r_random.random((real_t)0.0, (real_t)Math::TAU);
 		const Vector2 radial(Math::cos(angle) * radius, Math::sin(angle) * radius);
-		local = p_preset->get_shape() == OpenWorldPlacementBrushPreset::SHAPE_CIRCLE ? radial * half_size.x : Vector2(radial.x * half_size.x, radial.y * half_size.y);
+		local = p_preset->get_shape() == OpenWorldPlacementPreset::SHAPE_CIRCLE ? radial * half_size.x : Vector2(radial.x * half_size.x, radial.y * half_size.y);
 	}
 	return local.rotated(Math::deg_to_rad(p_preset->get_yaw_degrees()));
 }
 
-Ref<OpenWorldPlacementBrushEntry> OpenWorldPlacementBrush3D::_select_entry(RandomPCG &r_random, const Ref<OpenWorldPlacementBrushPreset> &p_preset) const {
+Ref<OpenWorldPlacementEntry> OpenWorldPlacement3D::_select_entry(RandomPCG &r_random, const Ref<OpenWorldPlacementPreset> &p_preset) const {
 	real_t total = 0.0;
 	for (int i = 0; i < p_preset->get_entry_count(); i++) {
-		Ref<OpenWorldPlacementBrushEntry> entry = p_preset->get_entry(i);
+		Ref<OpenWorldPlacementEntry> entry = p_preset->get_entry(i);
 		if (entry.is_valid() && entry->is_enabled()) {
 			total += entry->get_weight();
 		}
 	}
 	if (total <= 0.0) {
-		return Ref<OpenWorldPlacementBrushEntry>();
+		return Ref<OpenWorldPlacementEntry>();
 	}
 	real_t cursor = r_random.random((real_t)0.0, total);
-	Ref<OpenWorldPlacementBrushEntry> last_valid;
+	Ref<OpenWorldPlacementEntry> last_valid;
 	for (int i = 0; i < p_preset->get_entry_count(); i++) {
-		Ref<OpenWorldPlacementBrushEntry> entry = p_preset->get_entry(i);
+		Ref<OpenWorldPlacementEntry> entry = p_preset->get_entry(i);
 		if (entry.is_null() || !entry->is_enabled() || entry->get_weight() <= 0.0) {
 			continue;
 		}
@@ -146,22 +179,13 @@ Ref<OpenWorldPlacementBrushEntry> OpenWorldPlacementBrush3D::_select_entry(Rando
 	return last_valid;
 }
 
-Dictionary OpenWorldPlacementBrush3D::_solve_candidates(const Vector3 &p_world_position, const Ref<OpenWorldPlacementBrushPreset> &p_preset, int p_seed, Vector<Candidate> &r_candidates, Vector<int> &r_replaced_indices) const {
+Dictionary OpenWorldPlacement3D::_solve_candidates(const Vector3 &p_world_position, const Ref<OpenWorldPlacementPreset> &p_preset, int p_seed, Vector<Candidate> &r_candidates, Vector<int> &r_replaced_indices) const {
 	Dictionary report = p_preset->validate_preset();
 	if (!(bool)report["success"]) {
 		return report;
 	}
 	SimpleTerrain3D *terrain = _resolve_terrain();
-	if (terrain == nullptr || !terrain->is_inside_tree()) {
-		PackedStringArray errors;
-		errors.push_back("TERRAIN_MISSING: terrain_path must resolve to a SimpleTerrain3D inside the scene tree.");
-		PackedStringArray codes;
-		codes.push_back("TERRAIN_MISSING");
-		report["success"] = false;
-		report["errors"] = errors;
-		report["error_codes"] = codes;
-		return report;
-	}
+	const bool use_terrain_projection = terrain != nullptr && terrain->is_inside_tree();
 
 	const int requested_count = p_preset->get_requested_object_count();
 	const int operation_seed = p_seed == 0 ? default_seed : p_seed;
@@ -183,13 +207,17 @@ Dictionary OpenWorldPlacementBrush3D::_solve_candidates(const Vector3 &p_world_p
 		RandomPCG transform_random((uint64_t)(uint32_t)operation_seed ^ ((uint64_t)(candidate_index + 1) * 0x94D049BB133111EBULL));
 		const Vector2 offset = _sample_footprint(position_random, p_preset);
 		Vector3 query_position(p_world_position.x + offset.x, p_world_position.y, p_world_position.z + offset.y);
-		Dictionary hit = terrain->sample_surface_at_world_xz(query_position);
-		if (!(bool)hit.get("success", false)) {
-			rejected_missing_surface++;
-			continue;
+		Vector3 position = query_position;
+		Vector3 normal = Vector3::UP;
+		if (use_terrain_projection) {
+			Dictionary hit = terrain->sample_surface_at_world_xz(query_position);
+			if (!(bool)hit.get("success", false)) {
+				rejected_missing_surface++;
+				continue;
+			}
+			position = hit["position"];
+			normal = ((Vector3)hit.get("normal", Vector3::UP)).normalized();
 		}
-		Vector3 position = hit["position"];
-		Vector3 normal = ((Vector3)hit.get("normal", Vector3::UP)).normalized();
 		if (position.y < p_preset->get_height_min() || position.y > p_preset->get_height_max()) {
 			rejected_height++;
 			continue;
@@ -199,7 +227,7 @@ Dictionary OpenWorldPlacementBrush3D::_solve_candidates(const Vector3 &p_world_p
 			rejected_slope++;
 			continue;
 		}
-		Ref<OpenWorldPlacementBrushEntry> entry = _select_entry(entry_random, p_preset);
+		Ref<OpenWorldPlacementEntry> entry = _select_entry(entry_random, p_preset);
 		if (entry.is_null()) {
 			continue;
 		}
@@ -234,6 +262,7 @@ Dictionary OpenWorldPlacementBrush3D::_solve_candidates(const Vector3 &p_world_p
 	report["operation_seed"] = operation_seed;
 	report["accepted_count"] = r_candidates.size();
 	report["replacement_count"] = r_replaced_indices.size();
+	report["terrain_projection"] = use_terrain_projection;
 	report["rejected_missing_surface"] = rejected_missing_surface;
 	report["rejected_height"] = rejected_height;
 	report["rejected_slope"] = rejected_slope;
@@ -241,10 +270,10 @@ Dictionary OpenWorldPlacementBrush3D::_solve_candidates(const Vector3 &p_world_p
 	return report;
 }
 
-Node3D *OpenWorldPlacementBrush3D::_instantiate_candidate(const Candidate &p_candidate) const {
+Node3D *OpenWorldPlacement3D::_instantiate_candidate(const Candidate &p_candidate) const {
 	Node3D *node = nullptr;
 	switch (p_candidate.entry->get_content_kind()) {
-		case OpenWorldPlacementBrushEntry::CONTENT_TREE: {
+		case OpenWorldPlacementEntry::CONTENT_TREE: {
 			OpenWorldTreeGenerator3D *tree = memnew(OpenWorldTreeGenerator3D);
 			tree->set_auto_generate(false);
 			tree->set_generation_profile(p_candidate.entry->get_tree_profile());
@@ -254,9 +283,10 @@ Node3D *OpenWorldPlacementBrush3D::_instantiate_candidate(const Candidate &p_can
 				memdelete(tree);
 				return nullptr;
 			}
+			_apply_entry_materials_to_tree(tree, p_candidate.entry);
 			node = tree;
 		} break;
-		case OpenWorldPlacementBrushEntry::CONTENT_ROCK: {
+		case OpenWorldPlacementEntry::CONTENT_ROCK: {
 			Ref<OpenWorldRockGenerationRequest> source = p_candidate.entry->get_rock_request_template();
 			Ref<OpenWorldRockGenerationRequest> request;
 			request.instantiate();
@@ -276,9 +306,10 @@ Node3D *OpenWorldPlacementBrush3D::_instantiate_candidate(const Candidate &p_can
 				memdelete(rock);
 				return nullptr;
 			}
+			_apply_entry_materials_to_rock(rock, p_candidate.entry);
 			node = rock;
 		} break;
-		case OpenWorldPlacementBrushEntry::CONTENT_VINE: {
+		case OpenWorldPlacementEntry::CONTENT_VINE: {
 			Ref<OpenWorldVineGenerationRequest> source = p_candidate.entry->get_vine_request_template();
 			if (source->get_mode() != OpenWorldVineGenerationRequest::MODE_BRAMBLE) {
 				return nullptr;
@@ -300,6 +331,7 @@ Node3D *OpenWorldPlacementBrush3D::_instantiate_candidate(const Candidate &p_can
 				memdelete(vine);
 				return nullptr;
 			}
+			_apply_entry_materials_to_vine(vine, p_candidate.entry);
 			node = vine;
 		} break;
 	}
@@ -320,7 +352,7 @@ Node3D *OpenWorldPlacementBrush3D::_instantiate_candidate(const Candidate &p_can
 	return node;
 }
 
-Node3D *OpenWorldPlacementBrush3D::_instantiate_record(int p_index) const {
+Node3D *OpenWorldPlacement3D::_instantiate_record(int p_index) const {
 	Dictionary record = placement_data->get_placement(p_index);
 	Candidate candidate;
 	candidate.entry = record["source_entry"];
@@ -334,7 +366,7 @@ Node3D *OpenWorldPlacementBrush3D::_instantiate_record(int p_index) const {
 	return _instantiate_candidate(candidate);
 }
 
-void OpenWorldPlacementBrush3D::_delete_generated_by_id(const String &p_stable_id) {
+void OpenWorldPlacement3D::_delete_generated_by_id(const String &p_stable_id) {
 	Node3D *root = _get_generated_root();
 	if (root == nullptr) {
 		return;
@@ -348,12 +380,12 @@ void OpenWorldPlacementBrush3D::_delete_generated_by_id(const String &p_stable_i
 	}
 }
 
-Dictionary OpenWorldPlacementBrush3D::preview_brush(const Vector3 &p_world_position, const Ref<OpenWorldPlacementBrushPreset> &p_preset, int p_seed) const {
-	Ref<OpenWorldPlacementBrushPreset> preset = p_preset.is_valid() ? p_preset : active_preset;
+Dictionary OpenWorldPlacement3D::preview_placement(const Vector3 &p_world_position, const Ref<OpenWorldPlacementPreset> &p_preset, int p_seed) const {
+	Ref<OpenWorldPlacementPreset> preset = p_preset.is_valid() ? p_preset : active_preset;
 	if (preset.is_null()) {
 		Dictionary report;
 		PackedStringArray errors;
-		errors.push_back("PRESET_MISSING: assign a brush preset.");
+		errors.push_back("PRESET_MISSING: assign a placement preset.");
 		PackedStringArray codes;
 		codes.push_back("PRESET_MISSING");
 		report["success"] = false;
@@ -366,10 +398,10 @@ Dictionary OpenWorldPlacementBrush3D::preview_brush(const Vector3 &p_world_posit
 	return _solve_candidates(p_world_position, preset, p_seed, candidates, replaced);
 }
 
-Dictionary OpenWorldPlacementBrush3D::apply_brush(const Vector3 &p_world_position, const Ref<OpenWorldPlacementBrushPreset> &p_preset, int p_seed) {
-	Ref<OpenWorldPlacementBrushPreset> preset = p_preset.is_valid() ? p_preset : active_preset;
+Dictionary OpenWorldPlacement3D::apply_placement(const Vector3 &p_world_position, const Ref<OpenWorldPlacementPreset> &p_preset, int p_seed) {
+	Ref<OpenWorldPlacementPreset> preset = p_preset.is_valid() ? p_preset : active_preset;
 	if (preset.is_null()) {
-		generation_report = preview_brush(p_world_position, preset, p_seed);
+		generation_report = preview_placement(p_world_position, preset, p_seed);
 		return generation_report;
 	}
 	if (placement_data.is_null()) {
@@ -429,7 +461,7 @@ Dictionary OpenWorldPlacementBrush3D::apply_brush(const Vector3 &p_world_positio
 	return generation_report;
 }
 
-Dictionary OpenWorldPlacementBrush3D::rebuild_generated() {
+Dictionary OpenWorldPlacement3D::rebuild_generated() {
 	Dictionary report;
 	report["success"] = false;
 	if (placement_data.is_null()) {
@@ -471,7 +503,7 @@ Dictionary OpenWorldPlacementBrush3D::rebuild_generated() {
 	return report;
 }
 
-Dictionary OpenWorldPlacementBrush3D::clear_generated() {
+Dictionary OpenWorldPlacement3D::clear_generated() {
 	Dictionary report;
 	Node3D *root = _get_generated_root();
 	int removed = 0;
@@ -488,7 +520,7 @@ Dictionary OpenWorldPlacementBrush3D::clear_generated() {
 	return report;
 }
 
-Dictionary OpenWorldPlacementBrush3D::clear_placements() {
+Dictionary OpenWorldPlacement3D::clear_placements() {
 	Dictionary report = clear_generated();
 	if (placement_data.is_valid()) {
 		placement_data->clear_placements();
@@ -497,7 +529,7 @@ Dictionary OpenWorldPlacementBrush3D::clear_placements() {
 }
 
 #define BRUSH_SETTER(type, name) \
-	void OpenWorldPlacementBrush3D::set_##name(const type &p_value) { \
+	void OpenWorldPlacement3D::set_##name(const type &p_value) { \
 		if (name == p_value) return; \
 		name = p_value; \
 	}
@@ -505,36 +537,36 @@ BRUSH_SETTER(NodePath, terrain_path);
 BRUSH_SETTER(NodePath, output_parent_path);
 #undef BRUSH_SETTER
 
-void OpenWorldPlacementBrush3D::set_default_seed(int p_value) {
+void OpenWorldPlacement3D::set_default_seed(int p_value) {
 	default_seed = p_value;
 }
 
-void OpenWorldPlacementBrush3D::set_active_preset(const Ref<OpenWorldPlacementBrushPreset> &p_value) {
+void OpenWorldPlacement3D::set_active_preset(const Ref<OpenWorldPlacementPreset> &p_value) {
 	active_preset = p_value;
 }
 
-void OpenWorldPlacementBrush3D::set_placement_data(const Ref<OpenWorldPlacementData> &p_value) {
+void OpenWorldPlacement3D::set_placement_data(const Ref<OpenWorldPlacementData> &p_value) {
 	placement_data = p_value;
 }
 
-void OpenWorldPlacementBrush3D::_bind_methods() {
-#define BIND_ACCESSOR(name) ClassDB::bind_method(D_METHOD("set_" #name, "value"), &OpenWorldPlacementBrush3D::set_##name); ClassDB::bind_method(D_METHOD("get_" #name), &OpenWorldPlacementBrush3D::get_##name)
+void OpenWorldPlacement3D::_bind_methods() {
+#define BIND_ACCESSOR(name) ClassDB::bind_method(D_METHOD("set_" #name, "value"), &OpenWorldPlacement3D::set_##name); ClassDB::bind_method(D_METHOD("get_" #name), &OpenWorldPlacement3D::get_##name)
 	BIND_ACCESSOR(terrain_path);
 	BIND_ACCESSOR(output_parent_path);
 	BIND_ACCESSOR(active_preset);
 	BIND_ACCESSOR(placement_data);
 	BIND_ACCESSOR(default_seed);
 #undef BIND_ACCESSOR
-	ClassDB::bind_method(D_METHOD("preview_brush", "world_position", "preset", "seed"), &OpenWorldPlacementBrush3D::preview_brush, DEFVAL(Ref<OpenWorldPlacementBrushPreset>()), DEFVAL(0));
-	ClassDB::bind_method(D_METHOD("apply_brush", "world_position", "preset", "seed"), &OpenWorldPlacementBrush3D::apply_brush, DEFVAL(Ref<OpenWorldPlacementBrushPreset>()), DEFVAL(0));
-	ClassDB::bind_method(D_METHOD("rebuild_generated"), &OpenWorldPlacementBrush3D::rebuild_generated);
-	ClassDB::bind_method(D_METHOD("clear_generated"), &OpenWorldPlacementBrush3D::clear_generated);
-	ClassDB::bind_method(D_METHOD("clear_placements"), &OpenWorldPlacementBrush3D::clear_placements);
-	ClassDB::bind_method(D_METHOD("get_generation_report"), &OpenWorldPlacementBrush3D::get_generation_report);
+	ClassDB::bind_method(D_METHOD("preview_placement", "world_position", "preset", "seed"), &OpenWorldPlacement3D::preview_placement, DEFVAL(Ref<OpenWorldPlacementPreset>()), DEFVAL(0));
+	ClassDB::bind_method(D_METHOD("apply_placement", "world_position", "preset", "seed"), &OpenWorldPlacement3D::apply_placement, DEFVAL(Ref<OpenWorldPlacementPreset>()), DEFVAL(0));
+	ClassDB::bind_method(D_METHOD("rebuild_generated"), &OpenWorldPlacement3D::rebuild_generated);
+	ClassDB::bind_method(D_METHOD("clear_generated"), &OpenWorldPlacement3D::clear_generated);
+	ClassDB::bind_method(D_METHOD("clear_placements"), &OpenWorldPlacement3D::clear_placements);
+	ClassDB::bind_method(D_METHOD("get_generation_report"), &OpenWorldPlacement3D::get_generation_report);
 
 	ADD_PROPERTY(PropertyInfo(Variant::NODE_PATH, "terrain_path", PROPERTY_HINT_NODE_PATH_VALID_TYPES, "SimpleTerrain3D"), "set_terrain_path", "get_terrain_path");
 	ADD_PROPERTY(PropertyInfo(Variant::NODE_PATH, "output_parent_path", PROPERTY_HINT_NODE_PATH_VALID_TYPES, "Node3D"), "set_output_parent_path", "get_output_parent_path");
-	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "active_preset", PROPERTY_HINT_RESOURCE_TYPE, "OpenWorldPlacementBrushPreset", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_EDITOR_INSTANTIATE_OBJECT), "set_active_preset", "get_active_preset");
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "active_preset", PROPERTY_HINT_RESOURCE_TYPE, "OpenWorldPlacementPreset", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_EDITOR_INSTANTIATE_OBJECT), "set_active_preset", "get_active_preset");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "placement_data", PROPERTY_HINT_RESOURCE_TYPE, "OpenWorldPlacementData", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_EDITOR_INSTANTIATE_OBJECT), "set_placement_data", "get_placement_data");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "default_seed"), "set_default_seed", "get_default_seed");
 }

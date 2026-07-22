@@ -128,7 +128,7 @@ void SimpleWorldPlacement3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_world_placement_data"), &SimpleWorldPlacement3D::get_world_placement_data);
 	ClassDB::bind_method(D_METHOD("rebuild_placements"), &SimpleWorldPlacement3D::rebuild_placements);
 
-	ADD_GROUP("World Placement", "world_placement_");
-	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "world_placement_library", PROPERTY_HINT_RESOURCE_TYPE, "SimpleWorldPlacementLibrary"), "set_world_placement_library", "get_world_placement_library");
-	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "world_placement_data", PROPERTY_HINT_RESOURCE_TYPE, "SimpleWorldPlacementData"), "set_world_placement_data", "get_world_placement_data");
+	// Legacy SimpleWorld placement: hide from Inspector (B). Keep STORAGE for scene load until cleanup.
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "world_placement_library", PROPERTY_HINT_RESOURCE_TYPE, "SimpleWorldPlacementLibrary", PROPERTY_USAGE_NO_EDITOR), "set_world_placement_library", "get_world_placement_library");
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "world_placement_data", PROPERTY_HINT_RESOURCE_TYPE, "SimpleWorldPlacementData", PROPERTY_USAGE_NO_EDITOR), "set_world_placement_data", "get_world_placement_data");
 }

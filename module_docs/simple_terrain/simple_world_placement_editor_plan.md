@@ -1,5 +1,12 @@
 # Simple World Placement Editor Plan
 
+> **LEGACY / EDITOR DISABLED (2026-07-22)**  
+> PackedScene profile placement is superseded by **World Placement** (`OpenWorldPlacement3D` — trees, rocks, bramble area apply).  
+> Editor UI and Inspector exposure are off (`SIMPLE_WORLD_PLACEMENT_EDITOR_ENABLED = 0`). Runtime/STORAGE remains until scenes are cleaned.  
+> See [`../world_placement/editor_interaction.md`](../world_placement/editor_interaction.md).
+
+Related domain docs: [`../world_placement/README.md`](../world_placement/README.md) (World Placement overview). This file covers the **PackedScene profile library + editor click place** pipeline on SimpleTerrain. Procedural generator area-replacement lives under `world_placement/` and `modules/open_world_terrain/open_world_placement_*`.
+
 ## Goal
 
 Build a data-driven world editor layer on top of `SimpleTerrain3D`.
