@@ -26,6 +26,7 @@ private:
 	Vector2 size = Vector2(20.0, 20.0);
 	real_t yaw_degrees = 0.0;
 	real_t density_per_100_square_meters = 5.0;
+	real_t vine_density_per_100_square_meters = 0.0;
 	real_t minimum_spacing = 2.0;
 	real_t height_min = -1000000.0;
 	real_t height_max = 1000000.0;
@@ -50,6 +51,8 @@ public:
 	real_t get_yaw_degrees() const { return yaw_degrees; }
 	void set_density_per_100_square_meters(real_t p_value);
 	real_t get_density_per_100_square_meters() const { return density_per_100_square_meters; }
+	void set_vine_density_per_100_square_meters(real_t p_value);
+	real_t get_vine_density_per_100_square_meters() const { return vine_density_per_100_square_meters; }
 	void set_minimum_spacing(real_t p_value);
 	real_t get_minimum_spacing() const { return minimum_spacing; }
 	void set_height_min(real_t p_value);
@@ -70,8 +73,13 @@ public:
 	Ref<OpenWorldPlacementEntry> get_entry(int p_index) const;
 
 	real_t get_footprint_area() const;
+	int get_requested_primary_object_count() const;
+	int get_requested_vine_object_count() const;
 	int get_requested_object_count() const;
 	Dictionary validate_preset() const;
+
+	static bool is_primary_pool_entry(const Ref<OpenWorldPlacementEntry> &p_entry);
+	static bool is_vine_pool_entry(const Ref<OpenWorldPlacementEntry> &p_entry);
 };
 
 VARIANT_ENUM_CAST(OpenWorldPlacementPreset::PlacementShape);

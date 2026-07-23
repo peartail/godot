@@ -134,7 +134,11 @@ Ref<OpenWorldRockTopologyData> OpenWorldRockGenerator3D::_build_topology(const P
 			int ids[3]; int old_ids[3] = { face.indices[0], face.indices[k - 1], face.indices[k] };
 			for (int q = 0; q < 3; q++) { ids[q] = 0; while (ids[q] < vertices.size() && vertices[ids[q]] != hull.vertices[old_ids[q]]) ids[q]++; }
 			Vector3 normal = (vertices[ids[1]] - vertices[ids[0]]).cross(vertices[ids[2]] - vertices[ids[0]]);
-			if (normal.dot((vertices[ids[0]] + vertices[ids[1]] + vertices[ids[2]]) / 3.0 - center) < 0.0) SWAP(ids[1], ids[2]);
+			// Godot front faces are clockwise. Keep winding so the geometric cross points
+			// toward the hull center (inward); that reads as CW when viewed from outside.
+			if (normal.dot((vertices[ids[0]] + vertices[ids[1]] + vertices[ids[2]]) / 3.0 - center) > 0.0) {
+				SWAP(ids[1], ids[2]);
+			}
 			int smallest = ids[0] <= ids[1] && ids[0] <= ids[2] ? 0 : (ids[1] <= ids[2] ? 1 : 2);
 			triangles.push_back({ ids[smallest], ids[(smallest + 1) % 3], ids[(smallest + 2) % 3] });
 		}
@@ -142,7 +146,14 @@ Ref<OpenWorldRockTopologyData> OpenWorldRockGenerator3D::_build_topology(const P
 	for (int i = 1; i < triangles.size(); i++) { RockTriangle value = triangles[i]; int j = i - 1; while (j >= 0 && triangle_less(value, triangles[j])) { triangles.write[j + 1] = triangles[j]; j--; } triangles.write[j + 1] = value; }
 	PackedVector3Array packed_vertices; for (const Vector3 &vertex : vertices) packed_vertices.push_back(vertex);
 	PackedInt32Array indices; PackedInt32Array groups;
-	for (const RockTriangle &triangle : triangles) { indices.push_back(triangle.a); indices.push_back(triangle.b); indices.push_back(triangle.c); Vector3 n = (vertices[triangle.b] - vertices[triangle.a]).cross(vertices[triangle.c] - vertices[triangle.a]).normalized(); groups.push_back(n.y > 0.55 ? 0 : (n.y < -0.55 ? 1 : 2)); }
+	for (const RockTriangle &triangle : triangles) {
+		indices.push_back(triangle.a);
+		indices.push_back(triangle.b);
+		indices.push_back(triangle.c);
+		// Outward normal for face grouping (opposite of CW geometric cross).
+		Vector3 n = -(vertices[triangle.b] - vertices[triangle.a]).cross(vertices[triangle.c] - vertices[triangle.a]).normalized();
+		groups.push_back(n.y > 0.55 ? 0 : (n.y < -0.55 ? 1 : 2));
+	}
 	AABB bounds(vertices[0], Vector3()); for (int i = 1; i < vertices.size(); i++) bounds.expand_to(vertices[i]);
 	real_t base_y = vertices[0].y; for (const Vector3 &vertex : vertices) base_y = MIN(base_y, vertex.y);
 	uint64_t hash = 1469598103934665603ULL; for (const Vector3 &vertex : vertices) { hash = hash_mix(hash, quantize(vertex.x)); hash = hash_mix(hash, quantize(vertex.y)); hash = hash_mix(hash, quantize(vertex.z)); } for (int index : indices) hash = hash_mix(hash, index);
@@ -160,7 +171,9 @@ Ref<ArrayMesh> OpenWorldRockGenerator3D::_build_mesh(const Ref<OpenWorldRockTopo
 	if (p_topology.is_null()) return Ref<ArrayMesh>(); PackedVector3Array hull_vertices = p_topology->get_hull_vertices(); PackedInt32Array hull_indices = p_topology->get_hull_indices();
 	PackedVector3Array vertices; PackedVector3Array normals; PackedVector2Array uvs; PackedColorArray colors;
 	for (int i = 0; i < hull_indices.size(); i += 3) {
-		Vector3 a = hull_vertices[hull_indices[i]], b = hull_vertices[hull_indices[i + 1]], c = hull_vertices[hull_indices[i + 2]]; Vector3 normal = (b - a).cross(c - a).normalized();
+		Vector3 a = hull_vertices[hull_indices[i]], b = hull_vertices[hull_indices[i + 1]], c = hull_vertices[hull_indices[i + 2]];
+		// Indices are Godot-CW (front from outside); geometric cross points inward — flip for lighting.
+		Vector3 normal = -(b - a).cross(c - a).normalized();
 		Vector3 face_vertices[3] = { a, b, c };
 		for (const Vector3 &vertex : face_vertices) { vertices.push_back(vertex); normals.push_back(normal); uvs.push_back(Vector2(vertex.x, vertex.z)); real_t upward = CLAMP(normal.y * 0.5 + 0.5, (real_t)0.0, (real_t)1.0); real_t downward = CLAMP(-normal.y, (real_t)0.0, (real_t)1.0); real_t strata = CLAMP(Math::abs(normal.dot(generation_request->get_profile()->get_strata_direction())), (real_t)0.0, (real_t)1.0); real_t phase = (real_t)((uint32_t)generation_request->get_seed() & 255) / 255.0; colors.push_back(Color(upward, downward, strata, phase)); }
 	}

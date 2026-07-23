@@ -144,3 +144,4 @@ Inspector 버튼은 같은 공개 API를 호출하는 선택 기능이다.
 - [테스트 케이스](open_world_vine_test_cases.md)
 - [테스트 샘플 생성](open_world_vine_test_sample_setup.md)
 - [BRAMBLE 생성 가이드](open_world_vine_bramble_guide.md)
+- World Placement 연동 Phase 2 메모: [`module_docs/world_placement/vine_placement_phase2.md`](../module_docs/world_placement/vine_placement_phase2.md)

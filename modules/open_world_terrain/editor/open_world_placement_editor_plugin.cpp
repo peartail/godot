@@ -21,18 +21,54 @@
 
 void OpenWorldPlacementEditorPlugin::_select_mode_pressed() {
 	apply_mode = false;
+	_set_pending(false);
 	_clear_cursor();
 	_update_toolbar();
 }
 
 void OpenWorldPlacementEditorPlugin::_apply_mode_pressed() {
 	apply_mode = placement != nullptr;
+	_set_pending(false);
 	_update_toolbar();
 }
 
 void OpenWorldPlacementEditorPlugin::_presets_pressed() {
 	if (preset_dock != nullptr) {
 		EditorDockManager::get_singleton()->focus_dock(preset_dock);
+	}
+}
+
+void OpenWorldPlacementEditorPlugin::_confirm_apply_pressed() {
+	if (!pending_confirm) {
+		return;
+	}
+	Camera3D *camera = nullptr;
+	if (Node3DEditor::get_singleton() != nullptr) {
+		Node3DEditorViewport *viewport = Node3DEditor::get_singleton()->get_editor_viewport(0);
+		if (viewport != nullptr) {
+			camera = viewport->get_camera_3d();
+		}
+	}
+	_confirm_pending_apply(camera);
+}
+
+void OpenWorldPlacementEditorPlugin::_cancel_pending_pressed() {
+	_set_pending(false);
+	_update_overlay();
+	update_overlays();
+}
+
+void OpenWorldPlacementEditorPlugin::_set_pending(bool p_pending) {
+	pending_confirm = p_pending;
+	if (!pending_confirm) {
+		pending_center = Vector3();
+		pending_ray_origin_y = OpenWorldPlacement3D::VERTICAL_RAY_ORIGIN_AUTO;
+	}
+	if (confirm_apply_button != nullptr) {
+		confirm_apply_button->set_visible(pending_confirm);
+	}
+	if (cancel_pending_button != nullptr) {
+		cancel_pending_button->set_visible(pending_confirm);
 	}
 }
 
@@ -47,6 +83,11 @@ void OpenWorldPlacementEditorPlugin::_update_toolbar() {
 	select_mode_button->set_pressed_no_signal(has_placement && !apply_mode);
 	apply_mode_button->set_pressed_no_signal(has_placement && apply_mode);
 	overlay_panel->set_visible(has_placement && apply_mode);
+	if (!apply_mode) {
+		_set_pending(false);
+	} else {
+		_set_pending(pending_confirm);
+	}
 	_update_overlay();
 }
 
@@ -85,22 +126,24 @@ void OpenWorldPlacementEditorPlugin::_update_overlay() {
 		const String title = preset->get_display_name().is_empty() ? preset->get_stable_id() : preset->get_display_name();
 		status_label->set_text(vformat(TTR("Apply: %s  |  seed %d  |  requested %d"), title, placement->get_default_seed(), preset->get_requested_object_count()));
 	}
-	if (last_preview_report.is_empty()) {
-		preview_label->set_text(TTRC("Click to replace the footprint region (flat plane if no terrain)."));
+	if (pending_confirm) {
+		preview_label->set_text(TTRC("Footprint locked. Press Apply to place, or click elsewhere / Cancel to move again."));
+	} else if (last_preview_report.is_empty()) {
+		preview_label->set_text(TTRC("Click to lock a footprint, then press Apply."));
 	} else if ((bool)last_preview_report.get("success", false)) {
-		preview_label->set_text(vformat(TTR("Preview accepted %d / replace %d"), (int)last_preview_report.get("accepted_count", 0), (int)last_preview_report.get("replacement_count", 0)));
+		preview_label->set_text(vformat(TTR("Last apply accepted %d / replace %d"), (int)last_preview_report.get("accepted_count", 0), (int)last_preview_report.get("replacement_count", 0)));
 	} else {
 		PackedStringArray codes = last_preview_report.get("error_codes", PackedStringArray());
-		preview_label->set_text(codes.is_empty() ? TTRC("Preview failed.") : vformat(TTR("Preview failed: %s"), String(", ").join(codes)));
+		preview_label->set_text(codes.is_empty() ? TTRC("Last apply failed.") : vformat(TTR("Last apply failed: %s"), String(", ").join(codes)));
 	}
 }
 
-SimpleTerrain3D *OpenWorldPlacementEditorPlugin::_resolve_terrain() const {
-	if (placement == nullptr || !placement->is_inside_tree()) {
+SimpleTerrain3D *OpenWorldPlacementEditorPlugin::_find_terrain_for_center(const Vector3 &p_world_center, Camera3D *p_camera) const {
+	if (placement == nullptr) {
 		return nullptr;
 	}
-	Node *node = placement->get_node_or_null(placement->get_terrain_path());
-	return Object::cast_to<SimpleTerrain3D>(node);
+	const real_t ray_y = p_camera != nullptr ? p_camera->get_global_position().y : OpenWorldPlacement3D::VERTICAL_RAY_ORIGIN_AUTO;
+	return placement->find_terrain_at_world_xz(p_world_center, ray_y);
 }
 
 Dictionary OpenWorldPlacementEditorPlugin::_get_hit(Camera3D *p_camera, const Vector2 &p_mouse_position) const {
@@ -110,15 +153,23 @@ Dictionary OpenWorldPlacementEditorPlugin::_get_hit(Camera3D *p_camera, const Ve
 	const Vector3 ray_origin = p_camera->project_ray_origin(p_mouse_position);
 	const Vector3 ray_direction = p_camera->project_ray_normal(p_mouse_position);
 
-	SimpleTerrain3D *terrain = _resolve_terrain();
-	if (terrain != nullptr) {
-		Dictionary terrain_hit = terrain->get_brush_hit(ray_origin, ray_direction);
-		if (!terrain_hit.is_empty() && terrain_hit.has("position")) {
-			return terrain_hit;
+	if (placement != nullptr && placement->is_inside_tree()) {
+		const real_t plane_y = placement->get_global_position().y;
+		if (!Math::is_zero_approx(ray_direction.y)) {
+			const real_t t_plane = (plane_y - ray_origin.y) / ray_direction.y;
+			if (t_plane >= 0.0) {
+				const Vector3 plane_point = ray_origin + ray_direction * t_plane;
+				SimpleTerrain3D *terrain = _find_terrain_for_center(plane_point, p_camera);
+				if (terrain != nullptr) {
+					Dictionary terrain_hit = terrain->get_brush_hit(ray_origin, ray_direction);
+					if (!terrain_hit.is_empty() && terrain_hit.has("position")) {
+						return terrain_hit;
+					}
+				}
+			}
 		}
 	}
 
-	// Flat-plane fallback when terrain_path is empty or the ray misses terrain.
 	const real_t plane_y = placement != nullptr ? placement->get_global_position().y : 0.0;
 	if (Math::is_zero_approx(ray_direction.y)) {
 		return Dictionary();
@@ -147,7 +198,7 @@ void OpenWorldPlacementEditorPlugin::_restore_placement_snapshot(Object *p_place
 	node->rebuild_generated();
 }
 
-void OpenWorldPlacementEditorPlugin::_apply_at_mouse(Camera3D *p_camera, const Vector2 &p_mouse_position) {
+void OpenWorldPlacementEditorPlugin::_lock_pending_at_mouse(Camera3D *p_camera, const Vector2 &p_mouse_position) {
 	if (placement == nullptr || placement->get_active_preset().is_null()) {
 		WARN_PRINT("World Placement apply requires OpenWorldPlacement3D with an active preset.");
 		return;
@@ -156,7 +207,30 @@ void OpenWorldPlacementEditorPlugin::_apply_at_mouse(Camera3D *p_camera, const V
 	if (hit.is_empty() || !hit.has("position")) {
 		return;
 	}
-	const Vector3 world_position = hit["position"];
+	pending_center = hit["position"];
+	pending_ray_origin_y = p_camera != nullptr ? p_camera->get_global_position().y : OpenWorldPlacement3D::VERTICAL_RAY_ORIGIN_AUTO;
+	_set_pending(true);
+	_update_cursor(p_camera, hit, true);
+	_update_overlay();
+}
+
+void OpenWorldPlacementEditorPlugin::_confirm_pending_apply(Camera3D *p_camera) {
+	if (!pending_confirm || placement == nullptr) {
+		return;
+	}
+	(void)p_camera;
+	const Vector3 world_position = pending_center;
+	const real_t ray_y = pending_ray_origin_y;
+	_set_pending(false);
+	_apply_at_world_position(world_position, ray_y);
+	_update_overlay();
+}
+
+void OpenWorldPlacementEditorPlugin::_apply_at_world_position(const Vector3 &p_world_position, real_t p_vertical_ray_origin_y) {
+	if (placement == nullptr || placement->get_active_preset().is_null()) {
+		WARN_PRINT("World Placement apply requires OpenWorldPlacement3D with an active preset.");
+		return;
+	}
 
 	Ref<OpenWorldPlacementData> placement_data_ref = placement->get_placement_data();
 	if (placement_data_ref.is_null()) {
@@ -167,7 +241,7 @@ void OpenWorldPlacementEditorPlugin::_apply_at_mouse(Camera3D *p_camera, const V
 	before_snapshot.instantiate();
 	before_snapshot->assign_from(placement_data_ref);
 
-	const Dictionary report = placement->apply_placement(world_position, Ref<OpenWorldPlacementPreset>(), 0);
+	const Dictionary report = placement->apply_placement(p_world_position, Ref<OpenWorldPlacementPreset>(), 0, p_vertical_ray_origin_y);
 	last_preview_report = report;
 	_update_overlay();
 	if (!(bool)report.get("success", false)) {
@@ -187,7 +261,8 @@ void OpenWorldPlacementEditorPlugin::_apply_at_mouse(Camera3D *p_camera, const V
 	undo_redo->commit_action(false);
 }
 
-void OpenWorldPlacementEditorPlugin::_update_cursor(Camera3D *p_camera, const Dictionary &p_hit) {
+void OpenWorldPlacementEditorPlugin::_update_cursor(Camera3D *p_camera, const Dictionary &p_hit, bool p_locked_style) {
+	(void)p_locked_style;
 	cursor_points.clear();
 	has_cursor_hit = false;
 	if (p_camera == nullptr || placement == nullptr || placement->get_active_preset().is_null() || p_hit.is_empty() || !p_hit.has("position")) {
@@ -195,8 +270,8 @@ void OpenWorldPlacementEditorPlugin::_update_cursor(Camera3D *p_camera, const Di
 		return;
 	}
 	const Ref<OpenWorldPlacementPreset> preset = placement->get_active_preset();
-	SimpleTerrain3D *terrain = _resolve_terrain();
 	cursor_center = p_hit["position"];
+	SimpleTerrain3D *terrain = _find_terrain_for_center(cursor_center, p_camera);
 
 	const Vector2 size = preset->get_size();
 	const real_t yaw = Math::deg_to_rad(preset->get_yaw_degrees());
@@ -267,7 +342,8 @@ void OpenWorldPlacementEditorPlugin::_draw_over_viewport(Control *p_overlay) {
 	if (!apply_mode || !has_cursor_hit || cursor_points.size() < 2 || p_overlay == nullptr) {
 		return;
 	}
-	p_overlay->draw_polyline(cursor_points, Color(0.2, 0.85, 0.55, 0.9), 2.0 * EDSCALE, true);
+	const Color color = pending_confirm ? Color(1.0, 0.72, 0.2, 0.95) : Color(0.2, 0.85, 0.55, 0.9);
+	p_overlay->draw_polyline(cursor_points, color, (pending_confirm ? 3.0 : 2.0) * EDSCALE, true);
 }
 
 void OpenWorldPlacementEditorPlugin::_notification(int p_what) {
@@ -307,6 +383,7 @@ void OpenWorldPlacementEditorPlugin::edit(Object *p_object) {
 	placement = Object::cast_to<OpenWorldPlacement3D>(p_object);
 	if (placement == nullptr) {
 		apply_mode = false;
+		_set_pending(false);
 		_clear_cursor();
 		last_preview_report = Dictionary();
 	}
@@ -319,6 +396,7 @@ void OpenWorldPlacementEditorPlugin::edit(Object *p_object) {
 void OpenWorldPlacementEditorPlugin::clear() {
 	placement = nullptr;
 	apply_mode = false;
+	_set_pending(false);
 	_clear_cursor();
 	last_preview_report = Dictionary();
 	if (preset_dock != nullptr) {
@@ -329,23 +407,35 @@ void OpenWorldPlacementEditorPlugin::clear() {
 
 EditorPlugin::AfterGUIInput OpenWorldPlacementEditorPlugin::forward_3d_gui_input(Camera3D *p_camera, const Ref<InputEvent> &p_event) {
 	if (!apply_mode || placement == nullptr) {
+		_set_pending(false);
 		_clear_cursor();
 		return AFTER_GUI_INPUT_PASS;
 	}
 
 	Ref<InputEventMouseButton> mouse_button = p_event;
 	if (mouse_button.is_valid() && mouse_button->get_button_index() == MouseButton::LEFT && mouse_button->is_pressed() && !mouse_button->is_echo()) {
-		_apply_at_mouse(p_camera, mouse_button->get_position());
+		if (pending_confirm) {
+			// Click elsewhere cancels the locked footprint and resumes free move.
+			_set_pending(false);
+			const Dictionary hit = _get_hit(p_camera, mouse_button->get_position());
+			_update_cursor(p_camera, hit, false);
+			_update_overlay();
+		} else {
+			_lock_pending_at_mouse(p_camera, mouse_button->get_position());
+		}
 		return AFTER_GUI_INPUT_STOP;
 	}
 
 	Ref<InputEventMouseMotion> mouse_motion = p_event;
 	if (mouse_motion.is_valid()) {
-		const Dictionary hit = _get_hit(p_camera, mouse_motion->get_position());
-		_update_cursor(p_camera, hit);
-		if (!hit.is_empty() && hit.has("position") && placement->get_active_preset().is_valid()) {
-			last_preview_report = placement->preview_placement(hit["position"], Ref<OpenWorldPlacementPreset>(), 0);
-			_update_overlay();
+		if (pending_confirm) {
+			// Keep the locked world footprint; only refresh screen projection (camera orbit).
+			Dictionary locked_hit;
+			locked_hit["position"] = pending_center;
+			_update_cursor(p_camera, locked_hit, true);
+		} else {
+			const Dictionary hit = _get_hit(p_camera, mouse_motion->get_position());
+			_update_cursor(p_camera, hit, false);
 		}
 		return AFTER_GUI_INPUT_PASS;
 	}
@@ -369,7 +459,7 @@ OpenWorldPlacementEditorPlugin::OpenWorldPlacementEditorPlugin() {
 	overlay_panel->hide();
 	overlay_panel->set_anchors_and_offsets_preset(Control::PRESET_TOP_RIGHT, Control::PRESET_MODE_MINSIZE, 12 * EDSCALE);
 	overlay_panel->set_h_grow_direction(Control::GROW_DIRECTION_BEGIN);
-	overlay_panel->set_custom_minimum_size(Size2(260, 0) * EDSCALE);
+	overlay_panel->set_custom_minimum_size(Size2(280, 0) * EDSCALE);
 
 	overlay_vbox = memnew(VBoxContainer);
 	overlay_vbox->add_theme_constant_override("separation", 6 * EDSCALE);
@@ -381,9 +471,26 @@ OpenWorldPlacementEditorPlugin::OpenWorldPlacementEditorPlugin() {
 	overlay_vbox->add_child(status_label);
 
 	preview_label = memnew(Label);
-	preview_label->set_text(TTRC("Click to apply area replacement."));
+	preview_label->set_text(TTRC("Click to lock a footprint, then press Apply."));
 	preview_label->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
 	overlay_vbox->add_child(preview_label);
+
+	HBoxContainer *confirm_row = memnew(HBoxContainer);
+	overlay_vbox->add_child(confirm_row);
+
+	confirm_apply_button = memnew(Button);
+	confirm_apply_button->set_text(TTRC("Apply"));
+	confirm_apply_button->set_tooltip_text(TTRC("Place content inside the locked footprint."));
+	confirm_apply_button->set_visible(false);
+	confirm_apply_button->connect(SceneStringName(pressed), callable_mp(this, &OpenWorldPlacementEditorPlugin::_confirm_apply_pressed));
+	confirm_row->add_child(confirm_apply_button);
+
+	cancel_pending_button = memnew(Button);
+	cancel_pending_button->set_text(TTRC("Cancel"));
+	cancel_pending_button->set_tooltip_text(TTRC("Unlock the footprint and resume free move."));
+	cancel_pending_button->set_visible(false);
+	cancel_pending_button->connect(SceneStringName(pressed), callable_mp(this, &OpenWorldPlacementEditorPlugin::_cancel_pending_pressed));
+	confirm_row->add_child(cancel_pending_button);
 
 	mode_button_group.instantiate();
 
@@ -399,7 +506,7 @@ OpenWorldPlacementEditorPlugin::OpenWorldPlacementEditorPlugin() {
 	apply_mode_button->set_toggle_mode(true);
 	apply_mode_button->set_button_group(mode_button_group);
 	apply_mode_button->set_theme_type_variation(SceneStringName(FlatButton));
-	apply_mode_button->set_tooltip_text(TTRC("Click terrain to apply World Placement (area replacement)."));
+	apply_mode_button->set_tooltip_text(TTRC("Lock a footprint, then confirm with Apply."));
 	apply_mode_button->set_accessibility_name(TTRC("World Placement Apply Mode"));
 	apply_mode_button->connect(SceneStringName(pressed), callable_mp(this, &OpenWorldPlacementEditorPlugin::_apply_mode_pressed));
 	toolbar->add_child(apply_mode_button);

@@ -24,6 +24,7 @@ PLACEMENT_PRESET_SETTER(PlacementShape, shape, (PlacementShape)CLAMP((int)p_valu
 PLACEMENT_PRESET_SETTER(Vector2, size, Vector2(MAX((real_t)0.01, Math::abs(p_value.x)), MAX((real_t)0.01, Math::abs(p_value.y))));
 PLACEMENT_PRESET_SETTER(real_t, yaw_degrees, Math::fposmod(p_value, (real_t)360.0));
 PLACEMENT_PRESET_SETTER(real_t, density_per_100_square_meters, MAX((real_t)0.0, p_value));
+PLACEMENT_PRESET_SETTER(real_t, vine_density_per_100_square_meters, MAX((real_t)0.0, p_value));
 PLACEMENT_PRESET_SETTER(real_t, minimum_spacing, MAX((real_t)0.0, p_value));
 PLACEMENT_PRESET_SETTER(real_t, height_min, p_value);
 PLACEMENT_PRESET_SETTER(real_t, height_max, p_value);
@@ -55,6 +56,30 @@ Ref<OpenWorldPlacementEntry> OpenWorldPlacementPreset::get_entry(int p_index) co
 	return entries[p_index];
 }
 
+bool OpenWorldPlacementPreset::is_primary_pool_entry(const Ref<OpenWorldPlacementEntry> &p_entry) {
+	if (p_entry.is_null()) {
+		return false;
+	}
+	switch (p_entry->get_content_kind()) {
+		case OpenWorldPlacementEntry::CONTENT_TREE:
+		case OpenWorldPlacementEntry::CONTENT_ROCK:
+			return true;
+		case OpenWorldPlacementEntry::CONTENT_VINE: {
+			const Ref<OpenWorldVineGenerationRequest> request = p_entry->get_vine_request_template();
+			return request.is_valid() && request->get_mode() == OpenWorldVineGenerationRequest::MODE_BRAMBLE;
+		}
+	}
+	return false;
+}
+
+bool OpenWorldPlacementPreset::is_vine_pool_entry(const Ref<OpenWorldPlacementEntry> &p_entry) {
+	if (p_entry.is_null() || p_entry->get_content_kind() != OpenWorldPlacementEntry::CONTENT_VINE) {
+		return false;
+	}
+	const Ref<OpenWorldVineGenerationRequest> request = p_entry->get_vine_request_template();
+	return request.is_valid() && request->get_mode() == OpenWorldVineGenerationRequest::MODE_CREEPING;
+}
+
 real_t OpenWorldPlacementPreset::get_footprint_area() const {
 	switch (shape) {
 		case SHAPE_CIRCLE: {
@@ -69,8 +94,36 @@ real_t OpenWorldPlacementPreset::get_footprint_area() const {
 	}
 }
 
-int OpenWorldPlacementPreset::get_requested_object_count() const {
+int OpenWorldPlacementPreset::get_requested_primary_object_count() const {
+	real_t primary_weight = 0.0;
+	for (int i = 0; i < entries.size(); i++) {
+		Ref<OpenWorldPlacementEntry> entry = entries[i];
+		if (entry.is_valid() && entry->is_enabled() && is_primary_pool_entry(entry)) {
+			primary_weight += entry->get_weight();
+		}
+	}
+	if (primary_weight <= 0.0) {
+		return 0;
+	}
 	return MAX(0, (int)Math::round(get_footprint_area() * density_per_100_square_meters / 100.0));
+}
+
+int OpenWorldPlacementPreset::get_requested_vine_object_count() const {
+	real_t vine_weight = 0.0;
+	for (int i = 0; i < entries.size(); i++) {
+		Ref<OpenWorldPlacementEntry> entry = entries[i];
+		if (entry.is_valid() && entry->is_enabled() && is_vine_pool_entry(entry)) {
+			vine_weight += entry->get_weight();
+		}
+	}
+	if (vine_weight <= 0.0) {
+		return 0;
+	}
+	return MAX(0, (int)Math::round(get_footprint_area() * vine_density_per_100_square_meters / 100.0));
+}
+
+int OpenWorldPlacementPreset::get_requested_object_count() const {
+	return get_requested_primary_object_count() + get_requested_vine_object_count();
 }
 
 Dictionary OpenWorldPlacementPreset::validate_preset() const {
@@ -93,6 +146,8 @@ Dictionary OpenWorldPlacementPreset::validate_preset() const {
 		add_error("SLOPE_RANGE_INVALID", "slope_min_degrees must not exceed slope_max_degrees.");
 	}
 	real_t total_weight = 0.0;
+	real_t primary_weight = 0.0;
+	real_t vine_weight = 0.0;
 	HashSet<String> ids;
 	for (int i = 0; i < entries.size(); i++) {
 		Ref<OpenWorldPlacementEntry> entry = entries[i];
@@ -113,12 +168,26 @@ Dictionary OpenWorldPlacementPreset::validate_preset() const {
 		ids.insert(entry->get_stable_id());
 		if (entry->is_enabled()) {
 			total_weight += entry->get_weight();
+			if (is_primary_pool_entry(entry)) {
+				primary_weight += entry->get_weight();
+			}
+			if (is_vine_pool_entry(entry)) {
+				vine_weight += entry->get_weight();
+			}
 		}
 	}
 	if (total_weight <= 0.0) {
 		add_error("NO_WEIGHTED_ENTRIES", "at least one enabled entry with positive weight is required.");
 	}
-	const int requested_count = get_requested_object_count();
+	if (density_per_100_square_meters > 0.0 && primary_weight <= 0.0) {
+		add_error("PRIMARY_ENTRIES_MISSING", "density_per_100_square_meters > 0 requires at least one enabled Tree, Rock, or Bramble entry.");
+	}
+	if (vine_density_per_100_square_meters > 0.0 && vine_weight <= 0.0) {
+		add_error("VINE_ENTRIES_MISSING", "vine_density_per_100_square_meters > 0 requires at least one enabled Creeping vine entry.");
+	}
+	const int requested_primary = get_requested_primary_object_count();
+	const int requested_vine = get_requested_vine_object_count();
+	const int requested_count = requested_primary + requested_vine;
 	if (requested_count > max_objects_per_operation) {
 		add_error("MAX_OBJECTS_EXCEEDED", vformat("requested %d objects exceeds the operation limit %d; reduce footprint size or density, or explicitly raise the preset limit.", requested_count, max_objects_per_operation));
 	}
@@ -130,9 +199,14 @@ Dictionary OpenWorldPlacementPreset::validate_preset() const {
 	report["error_count"] = errors.size();
 	report["footprint_area"] = get_footprint_area();
 	report["density_per_100_square_meters"] = density_per_100_square_meters;
+	report["vine_density_per_100_square_meters"] = vine_density_per_100_square_meters;
+	report["requested_primary"] = requested_primary;
+	report["requested_vine"] = requested_vine;
 	report["requested_count"] = requested_count;
 	report["max_objects_per_operation"] = max_objects_per_operation;
 	report["total_weight"] = total_weight;
+	report["primary_weight"] = primary_weight;
+	report["vine_weight"] = vine_weight;
 	return report;
 }
 
@@ -144,6 +218,7 @@ void OpenWorldPlacementPreset::_bind_methods() {
 	BIND_ACCESSOR(size);
 	BIND_ACCESSOR(yaw_degrees);
 	BIND_ACCESSOR(density_per_100_square_meters);
+	BIND_ACCESSOR(vine_density_per_100_square_meters);
 	BIND_ACCESSOR(minimum_spacing);
 	BIND_ACCESSOR(height_min);
 	BIND_ACCESSOR(height_max);
@@ -157,6 +232,8 @@ void OpenWorldPlacementPreset::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_entry_count"), &OpenWorldPlacementPreset::get_entry_count);
 	ClassDB::bind_method(D_METHOD("get_entry", "index"), &OpenWorldPlacementPreset::get_entry);
 	ClassDB::bind_method(D_METHOD("get_footprint_area"), &OpenWorldPlacementPreset::get_footprint_area);
+	ClassDB::bind_method(D_METHOD("get_requested_primary_object_count"), &OpenWorldPlacementPreset::get_requested_primary_object_count);
+	ClassDB::bind_method(D_METHOD("get_requested_vine_object_count"), &OpenWorldPlacementPreset::get_requested_vine_object_count);
 	ClassDB::bind_method(D_METHOD("get_requested_object_count"), &OpenWorldPlacementPreset::get_requested_object_count);
 	ClassDB::bind_method(D_METHOD("validate_preset"), &OpenWorldPlacementPreset::validate_preset);
 
@@ -170,6 +247,7 @@ void OpenWorldPlacementPreset::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR2, "size", PROPERTY_HINT_NONE, "suffix:m"), "set_size", "get_size");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "yaw_degrees", PROPERTY_HINT_RANGE, "-360,360,0.1,radians_as_degrees"), "set_yaw_degrees", "get_yaw_degrees");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "density_per_100_square_meters", PROPERTY_HINT_RANGE, "0,10000,0.1,or_greater"), "set_density_per_100_square_meters", "get_density_per_100_square_meters");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "vine_density_per_100_square_meters", PROPERTY_HINT_RANGE, "0,10000,0.1,or_greater"), "set_vine_density_per_100_square_meters", "get_vine_density_per_100_square_meters");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "minimum_spacing", PROPERTY_HINT_RANGE, "0,1000,0.01,or_greater,suffix:m"), "set_minimum_spacing", "get_minimum_spacing");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "height_min", PROPERTY_HINT_RANGE, "-1000000,1000000,0.1,suffix:m"), "set_height_min", "get_height_min");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "height_max", PROPERTY_HINT_RANGE, "-1000000,1000000,0.1,suffix:m"), "set_height_max", "get_height_max");

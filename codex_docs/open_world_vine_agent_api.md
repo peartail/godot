@@ -98,7 +98,7 @@ if ((bool)validation["success"]) {
 
 ### Creeping
 
-- `support_path`: `OpenWorldTerrain3D` 또는 `MeshInstance3D`
+- `support_path`: `OpenWorldTerrain3D`, `SimpleTerrain3D`, or `MeshInstance3D`
 - `start_position`: 표면 probe 범위 안
 - `start_direction`: 바닥 진행 방향
 - `desired_length`: 목표 길이

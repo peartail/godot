@@ -31,6 +31,8 @@ class OpenWorldPlacementEditorPlugin : public EditorPlugin {
 	Button *select_mode_button = nullptr;
 	Button *apply_mode_button = nullptr;
 	Button *presets_button = nullptr;
+	Button *confirm_apply_button = nullptr;
+	Button *cancel_pending_button = nullptr;
 	OpenWorldPlacementPresetDock *preset_dock = nullptr;
 	Ref<ButtonGroup> mode_button_group;
 	Label *status_label = nullptr;
@@ -38,22 +40,30 @@ class OpenWorldPlacementEditorPlugin : public EditorPlugin {
 
 	OpenWorldPlacement3D *placement = nullptr;
 	bool apply_mode = false;
+	bool pending_confirm = false;
 	bool has_cursor_hit = false;
 	Vector3 cursor_center;
+	Vector3 pending_center;
+	real_t pending_ray_origin_y = OpenWorldPlacement3D::VERTICAL_RAY_ORIGIN_AUTO;
 	PackedVector2Array cursor_points;
 	Dictionary last_preview_report;
 
 	void _select_mode_pressed();
 	void _apply_mode_pressed();
 	void _presets_pressed();
+	void _confirm_apply_pressed();
+	void _cancel_pending_pressed();
 	void _update_toolbar();
 	void _attach_overlay();
 	void _detach_overlay();
 	void _update_overlay();
-	SimpleTerrain3D *_resolve_terrain() const;
+	void _set_pending(bool p_pending);
+	SimpleTerrain3D *_find_terrain_for_center(const Vector3 &p_world_center, Camera3D *p_camera) const;
 	Dictionary _get_hit(Camera3D *p_camera, const Vector2 &p_mouse_position) const;
-	void _apply_at_mouse(Camera3D *p_camera, const Vector2 &p_mouse_position);
-	void _update_cursor(Camera3D *p_camera, const Dictionary &p_hit);
+	void _lock_pending_at_mouse(Camera3D *p_camera, const Vector2 &p_mouse_position);
+	void _confirm_pending_apply(Camera3D *p_camera);
+	void _apply_at_world_position(const Vector3 &p_world_position, real_t p_vertical_ray_origin_y);
+	void _update_cursor(Camera3D *p_camera, const Dictionary &p_hit, bool p_locked_style);
 	void _clear_cursor();
 	void _draw_over_viewport(Control *p_overlay);
 	void _restore_placement_snapshot(Object *p_placement, const Ref<OpenWorldPlacementData> &p_snapshot);

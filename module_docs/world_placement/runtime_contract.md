@@ -4,13 +4,12 @@ Moved from `module_docs/open_world_terrain/world_placement_brush_implementation_
 
 ## 1. Scope
 
-Phase 1 implements a deterministic, preset-driven apply that projects a circle, rectangle, or ellipse vertically onto SimpleTerrain3D and places a weighted mix of:
+Phase 1 + Phase 2a implement a deterministic, preset-driven apply that projects a circle, rectangle, or ellipse vertically onto SimpleTerrain3D and places:
 
-- OpenWorldTreeGenerator3D
-- OpenWorldRockGenerator3D
-- OpenWorldVineGenerator3D in Bramble mode only
+- OpenWorldTreeGenerator3D / OpenWorldRockGenerator3D / Bramble vines via **primary** density
+- Creeping vines via independent **vine** density (`vine_density_per_100_square_meters`)
 
-Creeping, Climbing, Hanging, and TreeWrap vines are Phase 2. They require their own density and support-selection/projection rules and must not share the Phase 1 tree/rock density contract.
+Climbing, Hanging, and TreeWrap vines remain deferred and return `VINE_MODE_PHASE2`. They must not share the primary tree/rock/Bramble density contract; when enabled they join the vine density pool.
 
 Terrain streaming, placement streaming, regional culling, MultiMesh conversion, and editor viewport UI are deferred. The runtime and data APIs must remain fully scriptable and headless.
 
@@ -32,29 +31,32 @@ A zero-density operation may act as an area clear after preset validation. Expli
 
 ## 3. Density and weighted entries
 
-Density is expressed as objects per 100 square metres.
+Density is expressed as objects per 100 square metres. Two pools:
 
 ```
-requested_count = round(footprint_area * density_per_100_square_meters / 100)
+primary_count = round(footprint_area * density_per_100_square_meters / 100)
+vine_count    = round(footprint_area * vine_density_per_100_square_meters / 100)
+requested_count = primary_count + vine_count
 ```
 
-The preset can contain multiple entries of the same content type. Total density belongs to the preset; positive entry weights split that total. Disabled or zero-weight entries do not participate.
+- **Primary pool:** Tree, Rock, Vine+`MODE_BRAMBLE` — weights split `density_per_100_square_meters`.
+- **Vine pool:** Vine+`MODE_CREEPING` (later non-Bramble modes) — weights split `vine_density_per_100_square_meters`.
 
-Default safety limit: 500 requested objects per operation. Exceeding the limit produces `MAX_OBJECTS_EXCEEDED` and leaves existing output untouched.
+Disabled or zero-weight entries do not participate. Default safety limit: 500 requested objects per operation (`primary_count + vine_count`). Exceeding the limit produces `MAX_OBJECTS_EXCEEDED` and leaves existing output untouched.
 
-Phase 1 Bramble entries participate in this shared total density. Phase 2 will introduce independent vine density/settings for non-Bramble vine workflows.
+If primary density &gt; 0 with no weighted primary entries → `PRIMARY_ENTRIES_MISSING`. If vine density &gt; 0 with no weighted vine-pool entries → `VINE_ENTRIES_MISSING`.
 
 ## 4. Data model
 
 ### OpenWorldPlacementEntry (Placement Entry)
 
-A weighted source entry with stable ID, enabled state, content kind, weight, scale range, random yaw, normal alignment, surface offset, spacing override, and one category-matching generator profile/request.
+An entry selects Tree, Vine, or Rock generation and supplies the matching reusable profile or request template. Optional materials on the entry (`trunk_material`, `foliage_material`, `stem_material`, `preview_material`) are copied onto generated nodes during apply and rebuild.
 
-Vine validation accepts `MODE_BRAMBLE` only and returns `VINE_MODE_PHASE2` for every other mode.
+Vine validation accepts `MODE_BRAMBLE` and `MODE_CREEPING`. Climbing / Hanging / TreeWrap return `VINE_MODE_PHASE2`. Creeping does not require `support_path` on the template; Placement auto-wires the apply terrain when empty.
 
 ### OpenWorldPlacementPreset (Placement Preset)
 
-A reusable resource containing stable ID, display name, shape, size, footprint yaw, density per 100 square metres, minimum spacing, height/slope filters, maximum objects per operation, and a weighted entry array.
+A reusable resource containing stable ID, display name, shape, size, footprint yaw, primary density and vine density per 100 square metres, minimum spacing, height/slope filters, maximum objects per operation, and a weighted entry array.
 
 Circle uses `size.x` as diameter. Rectangle uses full width/depth. Ellipse uses size multiplied by 0.5 as radii.
 
@@ -66,21 +68,23 @@ Generated scene nodes are saved derived output, but placement data remains suffi
 
 ### OpenWorldPlacement3D (Placement Coordinator)
 
-Scriptable coordinator properties are `terrain_path`, `output_parent_path`, `active_preset`, `placement_data`, and `default_seed`.
+Scriptable coordinator properties are `output_parent_path`, `active_preset`, `placement_data`, and `default_seed`. Terrain is auto-selected by vertical ray (see surface backend doc); optional `vertical_ray_origin_y` on preview/apply controls selection height.
 
-Public operations are `preview_placement`, `apply_placement`, `rebuild_generated`, `clear_generated`, `clear_placements`, and `get_generation_report`.
+Public operations are `preview_placement`, `apply_placement`, `find_terrain_at_world_xz`, `rebuild_generated`, `clear_generated`, `clear_placements`, and `get_generation_report`.
 
 Doc-preferred verbs: preview / apply / rebuild / clear.
 
-Editor click-to-apply UI is the next authoring step; legacy SimpleWorld editor UI is disabled. See [editor_interaction.md](editor_interaction.md).
+Editor UX is lock-footprint → confirm Apply (no mouse-move preview solve). Legacy SimpleWorld editor UI is disabled. See [editor_interaction.md](editor_interaction.md).
 
 ## 5. Surface projection
 
-SimpleTerrain3D exposes the read-only method `sample_surface_at_world_xz(world_position, max_distance = 100000.0)`.
+SimpleTerrain3D exposes `sample_surface_at_world_xz` and `get_brush_hit`.
+
+World Placement auto-selects a terrain with a vertical ray (closest hit), then projects candidates with `sample_surface_at_world_xz`. There is no `terrain_path` property. See [surface_backends/simple_terrain_3d.md](surface_backends/simple_terrain_3d.md).
 
 Successful samples contain `success`, `position`, `normal`, `height`, and `tile_cell`. Failed samples contain `success = false` and `error_code`.
 
-World Placement uses this API rather than physics collision or viewport picking. Projection is always vertical, so scripts and headless tests produce the same result as editor usage.
+Projection of anchors is always vertical (사영). Editor click may use a camera ray only to choose the apply center.
 
 Details: [surface_backends/simple_terrain_3d.md](surface_backends/simple_terrain_3d.md).
 
@@ -107,7 +111,8 @@ Generation is transactional: candidates are created first, and prior valid outpu
 Required automated coverage:
 
 - multiple weighted entries and maximum-count rejection
-- Bramble accepted; all other vine modes rejected with `VINE_MODE_PHASE2`
+- Bramble and Creeping accepted; Climbing / Hanging / TreeWrap rejected with `VINE_MODE_PHASE2`
+- Independent `vine_density_per_100_square_meters` and Creeping terrain support auto-wire
 - area replacement keeps exactly one authoritative record for a repeated footprint
 - placement arrays validate after replacement
 - tests build through `scripts/build.ps1` with `tests=yes`
@@ -115,7 +120,17 @@ Required automated coverage:
 
 ## 9. Phase 2
 
-Phase 2 may add independent density/settings for Creeping, Climbing, Hanging, and TreeWrap, explicit support selection, support-aware anchors, editor click-to-apply controls, and undo/redo integration.
+### Placement × Vine
+
+Phase 2a accepts Bramble (primary density) and Creeping (vine density) with SimpleTerrain3D support auto-wire. Climbing / Hanging / TreeWrap still return `VINE_MODE_PHASE2` and must not be silently converted to Bramble or Creeping.
+
+Later Phase 2 slices may add those modes into the same vine density pool with explicit support selection / stable IDs.
+
+See [vine_placement_phase2.md](vine_placement_phase2.md) and the design note under `docs/superpowers/specs/`.
+
+### Other
+
+Editor lock→confirm and undo/redo are already in Phase 1. Continuous drag strokes remain rejected.
 
 Non-Bramble modes must not be silently converted to Bramble.
 

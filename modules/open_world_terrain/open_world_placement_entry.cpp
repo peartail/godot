@@ -111,10 +111,13 @@ Dictionary OpenWorldPlacementEntry::validate_entry() const {
 		case CONTENT_VINE:
 			if (vine_request_template.is_null()) {
 				add_error("VINE_REQUEST_MISSING", "vine entries require vine_request_template.");
-			} else if (vine_request_template->get_mode() != OpenWorldVineGenerationRequest::MODE_BRAMBLE) {
-				add_error("VINE_MODE_PHASE2", "Phase 1 placement supports MODE_BRAMBLE only.");
-			} else if (vine_request_template->get_profile().is_null()) {
-				add_error("VINE_PROFILE_MISSING", "vine request template requires a profile.");
+			} else {
+				const OpenWorldVineGenerationRequest::VineMode mode = vine_request_template->get_mode();
+				if (mode != OpenWorldVineGenerationRequest::MODE_BRAMBLE && mode != OpenWorldVineGenerationRequest::MODE_CREEPING) {
+					add_error("VINE_MODE_PHASE2", "placement currently supports MODE_BRAMBLE and MODE_CREEPING only.");
+				} else if (vine_request_template->get_profile().is_null()) {
+					add_error("VINE_PROFILE_MISSING", "vine request template requires a profile.");
+				}
 			}
 			break;
 		case CONTENT_ROCK:

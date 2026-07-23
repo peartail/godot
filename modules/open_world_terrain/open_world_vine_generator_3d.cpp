@@ -7,6 +7,8 @@
 #include "open_world_tree_generator_3d.h"
 #include "open_world_tree_support_graph.h"
 
+#include "modules/simple_terrain/simple_terrain_3d.h"
+
 #include "core/math/random_pcg.h"
 #include "core/math/triangle_mesh.h"
 #include "core/object/callable_mp.h"
@@ -153,9 +155,16 @@ Dictionary OpenWorldVineGenerator3D::validate_request() const {
 			if (!support) add_error("SUPPORT_NOT_FOUND", "support_path cannot be resolved from generator.");
 			else if (needs_support && generation_request->get_mode() == OpenWorldVineGenerationRequest::MODE_TREE_WRAP && !Object::cast_to<OpenWorldTreeGenerator3D>(support)) add_error("SUPPORT_TYPE_UNSUPPORTED", "TreeWrap requires OpenWorldTreeGenerator3D.");
 			else if (needs_support && generation_request->get_mode() != OpenWorldVineGenerationRequest::MODE_TREE_WRAP) {
-				MeshInstance3D *mesh_support = Object::cast_to<MeshInstance3D>(support);
-				if (!mesh_support && !Object::cast_to<OpenWorldTerrain3D>(support)) add_error("SUPPORT_TYPE_UNSUPPORTED", "surface modes require MeshInstance3D or OpenWorldTerrain3D.");
-				else if (mesh_support && (mesh_support->get_mesh().is_null() || mesh_support->get_mesh()->get_surface_count() == 0)) add_error("MESH_EMPTY", "support MeshInstance3D has no mesh surfaces.");
+				if (Object::cast_to<OpenWorldTerrain3D>(support) || Object::cast_to<SimpleTerrain3D>(support)) {
+					// Heightfield backends expose hit APIs / chunk triangle meshes; MeshInstance3D::get_mesh() may be empty.
+				} else {
+					MeshInstance3D *mesh_support = Object::cast_to<MeshInstance3D>(support);
+					if (!mesh_support) {
+						add_error("SUPPORT_TYPE_UNSUPPORTED", "surface modes require MeshInstance3D, SimpleTerrain3D, or OpenWorldTerrain3D.");
+					} else if (mesh_support->get_mesh().is_null() || mesh_support->get_mesh()->get_surface_count() == 0) {
+						add_error("MESH_EMPTY", "support MeshInstance3D has no mesh surfaces.");
+					}
+				}
 			}
 		}
 	}
@@ -170,6 +179,16 @@ bool OpenWorldVineGenerator3D::_project_to_support(Node *p_support, const Vector
 	if (OpenWorldTerrain3D *terrain = Object::cast_to<OpenWorldTerrain3D>(p_support)) {
 		Dictionary hit = terrain->get_brush_hit(global_origin, global_direction); if (hit.is_empty() || (real_t)hit.get("distance", Math::INF) > p_distance) return false;
 		r_position = generator_transform.affine_inverse().xform((Vector3)hit["position"]); Vector3 world_normal = hit.get("normal", Vector3::UP); r_normal = generator_transform.basis.inverse().xform(world_normal).normalized(); return true;
+	}
+	if (SimpleTerrain3D *terrain = Object::cast_to<SimpleTerrain3D>(p_support)) {
+		Dictionary hit = terrain->get_brush_hit(global_origin, global_direction);
+		if (hit.is_empty() || (real_t)hit.get("distance", Math::INF) > p_distance) {
+			return false;
+		}
+		r_position = generator_transform.affine_inverse().xform((Vector3)hit["position"]);
+		Vector3 world_normal = hit.get("normal", Vector3::UP);
+		r_normal = generator_transform.basis.inverse().xform(world_normal).normalized();
+		return true;
 	}
 	MeshInstance3D *mesh_instance = Object::cast_to<MeshInstance3D>(p_support); if (!mesh_instance) return false;
 	Ref<TriangleMesh> triangles = mesh_instance->generate_triangle_mesh(); if (triangles.is_null() || !triangles->is_valid()) return false;
