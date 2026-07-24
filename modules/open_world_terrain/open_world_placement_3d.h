@@ -11,6 +11,7 @@
 #include "scene/3d/node_3d.h"
 
 class SimpleTerrain3D;
+class MeshInstance3D;
 
 class OpenWorldPlacement3D : public Node3D {
 	GDCLASS(OpenWorldPlacement3D, Node3D);
@@ -43,6 +44,14 @@ class OpenWorldPlacement3D : public Node3D {
 	Node3D *_instantiate_candidate(const Candidate &p_candidate) const;
 	Node3D *_instantiate_record(int p_index) const;
 	bool _finalize_placed_vine(Node3D *p_node, SimpleTerrain3D *p_terrain) const;
+	String _resolve_scene_file_path() const;
+	String _resolve_generated_mesh_dir() const;
+	String _mesh_cache_path(const String &p_stable_id) const;
+	bool _externalize_preview_mesh(MeshInstance3D *p_mesh_instance, const String &p_stable_id) const;
+	bool _try_load_cached_preview_mesh(MeshInstance3D *p_mesh_instance, const String &p_stable_id) const;
+	void _bind_preview_mesh_after_generate(Node3D *p_node, const String &p_stable_id, bool p_prefer_cache) const;
+	void _delete_mesh_cache(const String &p_stable_id) const;
+	void _sweep_orphan_mesh_cache() const;
 	void _delete_generated_by_id(const String &p_stable_id);
 	void _assign_scene_owner(Node *p_node, Node3D *p_output_parent) const;
 

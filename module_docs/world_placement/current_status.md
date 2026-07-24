@@ -10,6 +10,7 @@ Last updated: 2026-07-23
 | Area replacement apply / preview / rebuild / clear | Done |
 | Tree / Rock / Bramble weighted mix | Done |
 | Entry materials (`trunk` / `foliage` / `stem` / `preview`) | Done |
+| Preview meshes externalized under `_generated/world_placement/` | Done |
 | Auto terrain vertical projection (no `terrain_path`) | Done |
 | Editor Apply mode + lock → confirm UX | Done |
 | Preset dock (assign/new/entry/material edit) | Done |

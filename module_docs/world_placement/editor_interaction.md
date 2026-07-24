@@ -20,6 +20,7 @@ Authoring surface population for trees, rocks, and Bramble vines goes through **
 6. Click → lock footprint (amber) and show overlay **Apply** / **Cancel**.
 7. Press **Apply** to commit, or click elsewhere / **Cancel** to unlock and move again.
 8. Undo/redo restores placement-data snapshots and rebuilds generated nodes.
+9. To refresh or strip preview meshes without deleting placement records: Scene Tree right-click on `OpenWorldPlacement3D` → **Rebuild Generated** / **Clear Generated**, or the same buttons at the bottom of the Inspector. Agent path: `rebuild_generated()` / `clear_generated()`.
 
 Mouse motion does **not** run `preview_placement` (performance). Solving happens on confirm only.
 

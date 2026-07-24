@@ -106,6 +106,8 @@ The coordinator creates one dedicated generated root beneath the selected output
 
 Generation is transactional: candidates are created first, and prior valid output is not deleted when validation or generator creation fails.
 
+Preview meshes on generated Tree/Rock/Vine nodes are written beside the saved scene as external resources under `{scene_dir}/_generated/world_placement/{placement_stable_id}_lod0.res`. The scene then references them as ExtResource instead of embedding ArrayMesh blobs. Unsaved scenes keep in-memory meshes until a scene path exists. `clear_generated` keeps those cache files for rebuild; `clear_placements` and replaced ids delete or sweep orphan files. See `docs/superpowers/specs/2026-07-24-placement-external-mesh-cache-design.md`.
+
 ## 8. Phase 1 verification
 
 Required automated coverage:

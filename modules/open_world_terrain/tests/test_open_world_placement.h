@@ -14,7 +14,12 @@
 #include "../open_world_vine_generator_3d.h"
 
 #include "modules/simple_terrain/simple_terrain_3d.h"
+#include "core/config/project_settings.h"
+#include "core/io/dir_access.h"
+#include "core/io/file_access.h"
+#include "scene/3d/mesh_instance_3d.h"
 #include "scene/main/scene_tree.h"
+#include "scene/resources/mesh.h"
 #include "tests/test_macros.h"
 
 namespace TestOpenWorldPlacement {
@@ -229,6 +234,71 @@ TEST_CASE("[SceneTree][OpenWorldPlacement] Creeping apply auto-wires SimpleTerra
 
 	tree->get_root()->remove_child(test_root);
 	memdelete(test_root);
+}
+
+TEST_CASE("[SceneTree][OpenWorldPlacement] Preview meshes externalize under _generated/world_placement") {
+	SceneTree *tree = SceneTree::get_singleton();
+	REQUIRE(tree != nullptr);
+	Node3D *test_root = memnew(Node3D);
+	test_root->set_name("MeshCachePlacementRoot");
+	const String scene_path = "res://.godot/test_world_placement_mesh_cache.tscn";
+	test_root->set_scene_file_path(scene_path);
+	tree->get_root()->add_child(test_root);
+
+	SimpleTerrain3D *terrain = memnew(SimpleTerrain3D);
+	terrain->set_name("Terrain");
+	test_root->add_child(terrain);
+	terrain->set_tile_size(16);
+	terrain->set_cell_size(1.0);
+	terrain->create_tile(Vector2i(0, 0));
+	terrain->reset_flat_terrain();
+
+	OpenWorldPlacement3D *placement = memnew(OpenWorldPlacement3D);
+	placement->set_name("Placement");
+	test_root->add_child(placement);
+	placement->set_active_preset(make_tree_preset());
+
+	Dictionary report = placement->apply_placement(Vector3(6.0, 0.0, 6.0), Ref<OpenWorldPlacementPreset>(), 404);
+	REQUIRE((bool)report["success"]);
+	REQUIRE(placement->get_placement_data().is_valid());
+	REQUIRE(placement->get_placement_data()->get_placement_count() == 1);
+	const String stable_id = placement->get_placement_data()->get_stable_ids()[0];
+	const String mesh_path = scene_path.get_base_dir().path_join("_generated").path_join("world_placement").path_join(stable_id.validate_filename() + "_lod0.res");
+	CHECK(FileAccess::exists(mesh_path));
+
+	Node3D *generated_root = nullptr;
+	for (int i = 0; i < placement->get_child_count(); i++) {
+		Node3D *child = Object::cast_to<Node3D>(placement->get_child(i));
+		if (child && String(child->get_name()).begins_with("__OpenWorldPlacementGenerated")) {
+			generated_root = child;
+			break;
+		}
+	}
+	REQUIRE(generated_root != nullptr);
+	REQUIRE(generated_root->get_child_count() >= 1);
+	MeshInstance3D *mesh_instance = Object::cast_to<MeshInstance3D>(generated_root->get_child(0));
+	REQUIRE(mesh_instance != nullptr);
+	Ref<Mesh> mesh = mesh_instance->get_mesh();
+	REQUIRE(mesh.is_valid());
+	CHECK(mesh->get_path() == mesh_path);
+	CHECK(String(mesh->get_path()).contains("_generated/world_placement"));
+
+	placement->clear_placements();
+	CHECK_FALSE(FileAccess::exists(mesh_path));
+
+	tree->get_root()->remove_child(test_root);
+	memdelete(test_root);
+
+	const String cache_dir = scene_path.get_base_dir().path_join("_generated").path_join("world_placement");
+	Ref<DirAccess> dir = DirAccess::open(cache_dir);
+	if (dir.is_valid()) {
+		dir->list_dir_begin();
+		for (String file = dir->get_next(); !file.is_empty(); file = dir->get_next()) {
+			if (!dir->current_is_dir()) {
+				dir->remove(file);
+			}
+		}
+	}
 }
 
 } // namespace TestOpenWorldPlacement

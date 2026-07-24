@@ -10,9 +10,17 @@
 
 #include "modules/simple_terrain/simple_terrain_3d.h"
 
+#include "core/config/project_settings.h"
+#include "core/io/dir_access.h"
+#include "core/io/file_access.h"
+#include "core/io/resource_loader.h"
+#include "core/io/resource_saver.h"
 #include "core/math/random_pcg.h"
 #include "core/object/class_db.h"
+#include "core/templates/hash_set.h"
 #include "core/templates/local_vector.h"
+#include "scene/3d/mesh_instance_3d.h"
+#include "scene/resources/mesh.h"
 
 namespace {
 static constexpr const char *META_PLACEMENT_ID = "_open_world_placement_id";
@@ -468,6 +476,132 @@ bool OpenWorldPlacement3D::_finalize_placed_vine(Node3D *p_node, SimpleTerrain3D
 	return vine->get_generated_lod_mesh(0).is_valid();
 }
 
+String OpenWorldPlacement3D::_resolve_scene_file_path() const {
+	const Node *node = this;
+	while (node != nullptr) {
+		const String path = node->get_scene_file_path();
+		if (!path.is_empty()) {
+			return path;
+		}
+		if (node->get_owner() != nullptr) {
+			node = node->get_owner();
+		} else {
+			node = node->get_parent();
+		}
+	}
+	return String();
+}
+
+String OpenWorldPlacement3D::_resolve_generated_mesh_dir() const {
+	const String scene_path = _resolve_scene_file_path();
+	if (scene_path.is_empty()) {
+		return String();
+	}
+	const String absolute_or_res = ProjectSettings::get_singleton()->localize_path(scene_path);
+	return absolute_or_res.get_base_dir().path_join("_generated").path_join("world_placement");
+}
+
+String OpenWorldPlacement3D::_mesh_cache_path(const String &p_stable_id) const {
+	const String dir = _resolve_generated_mesh_dir();
+	if (dir.is_empty() || p_stable_id.is_empty()) {
+		return String();
+	}
+	return dir.path_join(p_stable_id.validate_filename() + "_lod0.res");
+}
+
+bool OpenWorldPlacement3D::_externalize_preview_mesh(MeshInstance3D *p_mesh_instance, const String &p_stable_id) const {
+	ERR_FAIL_NULL_V(p_mesh_instance, false);
+	Ref<Mesh> mesh = p_mesh_instance->get_mesh();
+	if (mesh.is_null()) {
+		return false;
+	}
+	const String path = _mesh_cache_path(p_stable_id);
+	if (path.is_empty()) {
+		WARN_PRINT_ONCE("OpenWorldPlacement3D: scene has no saved path; preview meshes stay embedded until the scene is saved.");
+		return false;
+	}
+	Ref<DirAccess> dir = DirAccess::create(DirAccess::ACCESS_RESOURCES);
+	if (dir.is_null()) {
+		return false;
+	}
+	const String abs_dir = ProjectSettings::get_singleton()->globalize_path(path.get_base_dir());
+	const Error mkdir_err = DirAccess::make_dir_recursive_absolute(abs_dir);
+	if (mkdir_err != OK && mkdir_err != ERR_ALREADY_EXISTS) {
+		return false;
+	}
+	Ref<Mesh> to_save = mesh->duplicate(true);
+	const Error save_err = ResourceSaver::save(to_save, path);
+	if (save_err != OK) {
+		return false;
+	}
+	to_save->set_path(path, true);
+	p_mesh_instance->set_mesh(to_save);
+	return true;
+}
+
+bool OpenWorldPlacement3D::_try_load_cached_preview_mesh(MeshInstance3D *p_mesh_instance, const String &p_stable_id) const {
+	ERR_FAIL_NULL_V(p_mesh_instance, false);
+	const String path = _mesh_cache_path(p_stable_id);
+	if (path.is_empty() || !ResourceLoader::exists(path)) {
+		return false;
+	}
+	Ref<Mesh> loaded = ResourceLoader::load(path);
+	if (loaded.is_null()) {
+		return false;
+	}
+	p_mesh_instance->set_mesh(loaded);
+	return true;
+}
+
+void OpenWorldPlacement3D::_bind_preview_mesh_after_generate(Node3D *p_node, const String &p_stable_id, bool p_prefer_cache) const {
+	MeshInstance3D *mesh_instance = Object::cast_to<MeshInstance3D>(p_node);
+	if (mesh_instance == nullptr || p_stable_id.is_empty()) {
+		return;
+	}
+	if (p_prefer_cache && _try_load_cached_preview_mesh(mesh_instance, p_stable_id)) {
+		return;
+	}
+	_externalize_preview_mesh(mesh_instance, p_stable_id);
+}
+
+void OpenWorldPlacement3D::_delete_mesh_cache(const String &p_stable_id) const {
+	const String path = _mesh_cache_path(p_stable_id);
+	if (path.is_empty() || !FileAccess::exists(path)) {
+		return;
+	}
+	Ref<DirAccess> dir = DirAccess::create(DirAccess::ACCESS_RESOURCES);
+	if (dir.is_valid()) {
+		dir->remove(path);
+	}
+}
+
+void OpenWorldPlacement3D::_sweep_orphan_mesh_cache() const {
+	const String dir_path = _resolve_generated_mesh_dir();
+	if (dir_path.is_empty()) {
+		return;
+	}
+	Ref<DirAccess> dir = DirAccess::open(dir_path);
+	if (dir.is_null()) {
+		return;
+	}
+	HashSet<String> live_files;
+	if (placement_data.is_valid()) {
+		const PackedStringArray ids = placement_data->get_stable_ids();
+		for (int i = 0; i < ids.size(); i++) {
+			live_files.insert(ids[i].validate_filename() + "_lod0.res");
+		}
+	}
+	dir->list_dir_begin();
+	for (String file = dir->get_next(); !file.is_empty(); file = dir->get_next()) {
+		if (dir->current_is_dir() || !file.ends_with("_lod0.res")) {
+			continue;
+		}
+		if (!live_files.has(file)) {
+			dir->remove(file);
+		}
+	}
+}
+
 Node3D *OpenWorldPlacement3D::_instantiate_record(int p_index) const {
 	Dictionary record = placement_data->get_placement(p_index);
 	Candidate candidate;
@@ -484,16 +618,16 @@ Node3D *OpenWorldPlacement3D::_instantiate_record(int p_index) const {
 
 void OpenWorldPlacement3D::_delete_generated_by_id(const String &p_stable_id) {
 	Node3D *root = _get_generated_root();
-	if (root == nullptr) {
-		return;
-	}
-	for (int i = root->get_child_count() - 1; i >= 0; i--) {
-		Node *child = root->get_child(i);
-		if ((String)child->get_meta(META_PLACEMENT_ID, String()) == p_stable_id) {
-			root->remove_child(child);
-			memdelete(child);
+	if (root != nullptr) {
+		for (int i = root->get_child_count() - 1; i >= 0; i--) {
+			Node *child = root->get_child(i);
+			if ((String)child->get_meta(META_PLACEMENT_ID, String()) == p_stable_id) {
+				root->remove_child(child);
+				memdelete(child);
+			}
 		}
 	}
+	_delete_mesh_cache(p_stable_id);
 }
 
 Dictionary OpenWorldPlacement3D::preview_placement(const Vector3 &p_world_position, const Ref<OpenWorldPlacementPreset> &p_preset, int p_seed, real_t p_vertical_ray_origin_y) const {
@@ -588,9 +722,11 @@ Dictionary OpenWorldPlacement3D::apply_placement(const Vector3 &p_world_position
 	for (int i = 0; i < candidates.size(); i++) {
 		const Candidate &candidate = candidates[i];
 		Node3D *node = generated_nodes[i];
+		_bind_preview_mesh_after_generate(node, candidate.stable_id, false);
 		_assign_scene_owner(node, output);
 		placement_data->add_placement(candidate.stable_id, candidate.entry, candidate.position, candidate.rotation, candidate.scale, candidate.normal, candidate.seed, candidate.spacing_radius);
 	}
+	_sweep_orphan_mesh_cache();
 	generation_report["placement_count"] = placement_data->get_placement_count();
 	generation_report["generator_failure_count"] = 0;
 	return generation_report;
@@ -646,13 +782,17 @@ Dictionary OpenWorldPlacement3D::rebuild_generated() {
 	}
 	clear_generated();
 	Node3D *root = _get_or_create_generated_root();
-	for (Node3D *node : nodes) {
+	for (int i = 0; i < nodes.size(); i++) {
+		Node3D *node = nodes[i];
+		const String stable_id = placement_data->get_stable_ids()[i];
 		staging->remove_child(node);
 		root->add_child(node, true);
+		_bind_preview_mesh_after_generate(node, stable_id, true);
 		_assign_scene_owner(node, output);
 	}
 	output->remove_child(staging);
 	memdelete(staging);
+	_sweep_orphan_mesh_cache();
 	report["success"] = true;
 	report["generated_count"] = nodes.size();
 	generation_report = report;
@@ -681,6 +821,7 @@ Dictionary OpenWorldPlacement3D::clear_placements() {
 	if (placement_data.is_valid()) {
 		placement_data->clear_placements();
 	}
+	_sweep_orphan_mesh_cache();
 	return report;
 }
 

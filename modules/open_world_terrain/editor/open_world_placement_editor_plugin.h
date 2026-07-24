@@ -10,6 +10,8 @@
 
 #include "open_world_placement_preset_dock.h"
 
+#include "editor/inspector/editor_context_menu_plugin.h"
+#include "editor/inspector/editor_inspector.h"
 #include "editor/plugins/editor_plugin.h"
 #include "scene/gui/box_container.h"
 
@@ -21,6 +23,30 @@ class Label;
 class PanelContainer;
 class SimpleTerrain3D;
 class VBoxContainer;
+
+class OpenWorldPlacementContextMenuPlugin : public EditorContextMenuPlugin {
+	GDCLASS(OpenWorldPlacementContextMenuPlugin, EditorContextMenuPlugin);
+
+	void _rebuild_generated(const Variant &p_arg);
+	void _clear_generated(const Variant &p_arg);
+
+protected:
+	static void _bind_methods();
+
+public:
+	virtual void get_options(const Vector<String> &p_paths) override;
+};
+
+class OpenWorldPlacementInspectorPlugin : public EditorInspectorPlugin {
+	GDCLASS(OpenWorldPlacementInspectorPlugin, EditorInspectorPlugin);
+
+	void _rebuild_generated(Object *p_object);
+	void _clear_generated(Object *p_object);
+
+public:
+	virtual bool can_handle(Object *p_object) override;
+	virtual void parse_end(Object *p_object) override;
+};
 
 class OpenWorldPlacementEditorPlugin : public EditorPlugin {
 	GDCLASS(OpenWorldPlacementEditorPlugin, EditorPlugin);
@@ -35,6 +61,8 @@ class OpenWorldPlacementEditorPlugin : public EditorPlugin {
 	Button *cancel_pending_button = nullptr;
 	OpenWorldPlacementPresetDock *preset_dock = nullptr;
 	Ref<ButtonGroup> mode_button_group;
+	Ref<OpenWorldPlacementContextMenuPlugin> context_menu_plugin;
+	Ref<OpenWorldPlacementInspectorPlugin> inspector_plugin;
 	Label *status_label = nullptr;
 	Label *preview_label = nullptr;
 

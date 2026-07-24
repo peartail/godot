@@ -11,13 +11,118 @@
 #include "core/object/class_db.h"
 #include "editor/docks/editor_dock_manager.h"
 #include "editor/editor_node.h"
+#include "editor/editor_string_names.h"
 #include "editor/editor_undo_redo_manager.h"
+#include "editor/inspector/editor_inspector.h"
 #include "editor/scene/3d/node_3d_editor_plugin.h"
 #include "editor/themes/editor_scale.h"
 #include "scene/gui/button.h"
 #include "scene/gui/label.h"
 #include "scene/gui/panel_container.h"
 #include "scene/main/viewport.h"
+
+namespace {
+
+OpenWorldPlacement3D *_placement_from_selection_arg(const Variant &p_arg) {
+	if (p_arg.get_type() != Variant::ARRAY) {
+		return nullptr;
+	}
+	const Array nodes = p_arg;
+	if (nodes.size() != 1) {
+		return nullptr;
+	}
+	return Object::cast_to<OpenWorldPlacement3D>(nodes[0]);
+}
+
+OpenWorldPlacement3D *_placement_from_scene_paths(const Vector<String> &p_paths) {
+	if (p_paths.size() != 1) {
+		return nullptr;
+	}
+	Node *root = EditorNode::get_singleton()->get_edited_scene();
+	if (root == nullptr) {
+		return nullptr;
+	}
+	return Object::cast_to<OpenWorldPlacement3D>(root->get_node_or_null(NodePath(p_paths[0])));
+}
+
+Ref<Texture2D> _editor_icon(const StringName &p_name) {
+	if (EditorNode::get_singleton() == nullptr || EditorNode::get_singleton()->get_editor_theme().is_null()) {
+		return Ref<Texture2D>();
+	}
+	return EditorNode::get_singleton()->get_editor_theme()->get_icon(p_name, EditorStringName(EditorIcons));
+}
+
+void _undoable_clear_generated(OpenWorldPlacement3D *p_placement) {
+	ERR_FAIL_NULL(p_placement);
+	EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
+	undo_redo->create_action(TTR("Clear World Placement Generated"), UndoRedo::MERGE_DISABLE, p_placement);
+	undo_redo->force_fixed_history();
+	undo_redo->add_do_method(p_placement, "clear_generated");
+	undo_redo->add_undo_method(p_placement, "rebuild_generated");
+	undo_redo->commit_action();
+}
+
+void _undoable_rebuild_generated(OpenWorldPlacement3D *p_placement) {
+	ERR_FAIL_NULL(p_placement);
+	// Deterministic from placement records; no useful prior visual snapshot without
+	// cloning the whole generated subtree, so skip UndoRedo.
+	p_placement->rebuild_generated();
+}
+
+} // namespace
+
+void OpenWorldPlacementContextMenuPlugin::_bind_methods() {
+}
+
+void OpenWorldPlacementContextMenuPlugin::_rebuild_generated(const Variant &p_arg) {
+	OpenWorldPlacement3D *placement = _placement_from_selection_arg(p_arg);
+	if (placement != nullptr) {
+		_undoable_rebuild_generated(placement);
+	}
+}
+
+void OpenWorldPlacementContextMenuPlugin::_clear_generated(const Variant &p_arg) {
+	OpenWorldPlacement3D *placement = _placement_from_selection_arg(p_arg);
+	if (placement != nullptr) {
+		_undoable_clear_generated(placement);
+	}
+}
+
+void OpenWorldPlacementContextMenuPlugin::get_options(const Vector<String> &p_paths) {
+	if (_placement_from_scene_paths(p_paths) == nullptr) {
+		return;
+	}
+	add_context_menu_item(TTR("Rebuild Generated"), callable_mp(this, &OpenWorldPlacementContextMenuPlugin::_rebuild_generated), _editor_icon(SNAME("Reload")));
+	add_context_menu_item(TTR("Clear Generated"), callable_mp(this, &OpenWorldPlacementContextMenuPlugin::_clear_generated), _editor_icon(SNAME("Clear")));
+}
+
+bool OpenWorldPlacementInspectorPlugin::can_handle(Object *p_object) {
+	return Object::cast_to<OpenWorldPlacement3D>(p_object) != nullptr;
+}
+
+void OpenWorldPlacementInspectorPlugin::_rebuild_generated(Object *p_object) {
+	OpenWorldPlacement3D *placement = Object::cast_to<OpenWorldPlacement3D>(p_object);
+	if (placement != nullptr) {
+		_undoable_rebuild_generated(placement);
+	}
+}
+
+void OpenWorldPlacementInspectorPlugin::_clear_generated(Object *p_object) {
+	OpenWorldPlacement3D *placement = Object::cast_to<OpenWorldPlacement3D>(p_object);
+	if (placement != nullptr) {
+		_undoable_clear_generated(placement);
+	}
+}
+
+void OpenWorldPlacementInspectorPlugin::parse_end(Object *p_object) {
+	Button *rebuild_button = memnew(EditorInspectorActionButton(TTRC("Rebuild Generated"), SNAME("Reload")));
+	rebuild_button->connect(SceneStringName(pressed), callable_mp(this, &OpenWorldPlacementInspectorPlugin::_rebuild_generated).bind(p_object), CONNECT_DEFERRED);
+	add_custom_control(rebuild_button);
+
+	Button *clear_button = memnew(EditorInspectorActionButton(TTRC("Clear Generated"), SNAME("Clear")));
+	clear_button->connect(SceneStringName(pressed), callable_mp(this, &OpenWorldPlacementInspectorPlugin::_clear_generated).bind(p_object), CONNECT_DEFERRED);
+	add_custom_control(clear_button);
+}
 
 void OpenWorldPlacementEditorPlugin::_select_mode_pressed() {
 	apply_mode = false;
@@ -253,7 +358,11 @@ void OpenWorldPlacementEditorPlugin::_apply_at_world_position(const Vector3 &p_w
 	after_snapshot->assign_from(placement->get_placement_data());
 
 	EditorUndoRedoManager *undo_redo = get_undo_redo();
-	undo_redo->create_action(TTR("Apply World Placement"));
+	// Bind the action to the edited Placement node (scene history). The plugin
+	// object and ephemeral snapshot resources would otherwise resolve to
+	// GLOBAL_HISTORY (0) vs scene history (e.g. 13) and trip a mismatch.
+	undo_redo->create_action(TTR("Apply World Placement"), UndoRedo::MERGE_DISABLE, placement);
+	undo_redo->force_fixed_history();
 	undo_redo->add_do_method(this, "_restore_placement_snapshot", placement, after_snapshot);
 	undo_redo->add_undo_method(this, "_restore_placement_snapshot", placement, before_snapshot);
 	undo_redo->add_do_reference(after_snapshot.ptr());
@@ -358,6 +467,10 @@ void OpenWorldPlacementEditorPlugin::_notification(int p_what) {
 			set_force_draw_over_forwarding_enabled();
 			select_mode_button->set_button_icon(select_mode_button->get_editor_theme_icon(SNAME("ToolSelect")));
 			apply_mode_button->set_button_icon(apply_mode_button->get_editor_theme_icon(SNAME("MeshInstance3D")));
+			context_menu_plugin.instantiate();
+			add_context_menu_plugin(EditorContextMenuPlugin::CONTEXT_SLOT_SCENE_TREE, context_menu_plugin);
+			inspector_plugin.instantiate();
+			add_inspector_plugin(inspector_plugin);
 			_update_toolbar();
 		} break;
 		case NOTIFICATION_EXIT_TREE: {
@@ -366,6 +479,14 @@ void OpenWorldPlacementEditorPlugin::_notification(int p_what) {
 			if (preset_dock != nullptr) {
 				remove_dock(preset_dock);
 				preset_dock = nullptr;
+			}
+			if (context_menu_plugin.is_valid()) {
+				remove_context_menu_plugin(context_menu_plugin);
+				context_menu_plugin.unref();
+			}
+			if (inspector_plugin.is_valid()) {
+				remove_inspector_plugin(inspector_plugin);
+				inspector_plugin.unref();
 			}
 		} break;
 	}
