@@ -2275,18 +2275,18 @@ static int _append_baked_csg_scene_meshes(Node *p_node, const Transform3D &p_roo
 
 void EditorNode::_bake_csg_scene(bool p_confirmed) {
 #ifndef MODULE_CSG_ENABLED
-	show_accept(TTR("The CSG module is not enabled in this editor build."), TTR("OK"));
+	show_warning(TTR("The CSG module is not enabled in this editor build."));
 	return;
 #else
 	Node *scene = editor_data.get_edited_scene_root();
 	if (!scene) {
-		show_accept(TTR("A root node is required to bake the scene."), TTR("OK"));
+		show_warning(TTR("A root node is required to bake the scene."));
 		return;
 	}
 
 	const String scene_path = scene->get_scene_file_path();
 	if (scene_path.is_empty()) {
-		show_accept(TTR("The current scene must be saved before it can be baked."), TTR("OK"));
+		show_warning(TTR("The current scene must be saved before it can be baked."));
 		return;
 	}
 
@@ -2302,7 +2302,7 @@ void EditorNode::_bake_csg_scene(bool p_confirmed) {
 	if (!DirAccess::exists(output_dir)) {
 		err = EditorFileSystem::get_singleton()->make_dir_recursive(output_dir);
 		if (err != OK) {
-			show_accept(vformat(TTR("Could not create output folder:\n%s"), output_dir), TTR("OK"));
+			show_warning(vformat(TTR("Could not create output folder:\n%s"), output_dir));
 			return;
 		}
 	}
@@ -2317,7 +2317,7 @@ void EditorNode::_bake_csg_scene(bool p_confirmed) {
 	baked_mesh.instantiate();
 	const int appended_surfaces = _append_baked_csg_scene_meshes(scene, root_inverse, baked_mesh, false);
 	if (appended_surfaces == 0 || baked_mesh->get_surface_count() == 0) {
-		show_accept(TTR("No CSG or MeshInstance3D geometry was found to bake."), TTR("OK"));
+		show_warning(TTR("No CSG or MeshInstance3D geometry was found to bake."));
 		return;
 	}
 
@@ -2331,7 +2331,7 @@ void EditorNode::_bake_csg_scene(bool p_confirmed) {
 	memdelete(baked_root);
 
 	if (err != OK) {
-		show_accept(TTR("Could not pack the baked scene."), TTR("OK"));
+		show_warning(TTR("Could not pack the baked scene."));
 		return;
 	}
 

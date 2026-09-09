@@ -22,10 +22,12 @@
 #include "editor/gui/editor_spin_slider.h"
 #include "editor/inspector/editor_resource_picker.h"
 #include "editor/scene/3d/node_3d_editor_plugin.h"
+#include "editor/scene/3d/node_3d_editor_viewport.h"
 #include "editor/themes/editor_scale.h"
 #include "scene/3d/mesh_instance_3d.h"
 #include "scene/3d/navigation/navigation_obstacle_3d.h"
 #include "scene/3d/physics/collision_shape_3d.h"
+#include "servers/physics_3d/direct_states/physics_direct_space_state_3d.h"
 #include "scene/gui/box_container.h"
 #include "scene/gui/button.h"
 #include "scene/gui/item_list.h"
@@ -1655,11 +1657,11 @@ Dictionary SimpleTerrainEditorPlugin::_get_hit(Camera3D *p_camera, const Vector2
 	Dictionary hit;
 	PhysicsDirectSpaceState3D *space_state = placement_node->get_world_3d()->get_direct_space_state();
 	if (space_state != nullptr) {
-		PhysicsDirectSpaceState3D::RayParameters ray_params;
+		PS3DT::RayParameters ray_params;
 		ray_params.from = ray_origin;
 		ray_params.to = ray_origin + ray_direction * 10000.0;
 		ray_params.collide_with_areas = true;
-		PhysicsDirectSpaceState3D::RayResult ray_result;
+		PS3DT::RayResult ray_result;
 		if (space_state->intersect_ray(ray_params, ray_result)) {
 			hit["position"] = ray_result.position;
 			hit["local_position"] = placement_node->get_global_transform().affine_inverse().xform(ray_result.position);

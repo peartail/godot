@@ -13,6 +13,7 @@
 #include "editor/gui/editor_spin_slider.h"
 #include "editor/inspector/editor_inspector.h"
 #include "editor/scene/3d/node_3d_editor_plugin.h"
+#include "editor/scene/3d/node_3d_editor_viewport.h"
 #include "editor/themes/editor_scale.h"
 #include "scene/gui/box_container.h"
 #include "scene/gui/button.h"

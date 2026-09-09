@@ -34,7 +34,7 @@ protected:
 	static void _bind_methods();
 
 public:
-	virtual void get_options(const Vector<String> &p_paths) override;
+	virtual void get_options(const OptionsData &p_data) override;
 };
 
 class OpenWorldPlacementInspectorPlugin : public EditorInspectorPlugin {

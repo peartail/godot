@@ -15,6 +15,7 @@
 #include "editor/editor_undo_redo_manager.h"
 #include "editor/inspector/editor_inspector.h"
 #include "editor/scene/3d/node_3d_editor_plugin.h"
+#include "editor/scene/3d/node_3d_editor_viewport.h"
 #include "editor/themes/editor_scale.h"
 #include "scene/gui/button.h"
 #include "scene/gui/label.h"
@@ -24,25 +25,21 @@
 namespace {
 
 OpenWorldPlacement3D *_placement_from_selection_arg(const Variant &p_arg) {
-	if (p_arg.get_type() != Variant::ARRAY) {
+	Array nodes;
+	if (p_arg.get_type() == Variant::DICTIONARY) {
+		// New EditorContextMenuPlugin API: options data is a dictionary that
+		// carries the current scene tree selection under "selected_nodes".
+		const Dictionary data = p_arg;
+		nodes = data.get("selected_nodes", Array());
+	} else if (p_arg.get_type() == Variant::ARRAY) {
+		nodes = p_arg;
+	} else {
 		return nullptr;
 	}
-	const Array nodes = p_arg;
 	if (nodes.size() != 1) {
 		return nullptr;
 	}
 	return Object::cast_to<OpenWorldPlacement3D>(nodes[0]);
-}
-
-OpenWorldPlacement3D *_placement_from_scene_paths(const Vector<String> &p_paths) {
-	if (p_paths.size() != 1) {
-		return nullptr;
-	}
-	Node *root = EditorNode::get_singleton()->get_edited_scene();
-	if (root == nullptr) {
-		return nullptr;
-	}
-	return Object::cast_to<OpenWorldPlacement3D>(root->get_node_or_null(NodePath(p_paths[0])));
 }
 
 Ref<Texture2D> _editor_icon(const StringName &p_name) {
@@ -88,8 +85,8 @@ void OpenWorldPlacementContextMenuPlugin::_clear_generated(const Variant &p_arg)
 	}
 }
 
-void OpenWorldPlacementContextMenuPlugin::get_options(const Vector<String> &p_paths) {
-	if (_placement_from_scene_paths(p_paths) == nullptr) {
+void OpenWorldPlacementContextMenuPlugin::get_options(const OptionsData &p_data) {
+	if (_placement_from_selection_arg(p_data) == nullptr) {
 		return;
 	}
 	add_context_menu_item(TTR("Rebuild Generated"), callable_mp(this, &OpenWorldPlacementContextMenuPlugin::_rebuild_generated), _editor_icon(SNAME("Reload")));
