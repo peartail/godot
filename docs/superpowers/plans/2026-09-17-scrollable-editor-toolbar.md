@@ -715,10 +715,18 @@ TEST_CASE("[SceneTree][EditorScrollableToolbar] dragging past the threshold scro
 	Button *first = Object::cast_to<Button>(toolbar->get_content()->get_child(0));
 	SIGNAL_WATCH(first, "pressed");
 
+	// Aim at the button's real centre. The content row is only as tall as the buttons
+	// (20px), not as tall as the toolbar (40px), so a hardcoded y can miss the button
+	// and make the "no click" assertion below pass for the wrong reason.
+	const Point2i press_pos = Point2i(first->get_global_rect().get_center());
+	const Point2i drag_pos = press_pos - Point2i(20, 0);
+
 	// Press on the first button, then drag 20px left: past the 8px threshold.
-	SEND_GUI_MOUSE_BUTTON_EVENT(Point2i(50, 20), MouseButton::LEFT, MouseButtonMask::LEFT, Key::NONE);
-	SEND_GUI_MOUSE_MOTION_EVENT(Point2i(30, 20), MouseButtonMask::LEFT, Key::NONE);
-	SEND_GUI_MOUSE_BUTTON_RELEASED_EVENT(Point2i(30, 20), MouseButton::LEFT, MouseButtonMask::NONE, Key::NONE);
+	SEND_GUI_MOUSE_BUTTON_EVENT(press_pos, MouseButton::LEFT, MouseButtonMask::LEFT, Key::NONE);
+	// Guard: without this the test would still pass if the press missed entirely.
+	CHECK(first->is_pressing());
+	SEND_GUI_MOUSE_MOTION_EVENT(drag_pos, MouseButtonMask::LEFT, Key::NONE);
+	SEND_GUI_MOUSE_BUTTON_RELEASED_EVENT(drag_pos, MouseButton::LEFT, MouseButtonMask::NONE, Key::NONE);
 
 	// Dragging left moves the content left, which raises the scroll offset.
 	CHECK(toolbar->get_scroll_offset() == 20);
@@ -734,10 +742,14 @@ TEST_CASE("[SceneTree][EditorScrollableToolbar] a small move still clicks the bu
 	Button *first = Object::cast_to<Button>(toolbar->get_content()->get_child(0));
 	SIGNAL_WATCH(first, "pressed");
 
+	const Point2i press_pos = Point2i(first->get_global_rect().get_center());
+	const Point2i nudge_pos = press_pos - Point2i(3, 0);
+
 	// Move only 3px, below the 8px threshold.
-	SEND_GUI_MOUSE_BUTTON_EVENT(Point2i(50, 20), MouseButton::LEFT, MouseButtonMask::LEFT, Key::NONE);
-	SEND_GUI_MOUSE_MOTION_EVENT(Point2i(47, 20), MouseButtonMask::LEFT, Key::NONE);
-	SEND_GUI_MOUSE_BUTTON_RELEASED_EVENT(Point2i(47, 20), MouseButton::LEFT, MouseButtonMask::NONE, Key::NONE);
+	SEND_GUI_MOUSE_BUTTON_EVENT(press_pos, MouseButton::LEFT, MouseButtonMask::LEFT, Key::NONE);
+	CHECK(first->is_pressing());
+	SEND_GUI_MOUSE_MOTION_EVENT(nudge_pos, MouseButtonMask::LEFT, Key::NONE);
+	SEND_GUI_MOUSE_BUTTON_RELEASED_EVENT(nudge_pos, MouseButton::LEFT, MouseButtonMask::NONE, Key::NONE);
 
 	CHECK(toolbar->get_scroll_offset() == 0);
 	Array pressed_once = { {} };
