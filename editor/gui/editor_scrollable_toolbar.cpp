@@ -32,6 +32,7 @@
 
 #include "core/core_string_names.h"
 #include "core/object/callable_mp.h"
+#include "editor/editor_string_names.h"
 #include "editor/themes/editor_scale.h"
 #include "scene/gui/box_container.h"
 #include "scene/gui/button.h"
@@ -91,13 +92,10 @@ void EditorScrollableToolbar::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_THEME_CHANGED: {
 			// Guarded so headless tests without an editor theme stay quiet.
-			if (has_theme_icon(SNAME("GuiScrollArrowLeft"), SNAME("EditorIcons"))) {
+			if (has_theme_icon(SNAME("GuiScrollArrowLeft"), EditorStringName(EditorIcons))) {
 				left_arrow->set_button_icon(get_editor_theme_icon(SNAME("GuiScrollArrowLeft")));
 				right_arrow->set_button_icon(get_editor_theme_icon(SNAME("GuiScrollArrowRight")));
 			}
-			const float arrow_width = Math::round(ARROW_WIDTH * EDSCALE);
-			left_arrow->set_custom_minimum_size(Size2(arrow_width, 0));
-			right_arrow->set_custom_minimum_size(Size2(arrow_width, 0));
 		} break;
 
 		case NOTIFICATION_SORT_CHILDREN: {
@@ -142,11 +140,15 @@ EditorScrollableToolbar::EditorScrollableToolbar() {
 
 	left_arrow = memnew(Button);
 	left_arrow->set_focus_mode(FOCUS_NONE);
+	left_arrow->set_tooltip_text(TTRC("Scroll the toolbar left."));
+	left_arrow->set_accessibility_name(TTRC("Scroll Left"));
 	left_arrow->set_visible(false);
 	add_child(left_arrow, false, INTERNAL_MODE_BACK);
 
 	right_arrow = memnew(Button);
 	right_arrow->set_focus_mode(FOCUS_NONE);
+	right_arrow->set_tooltip_text(TTRC("Scroll the toolbar right."));
+	right_arrow->set_accessibility_name(TTRC("Scroll Right"));
 	right_arrow->set_visible(false);
 	add_child(right_arrow, false, INTERNAL_MODE_BACK);
 
