@@ -88,18 +88,34 @@ window resize. With an overlay the scroll viewport is always the full toolbar wi
 
 ## Drag behavior
 
-Handled in `EditorScrollableToolbar::gui_input()`. `BaseButton::gui_input()` never calls
-`accept_event()`, so mouse press and motion events bubble up from the toolbar's buttons to this
-container; no `_input()` hook is needed.
+Handled in `Node::input()`, which runs before GUI dispatch (`Viewport::push_input()`:
+`order is _input -> gui input -> _unhandled input`).
 
-1. Left press: record the start position, let the event through so the button shows as pressed.
-2. Left-held motion: accumulate. Past `8 * EDSCALE` px, enter drag mode.
+It cannot be handled in `Control::gui_input()`. `Viewport::_gui_call_input()` walks the ancestor
+chain but breaks at any control whose mouse filter is `MOUSE_FILTER_STOP`, independent of whether
+that control called `accept_event()`. `Button` sets that filter in its constructor
+(`button.cpp:881`), so every toolbar button — the arrows included — swallows the press, and
+`gui_input()` would only ever see drags starting on the container's bare background.
+
+1. Left press inside the toolbar's global rect: record the start position and arm the drag. The
+   event is left alone, so the button under the cursor still shows as pressed.
+2. Left-held motion: accumulate total path length, not net displacement from the press point, so a
+   back-and-forth drag registers as a drag rather than cancelling itself out. Past `8 * EDSCALE`
+   px, enter drag mode.
 3. On entering drag mode, `propagate_notification(NOTIFICATION_SCROLL_BEGIN)`. Every descendant
    `BaseButton` clears `press_attempt` (`base_button.cpp:168`), so releasing fires no click. This
    is the same mechanism `ScrollContainer` uses for touch drag (`scroll_container.cpp:298`).
 4. While dragging, apply the motion delta to `scroll->set_h_scroll()` 1:1 and immediately. No
    inertia, deceleration, or interpolation.
 5. On release, `propagate_notification(NOTIFICATION_SCROLL_END)`.
+
+The toolbar handles `NOTIFICATION_SCROLL_BEGIN` itself as well. `propagate_notification()` delivers
+to the node before its children, and `BaseButton` consumes that notification without emitting
+`button_up`, so an arrow held when a drag starts would otherwise keep repeating for the rest of the
+gesture.
+
+Events are never marked handled. The click is already cancelled by the notification, and swallowing
+the release would leave the viewport's `gui.mouse_focus` on a button that never saw its mouse-up.
 
 Releasing before the threshold leaves the button click intact.
 
