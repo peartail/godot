@@ -93,6 +93,58 @@ TEST_CASE("[SceneTree][EditorScrollableToolbar] content keeps its width when it 
 	memdelete(toolbar);
 }
 
+TEST_CASE("[SceneTree][EditorScrollableToolbar] no arrows without overflow") {
+	EditorScrollableToolbar *toolbar = make_toolbar(1);
+
+	CHECK_FALSE(toolbar->is_left_arrow_visible());
+	CHECK_FALSE(toolbar->is_right_arrow_visible());
+
+	memdelete(toolbar);
+}
+
+TEST_CASE("[SceneTree][EditorScrollableToolbar] arrows follow the scroll position") {
+	EditorScrollableToolbar *toolbar = make_toolbar(3);
+
+	// Content is 240px in a 100px viewport, so the maximum offset is 140.
+	SUBCASE("at the left end only the right arrow shows") {
+		CHECK(toolbar->get_scroll_offset() == 0);
+		CHECK_FALSE(toolbar->is_left_arrow_visible());
+		CHECK(toolbar->is_right_arrow_visible());
+	}
+
+	SUBCASE("in the middle both arrows show") {
+		toolbar->set_scroll_offset(70);
+		MessageQueue::get_singleton()->flush();
+
+		CHECK(toolbar->is_left_arrow_visible());
+		CHECK(toolbar->is_right_arrow_visible());
+	}
+
+	SUBCASE("at the right end only the left arrow shows") {
+		toolbar->set_scroll_offset(1000); // Clamped to the maximum.
+		MessageQueue::get_singleton()->flush();
+
+		CHECK(toolbar->get_scroll_offset() == 140);
+		CHECK(toolbar->is_left_arrow_visible());
+		CHECK_FALSE(toolbar->is_right_arrow_visible());
+	}
+
+	memdelete(toolbar);
+}
+
+TEST_CASE("[SceneTree][EditorScrollableToolbar] arrows do not shrink the scroll viewport") {
+	EditorScrollableToolbar *toolbar = make_toolbar(3);
+
+	// Arrows overlay the content, so showing one must not narrow the scroll area.
+	// If it did, the overflow test would flip and the arrows would flicker.
+	toolbar->set_scroll_offset(1000);
+	MessageQueue::get_singleton()->flush();
+
+	CHECK(toolbar->get_scroll_offset() == 140); // 240 content - 100 viewport.
+
+	memdelete(toolbar);
+}
+
 } // namespace TestEditorScrollableToolbar
 
 #endif // TOOLS_ENABLED

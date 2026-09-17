@@ -52,7 +52,13 @@ void EditorScrollableToolbar::_scroll_by(float p_amount) {
 }
 
 void EditorScrollableToolbar::_update_arrows() {
-	// Filled in by Task 2.
+	HScrollBar *bar = scroll->get_h_scroll_bar();
+	const double max_offset = MAX(0.0, bar->get_max() - bar->get_page());
+	const double offset = scroll->get_h_scroll();
+
+	// Half a pixel of slack so a rounding remainder does not keep an arrow alive.
+	left_arrow->set_visible(offset > 0.5);
+	right_arrow->set_visible(offset < max_offset - 0.5);
 }
 
 void EditorScrollableToolbar::_scroll_value_changed(double p_value) {
@@ -83,6 +89,17 @@ bool EditorScrollableToolbar::is_right_arrow_visible() const {
 
 void EditorScrollableToolbar::_notification(int p_what) {
 	switch (p_what) {
+		case NOTIFICATION_THEME_CHANGED: {
+			// Guarded so headless tests without an editor theme stay quiet.
+			if (has_theme_icon(SNAME("GuiScrollArrowLeft"), SNAME("EditorIcons"))) {
+				left_arrow->set_button_icon(get_editor_theme_icon(SNAME("GuiScrollArrowLeft")));
+				right_arrow->set_button_icon(get_editor_theme_icon(SNAME("GuiScrollArrowRight")));
+			}
+			const float arrow_width = Math::round(ARROW_WIDTH * EDSCALE);
+			left_arrow->set_custom_minimum_size(Size2(arrow_width, 0));
+			right_arrow->set_custom_minimum_size(Size2(arrow_width, 0));
+		} break;
+
 		case NOTIFICATION_SORT_CHILDREN: {
 			const Size2 size = get_size();
 			// Never narrower than the buttons themselves, or the right arrow would be
