@@ -30,12 +30,14 @@
 
 #include "editor_scrollable_toolbar.h"
 
+#include "core/core_string_names.h"
 #include "core/object/callable_mp.h"
 #include "editor/themes/editor_scale.h"
 #include "scene/gui/box_container.h"
 #include "scene/gui/button.h"
 #include "scene/gui/scroll_bar.h"
 #include "scene/gui/scroll_container.h"
+#include "scene/scene_string_names.h"
 
 void EditorScrollableToolbar::_scroll_by(float p_amount) {
 	// set_h_scroll() takes an int, so carry the fraction across calls. Without this a
@@ -111,7 +113,9 @@ EditorScrollableToolbar::EditorScrollableToolbar() {
 	scroll = memnew(ScrollContainer);
 	scroll->set_horizontal_scroll_mode(ScrollContainer::SCROLL_MODE_SHOW_NEVER);
 	scroll->set_vertical_scroll_mode(ScrollContainer::SCROLL_MODE_DISABLED);
-	add_child(scroll, false, INTERNAL_MODE_FRONT);
+	// All three are internal children, added in draw order: the arrows are added
+	// after the scroll container so they paint on top of the toolbar contents.
+	add_child(scroll, false, INTERNAL_MODE_BACK);
 
 	content = memnew(HBoxContainer);
 	// Lets the row stretch to the viewport when items fit, and fall back to its
@@ -129,6 +133,6 @@ EditorScrollableToolbar::EditorScrollableToolbar() {
 	right_arrow->set_visible(false);
 	add_child(right_arrow, false, INTERNAL_MODE_BACK);
 
-	scroll->get_h_scroll_bar()->connect("value_changed", callable_mp(this, &EditorScrollableToolbar::_scroll_value_changed));
-	scroll->get_h_scroll_bar()->connect("changed", callable_mp(this, &EditorScrollableToolbar::_update_arrows));
+	scroll->get_h_scroll_bar()->connect(SceneStringName(value_changed), callable_mp(this, &EditorScrollableToolbar::_scroll_value_changed));
+	scroll->get_h_scroll_bar()->connect(CoreStringName(changed), callable_mp(this, &EditorScrollableToolbar::_update_arrows));
 }
