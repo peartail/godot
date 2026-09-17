@@ -260,8 +260,23 @@ TEST_CASE("[SceneTree][EditorScrollableToolbar] starting a drag stops an arrow h
 	SEND_GUI_MOUSE_MOTION_EVENT(Point2i(77, 20), MouseButtonMask::LEFT, Key::NONE);
 
 	CHECK_FALSE(toolbar->is_processing_internal());
+	// 40 from the arrow's click step, plus 20 from the 20px drag.
+	CHECK(toolbar->get_scroll_offset() == 60);
 
 	SEND_GUI_MOUSE_BUTTON_RELEASED_EVENT(Point2i(77, 20), MouseButton::LEFT, MouseButtonMask::NONE, Key::NONE);
+
+	memdelete(toolbar);
+}
+
+TEST_CASE("[SceneTree][EditorScrollableToolbar] a drag starting outside the toolbar is ignored") {
+	EditorScrollableToolbar *toolbar = make_toolbar(3);
+
+	// The toolbar occupies 0..100 x 0..40. Press well below it, then drag across it.
+	SEND_GUI_MOUSE_BUTTON_EVENT(Point2i(50, 80), MouseButton::LEFT, MouseButtonMask::LEFT, Key::NONE);
+	SEND_GUI_MOUSE_MOTION_EVENT(Point2i(20, 10), MouseButtonMask::LEFT, Key::NONE);
+	SEND_GUI_MOUSE_BUTTON_RELEASED_EVENT(Point2i(20, 10), MouseButton::LEFT, MouseButtonMask::NONE, Key::NONE);
+
+	CHECK(toolbar->get_scroll_offset() == 0);
 
 	memdelete(toolbar);
 }

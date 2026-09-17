@@ -106,6 +106,10 @@ void EditorScrollableToolbar::input(const Ref<InputEvent> &p_event) {
 	Ref<InputEventMouseButton> mb = p_event;
 	if (mb.is_valid() && mb->get_button_index() == MouseButton::LEFT) {
 		if (mb->is_pressed()) {
+			// Geometry only, no GUI z-order check. Popups, tooltips and floating
+			// windows are separate Windows whose events never reach this input()
+			// call, so the only thing this would mis-arm on is another Control
+			// overlapping the toolbar inside the same viewport.
 			drag_pending = get_global_rect().has_point(mb->get_global_position());
 			dragging = false;
 			drag_accum = 0.0f;
