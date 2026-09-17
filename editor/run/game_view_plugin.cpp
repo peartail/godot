@@ -44,6 +44,7 @@
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
 #include "editor/gui/editor_bottom_panel.h"
+#include "editor/gui/editor_scrollable_toolbar.h"
 #include "editor/gui/editor_toolbar_group.h"
 #include "editor/gui/window_wrapper.h"
 #include "editor/run/editor_run_bar.h"
@@ -1495,9 +1496,8 @@ GameView::GameView(Ref<GameViewDebugger> p_debugger, EmbeddedProcessBase *p_embe
 	toolbar_margin->set_theme_type_variation("MainToolBarMargin");
 	add_child(toolbar_margin);
 
-	// FIXME: Turn this back into a FlowContainer once GH-115523 is fixed.
-	HBoxContainer *main_menu_fc = memnew(HBoxContainer);
-	toolbar_margin->add_child(main_menu_fc);
+	// Scrolls instead of wrapping, so the toolbar always stays one row tall.
+	HBoxContainer *main_menu_fc = EditorScrollableToolbar::create(toolbar_margin);
 
 	HBoxContainer *process_hb = memnew(HBoxContainer);
 
