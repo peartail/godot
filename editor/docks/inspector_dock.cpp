@@ -43,6 +43,7 @@
 #include "editor/editor_undo_redo_manager.h"
 #include "editor/gui/editor_file_dialog.h"
 #include "editor/gui/editor_object_selector.h"
+#include "editor/gui/editor_scrollable_toolbar.h"
 #include "editor/gui/editor_toaster.h"
 #include "editor/script/script_editor_plugin.h"
 #include "editor/settings/editor_command_palette.h"
@@ -775,8 +776,7 @@ InspectorDock::InspectorDock(EditorData &p_editor_data) {
 
 	property_name_style = EditorPropertyNameProcessor::get_default_inspector_style();
 
-	HBoxContainer *general_options_hb = memnew(HBoxContainer);
-	main_vb->add_child(general_options_hb);
+	HBoxContainer *general_options_hb = EditorScrollableToolbar::create(main_vb);
 
 	HBoxContainer *button_hb = memnew(HBoxContainer);
 	button_hb->add_theme_constant_override("separation", 0);
@@ -852,8 +852,7 @@ InspectorDock::InspectorDock(EditorData &p_editor_data) {
 	new_resource_dialog->set_base_type("Resource");
 	new_resource_dialog->connect("create", callable_mp(this, &InspectorDock::_resource_created));
 
-	HBoxContainer *property_tools_hb = memnew(HBoxContainer);
-	main_vb->add_child(property_tools_hb);
+	HBoxContainer *property_tools_hb = EditorScrollableToolbar::create(main_vb);
 
 	search = memnew(LineEdit);
 	search->set_h_size_flags(Control::SIZE_EXPAND_FILL);
