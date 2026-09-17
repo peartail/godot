@@ -48,6 +48,7 @@
 #include "editor/editor_undo_redo_manager.h"
 #include "editor/gui/create_dialog.h"
 #include "editor/gui/editor_quick_open_dialog.h"
+#include "editor/gui/editor_scrollable_toolbar.h"
 #include "editor/gui/editor_toaster.h"
 #include "editor/gui/editor_toolbar_group.h"
 #include "editor/gui/editor_zoom_widget.h"
@@ -68,7 +69,6 @@
 #include "scene/2d/skeleton_2d.h"
 #include "scene/2d/sprite_2d.h"
 #include "scene/gui/base_button.h"
-#include "scene/gui/flow_container.h"
 #include "scene/gui/grid_container.h"
 #include "scene/gui/rich_text_label.h"
 #include "scene/gui/separator.h"
@@ -5812,12 +5812,11 @@ CanvasItemEditor::CanvasItemEditor() {
 	toolbar_margin->set_theme_type_variation("MainToolBarMargin");
 	main_vb->add_child(toolbar_margin);
 
-	// A fluid container for all toolbars.
-	HFlowContainer *main_flow = memnew(HFlowContainer);
-	toolbar_margin->add_child(main_flow);
+	// A single scrolling row for all toolbars, so the viewport keeps its height.
+	HBoxContainer *main_flow = EditorScrollableToolbar::create(toolbar_margin);
 
 	// Main toolbars.
-	// Split into separate `HBoxContainer` so they can wrap onto multiple lines as the window width decreases (the parent is a `FlowContainer`).
+	// Split into separate `HBoxContainer` groups so separators stay with the buttons they delimit.
 	// These are not grouped by any particular criteria. Only some of the end children are grouped separately, based on their separators.
 	HBoxContainer *input_hbox = EditorToolbarGroup::create(main_flow);
 

@@ -46,6 +46,7 @@
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
 #include "editor/editor_undo_redo_manager.h"
+#include "editor/gui/editor_scrollable_toolbar.h"
 #include "editor/gui/editor_spin_slider.h"
 #include "editor/plugins/editor_plugin_list.h"
 #include "editor/run/editor_run_bar.h"
@@ -98,7 +99,6 @@
 #include "scene/gui/center_container.h"
 #include "scene/gui/check_box.h"
 #include "scene/gui/color_picker.h"
-#include "scene/gui/flow_container.h"
 #include "scene/gui/menu_button.h"
 #include "scene/gui/panel_container.h"
 #include "scene/gui/popup.h"
@@ -3509,12 +3509,11 @@ Node3DEditor::Node3DEditor() {
 	toolbar_margin->set_theme_type_variation("MainToolBarMargin");
 	vbc->add_child(toolbar_margin);
 
-	// A fluid container for all toolbars.
-	HFlowContainer *main_flow = memnew(HFlowContainer);
-	toolbar_margin->add_child(main_flow);
+	// A single scrolling row for all toolbars, so the viewport keeps its height.
+	HBoxContainer *main_flow = EditorScrollableToolbar::create(toolbar_margin);
 
 	// Main toolbars.
-	// Split into separate `HBoxContainer` so they can wrap onto multiple lines as the window width decreases (the parent is a `FlowContainer`).
+	// Split into separate `HBoxContainer` groups so separators stay with the buttons they delimit.
 	// These are not grouped by any particular criteria. Only some of the end children are grouped separately, based on their separators.
 	HBoxContainer *tool_button_hbox = memnew(HBoxContainer);
 	main_flow->add_child(tool_button_hbox);
