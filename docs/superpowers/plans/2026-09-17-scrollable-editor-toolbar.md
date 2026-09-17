@@ -1174,3 +1174,47 @@ Confirm each item in every one of the four toolbars (Game tab, both inspector ro
 
 If a check fails, fix it, re-run both the unit tests and the failing manual check, then commit
 with a message naming the specific behavior that was wrong.
+
+---
+
+## Outcome
+
+All eight tasks completed on `my-terrain-work`. The full test suite passes
+(1464 cases, 440317 assertions, 0 failures) and the manual verification in the running
+editor was confirmed by the user across all four toolbars.
+
+Shipped:
+
+| File | Change |
+| --- | --- |
+| `editor/gui/editor_scrollable_toolbar.h` | new, 93 lines |
+| `editor/gui/editor_scrollable_toolbar.cpp` | new, 268 lines |
+| `tests/editor/gui/test_editor_scrollable_toolbar.cpp` | new, 286 lines, 12 cases |
+| `editor/run/game_view_plugin.cpp` | Game tab toolbar |
+| `editor/docks/inspector_dock.cpp` | both inspector toolbars |
+| `editor/scene/3d/node_3d_editor_plugin.cpp` | 3D viewport, wrapping removed |
+| `editor/scene/canvas_item_editor_plugin.cpp` | 2D viewport, wrapping removed |
+
+### Defects the process caught
+
+Three were defects in this plan rather than in the implementation, which is why each is
+recorded as its own commit against the plan:
+
+- `callable_mp` was missing from the include list (compiler).
+- The copyright header was a character short of what the repo's own pre-commit hook writes
+  (spec review).
+- Arrow minimum width was set in two places that could silently diverge (quality review).
+- A hold that scrolled into either end never stopped: `BaseButton` clears a pending press on
+  hide without emitting `button_up` (quality review).
+- Arming the repeat after the step undid that stop, because `_scroll_by()` runs the whole
+  cancel chain synchronously (regression test).
+- Tracking the drag in `gui_input()` could not work at all: `Viewport::_gui_call_input()` stops
+  at any `MOUSE_FILTER_STOP` control and `Button` sets that filter. Caught before implementation
+  (quality review).
+- A drag test was passing vacuously — its press coordinate sat one pixel below the button, so
+  "dragging cancels the click" was never actually exercised (diagnostic run).
+
+### Known limitation
+
+Right-to-left editor layouts are untested and unhandled. `ScrollContainer` mirrors its content
+under RTL, so the arrow-to-direction mapping needs its own work and verification.
