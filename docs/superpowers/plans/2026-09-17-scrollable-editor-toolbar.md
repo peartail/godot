@@ -487,8 +487,9 @@ git commit -m "Show overlay scroll arrows on toolbar overflow"
 ### Task 3: Arrow click step and hold-to-scroll
 
 **Files:**
-- Modify: `editor/gui/editor_scrollable_toolbar.h`
-- Modify: `editor/gui/editor_scrollable_toolbar.cpp`
+- Modify: `editor/gui/editor_scrollable_toolbar.h` (hold state, `_arrow_down`, `_arrow_up`)
+- Modify: `editor/gui/editor_scrollable_toolbar.cpp` (handlers, internal process, and a hold-stop
+  clause appended to `_update_arrows`)
 - Test: `tests/editor/gui/test_editor_scrollable_toolbar.cpp`
 
 - [ ] **Step 1: Write the failing test**
@@ -531,6 +532,30 @@ TEST_CASE("[SceneTree][EditorScrollableToolbar] pressing an arrow steps and star
 Hitting both arrows by screen position is what covers the rects computed in
 `NOTIFICATION_SORT_CHILDREN`. Nothing in Tasks 1-2 exercises that geometry, so a sign error in
 `size.width - arrow_width` would otherwise go unnoticed until someone ran the editor.
+
+Then add this second case, which guards the hold-stop behavior described in Step 4:
+
+```cpp
+TEST_CASE("[SceneTree][EditorScrollableToolbar] a hold stops when its arrow reaches the end") {
+	EditorScrollableToolbar *toolbar = make_toolbar(3);
+	toolbar->set_scroll_offset(120); // 20px short of the 140 maximum.
+	MessageQueue::get_singleton()->flush();
+
+	const Point2i arrow_pos = Point2i(97, 20);
+	SEND_GUI_MOUSE_BUTTON_EVENT(arrow_pos, MouseButton::LEFT, MouseButtonMask::LEFT, Key::NONE);
+
+	// The step runs into the end, so the arrow hides. BaseButton clears the pending
+	// press on hide without emitting button_up, so the repeat has to stop here or it
+	// would run forever with a stale direction.
+	CHECK(toolbar->get_scroll_offset() == 140);
+	CHECK_FALSE(toolbar->is_right_arrow_visible());
+	CHECK_FALSE(toolbar->is_processing_internal());
+
+	SEND_GUI_MOUSE_BUTTON_RELEASED_EVENT(arrow_pos, MouseButton::LEFT, MouseButtonMask::NONE, Key::NONE);
+
+	memdelete(toolbar);
+}
+```
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -581,6 +606,22 @@ void EditorScrollableToolbar::_arrow_up() {
 }
 ```
 
+Then extend `_update_arrows()` (added in Task 2) so a running hold stops when its own arrow
+disappears. Append to the end of that function:
+
+```cpp
+	// An arrow hides the moment its end is reached, which is exactly how a hold is
+	// meant to finish. BaseButton clears the pending press when it hides without
+	// emitting button_up (base_button.cpp:195), so _arrow_up() would never run and
+	// the repeat would keep going with a stale direction.
+	if ((hold_dir < 0 && !left_arrow->is_visible()) || (hold_dir > 0 && !right_arrow->is_visible())) {
+		_arrow_up();
+	}
+```
+
+This is why `_arrow_up()` must be safe to call when no hold is active — it is, since it only
+clears `hold_dir` and disables internal processing.
+
 Add a `NOTIFICATION_INTERNAL_PROCESS` case to `_notification()`, after the
 `NOTIFICATION_SORT_CHILDREN` case:
 
@@ -619,7 +660,7 @@ and after `right_arrow->set_visible(false);`:
 .\bin\godot.windows.editor.dev.x86_64.mono.console.exe --headless --test --test-case="*EditorScrollableToolbar*"
 ```
 
-Expected: `test cases: 7 | 7 passed | 0 failed`.
+Expected: `test cases: 8 | 8 passed | 0 failed`.
 
 - [ ] **Step 6: Commit**
 
@@ -774,7 +815,7 @@ void EditorScrollableToolbar::gui_input(const Ref<InputEvent> &p_event) {
 .\bin\godot.windows.editor.dev.x86_64.mono.console.exe --headless --test --test-case="*EditorScrollableToolbar*"
 ```
 
-Expected: `test cases: 9 | 9 passed | 0 failed`.
+Expected: `test cases: 10 | 10 passed | 0 failed`.
 
 - [ ] **Step 6: Commit**
 
