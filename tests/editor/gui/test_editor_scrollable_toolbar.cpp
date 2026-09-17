@@ -196,6 +196,76 @@ TEST_CASE("[SceneTree][EditorScrollableToolbar] a hold stops when its arrow reac
 	memdelete(toolbar);
 }
 
+TEST_CASE("[SceneTree][EditorScrollableToolbar] dragging past the threshold scrolls and cancels the click") {
+	EditorScrollableToolbar *toolbar = make_toolbar(3);
+	Button *first = Object::cast_to<Button>(toolbar->get_content()->get_child(0));
+	SIGNAL_WATCH(first, "pressed");
+
+	// Aim at the button's real centre. The content row is only as tall as the buttons
+	// (20px), not as tall as the toolbar (40px), so a hardcoded y can miss the button
+	// and make the "no click" assertion below pass for the wrong reason.
+	const Point2i press_pos = Point2i(first->get_global_rect().get_center());
+	const Point2i drag_pos = press_pos - Point2i(20, 0);
+
+	// Press on the first button, then drag 20px left: past the 8px threshold.
+	SEND_GUI_MOUSE_BUTTON_EVENT(press_pos, MouseButton::LEFT, MouseButtonMask::LEFT, Key::NONE);
+	// Guard: without this the test would still pass if the press missed entirely.
+	CHECK(first->is_pressing());
+	SEND_GUI_MOUSE_MOTION_EVENT(drag_pos, MouseButtonMask::LEFT, Key::NONE);
+	SEND_GUI_MOUSE_BUTTON_RELEASED_EVENT(drag_pos, MouseButton::LEFT, MouseButtonMask::NONE, Key::NONE);
+
+	// Dragging left moves the content left, which raises the scroll offset.
+	CHECK(toolbar->get_scroll_offset() == 20);
+	// NOTIFICATION_SCROLL_BEGIN cleared the button's pending press.
+	SIGNAL_CHECK_FALSE("pressed");
+
+	SIGNAL_UNWATCH(first, "pressed");
+	memdelete(toolbar);
+}
+
+TEST_CASE("[SceneTree][EditorScrollableToolbar] a small move still clicks the button") {
+	EditorScrollableToolbar *toolbar = make_toolbar(3);
+	Button *first = Object::cast_to<Button>(toolbar->get_content()->get_child(0));
+	SIGNAL_WATCH(first, "pressed");
+
+	const Point2i press_pos = Point2i(first->get_global_rect().get_center());
+	const Point2i nudge_pos = press_pos - Point2i(3, 0);
+
+	// Move only 3px, below the 8px threshold.
+	SEND_GUI_MOUSE_BUTTON_EVENT(press_pos, MouseButton::LEFT, MouseButtonMask::LEFT, Key::NONE);
+	CHECK(first->is_pressing());
+	SEND_GUI_MOUSE_MOTION_EVENT(nudge_pos, MouseButtonMask::LEFT, Key::NONE);
+	SEND_GUI_MOUSE_BUTTON_RELEASED_EVENT(nudge_pos, MouseButton::LEFT, MouseButtonMask::NONE, Key::NONE);
+
+	CHECK(toolbar->get_scroll_offset() == 0);
+	Array pressed_once = { {} };
+	SIGNAL_CHECK("pressed", pressed_once);
+
+	SIGNAL_UNWATCH(first, "pressed");
+	memdelete(toolbar);
+}
+
+TEST_CASE("[SceneTree][EditorScrollableToolbar] starting a drag stops an arrow hold") {
+	EditorScrollableToolbar *toolbar = make_toolbar(3);
+
+	const Point2i arrow_pos = Point2i(97, 20);
+	SEND_GUI_MOUSE_BUTTON_EVENT(arrow_pos, MouseButton::LEFT, MouseButtonMask::LEFT, Key::NONE);
+
+	CHECK(toolbar->get_scroll_offset() == 40);
+	CHECK(toolbar->is_processing_internal());
+
+	// Drag away from the arrow, past the threshold. BaseButton cancels its pending
+	// press on NOTIFICATION_SCROLL_BEGIN without emitting button_up, so only the
+	// toolbar's own handler for that notification can stop the repeat.
+	SEND_GUI_MOUSE_MOTION_EVENT(Point2i(77, 20), MouseButtonMask::LEFT, Key::NONE);
+
+	CHECK_FALSE(toolbar->is_processing_internal());
+
+	SEND_GUI_MOUSE_BUTTON_RELEASED_EVENT(Point2i(77, 20), MouseButton::LEFT, MouseButtonMask::NONE, Key::NONE);
+
+	memdelete(toolbar);
+}
+
 } // namespace TestEditorScrollableToolbar
 
 #endif // TOOLS_ENABLED

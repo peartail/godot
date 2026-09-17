@@ -60,6 +60,11 @@ private:
 	int hold_dir = 0;
 	float hold_time = 0.0f;
 
+	bool drag_pending = false;
+	bool dragging = false;
+	float drag_accum = 0.0f;
+	float drag_last_x = 0.0f;
+
 	void _scroll_by(float p_amount);
 	void _update_arrows();
 	void _scroll_value_changed(double p_value);
@@ -70,6 +75,7 @@ protected:
 	void _notification(int p_what);
 
 public:
+	virtual void input(const Ref<InputEvent> &p_event) override;
 	virtual Size2 get_minimum_size() const override;
 
 	HBoxContainer *get_content() const { return content; }

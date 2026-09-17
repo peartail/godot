@@ -93,6 +93,61 @@ void EditorScrollableToolbar::_arrow_up() {
 	set_process_internal(false);
 }
 
+void EditorScrollableToolbar::input(const Ref<InputEvent> &p_event) {
+	ERR_FAIL_COND(p_event.is_null());
+
+	if (!is_visible_in_tree()) {
+		return;
+	}
+
+	// Node::input() runs before GUI dispatch. It has to, because every Button defaults
+	// to MOUSE_FILTER_STOP and so ends gui_input() propagation at itself, which would
+	// hide any drag that starts on top of a toolbar button.
+	Ref<InputEventMouseButton> mb = p_event;
+	if (mb.is_valid() && mb->get_button_index() == MouseButton::LEFT) {
+		if (mb->is_pressed()) {
+			drag_pending = get_global_rect().has_point(mb->get_global_position());
+			dragging = false;
+			drag_accum = 0.0f;
+			drag_last_x = mb->get_global_position().x;
+			scroll_remainder = 0.0f;
+		} else {
+			if (dragging) {
+				propagate_notification(NOTIFICATION_SCROLL_END);
+			}
+			drag_pending = false;
+			dragging = false;
+		}
+		return;
+	}
+
+	Ref<InputEventMouseMotion> mm = p_event;
+	if (mm.is_null() || !drag_pending) {
+		return;
+	}
+	if (!mm->get_button_mask().has_flag(MouseButtonMask::LEFT)) {
+		drag_pending = false;
+		return;
+	}
+
+	const float x = mm->get_global_position().x;
+	const float dx = x - drag_last_x;
+	drag_last_x = x;
+
+	if (!dragging) {
+		drag_accum += Math::abs(dx);
+		if (drag_accum < DRAG_THRESHOLD * EDSCALE) {
+			return;
+		}
+		dragging = true;
+		// Every descendant BaseButton drops its pending press, so releasing fires no
+		// click. This control handles the same notification to stop an arrow hold.
+		propagate_notification(NOTIFICATION_SCROLL_BEGIN);
+	}
+
+	_scroll_by(-dx);
+}
+
 Size2 EditorScrollableToolbar::get_minimum_size() const {
 	// Width comes back as 0 because the scroll container scrolls horizontally;
 	// height is the natural height of the toolbar row.
@@ -151,6 +206,14 @@ void EditorScrollableToolbar::_notification(int p_what) {
 			}
 			_scroll_by(hold_dir * HOLD_SPEED * EDSCALE * delta);
 		} break;
+
+		case NOTIFICATION_SCROLL_BEGIN: {
+			// propagate_notification() delivers to this node before its children, and
+			// BaseButton clears a pending press on this notification without emitting
+			// button_up — so an arrow held when a drag starts would otherwise keep
+			// repeating for the rest of the gesture.
+			_arrow_up();
+		} break;
 	}
 }
 
@@ -163,6 +226,7 @@ HBoxContainer *EditorScrollableToolbar::create(Control *p_parent) {
 EditorScrollableToolbar::EditorScrollableToolbar() {
 	set_h_size_flags(SIZE_EXPAND_FILL);
 	set_clip_contents(true);
+	set_process_input(true);
 
 	scroll = memnew(ScrollContainer);
 	scroll->set_horizontal_scroll_mode(ScrollContainer::SCROLL_MODE_SHOW_NEVER);
