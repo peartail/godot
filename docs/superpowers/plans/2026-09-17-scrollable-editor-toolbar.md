@@ -678,9 +678,31 @@ git commit -m "Scroll toolbar by step on arrow click and repeat while held"
 ### Task 4: Left-drag scrolling that cancels the click
 
 **Files:**
-- Modify: `editor/gui/editor_scrollable_toolbar.h`
-- Modify: `editor/gui/editor_scrollable_toolbar.cpp`
+- Modify: `editor/gui/editor_scrollable_toolbar.h` (drag state, `input()` override)
+- Modify: `editor/gui/editor_scrollable_toolbar.cpp` (`input()`, `NOTIFICATION_SCROLL_BEGIN` case,
+  `set_process_input` in the constructor)
 - Test: `tests/editor/gui/test_editor_scrollable_toolbar.cpp`
+
+**Why `Node::input()` and not `gui_input()`.** An earlier draft of this task tracked the drag in
+`Control::gui_input()`, on the assumption that a press landing on a toolbar button would bubble up
+to the container because `BaseButton::gui_input()` never calls `accept_event()`. That assumption is
+wrong. `Viewport::_gui_call_input()` walks the ancestor chain but breaks as soon as it reaches a
+control whose mouse filter is `MOUSE_FILTER_STOP`, independent of `accept_event()`:
+
+```cpp
+if (control->get_mouse_filter_with_override() == Control::MOUSE_FILTER_STOP && is_pointer_event && ...) {
+    set_input_as_handled();
+    break;
+}
+```
+
+`Button` sets `MOUSE_FILTER_STOP` in its constructor (`scene/gui/button.cpp:881`), so every toolbar
+button — including our own arrows — swallows the press. `gui_input()` would only ever see drags
+that start on the container's bare background, which is the one place a toolbar has almost no room.
+
+`Node::input()` runs before GUI dispatch. `Viewport::push_input()` says so in its own comment:
+`order is _input -> gui input -> _unhandled input`. So the drag is tracked from there, hit-tested
+against the toolbar's own rect.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -724,6 +746,27 @@ TEST_CASE("[SceneTree][EditorScrollableToolbar] a small move still clicks the bu
 	SIGNAL_UNWATCH(first, "pressed");
 	memdelete(toolbar);
 }
+
+TEST_CASE("[SceneTree][EditorScrollableToolbar] starting a drag stops an arrow hold") {
+	EditorScrollableToolbar *toolbar = make_toolbar(3);
+
+	const Point2i arrow_pos = Point2i(97, 20);
+	SEND_GUI_MOUSE_BUTTON_EVENT(arrow_pos, MouseButton::LEFT, MouseButtonMask::LEFT, Key::NONE);
+
+	CHECK(toolbar->get_scroll_offset() == 40);
+	CHECK(toolbar->is_processing_internal());
+
+	// Drag away from the arrow, past the threshold. BaseButton cancels its pending
+	// press on NOTIFICATION_SCROLL_BEGIN without emitting button_up, so only the
+	// toolbar's own handler for that notification can stop the repeat.
+	SEND_GUI_MOUSE_MOTION_EVENT(Point2i(77, 20), MouseButtonMask::LEFT, Key::NONE);
+
+	CHECK_FALSE(toolbar->is_processing_internal());
+
+	SEND_GUI_MOUSE_BUTTON_RELEASED_EVENT(Point2i(77, 20), MouseButton::LEFT, MouseButtonMask::NONE, Key::NONE);
+
+	memdelete(toolbar);
+}
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -751,26 +794,33 @@ In `editor/gui/editor_scrollable_toolbar.h`, add to the private section immediat
 and to the public section, immediately above `virtual Size2 get_minimum_size() const override;`:
 
 ```cpp
-	virtual void gui_input(const Ref<InputEvent> &p_event) override;
+	virtual void input(const Ref<InputEvent> &p_event) override;
 ```
+
+`input()` is `Node::input()` (`scene/main/node.h:428`), not `Control::gui_input()`.
 
 - [ ] **Step 4: Implement drag handling**
 
 In `editor/gui/editor_scrollable_toolbar.cpp`, add this function after `_arrow_up()`:
 
 ```cpp
-void EditorScrollableToolbar::gui_input(const Ref<InputEvent> &p_event) {
+void EditorScrollableToolbar::input(const Ref<InputEvent> &p_event) {
 	ERR_FAIL_COND(p_event.is_null());
 
-	// BaseButton::gui_input() never calls accept_event(), so presses and motion over
-	// the toolbar's own buttons bubble up to here.
+	if (!is_visible_in_tree()) {
+		return;
+	}
+
+	// Node::input() runs before GUI dispatch. It has to, because every Button defaults
+	// to MOUSE_FILTER_STOP and so ends gui_input() propagation at itself, which would
+	// hide any drag that starts on top of a toolbar button.
 	Ref<InputEventMouseButton> mb = p_event;
 	if (mb.is_valid() && mb->get_button_index() == MouseButton::LEFT) {
 		if (mb->is_pressed()) {
-			drag_pending = true;
+			drag_pending = get_global_rect().has_point(mb->get_global_position());
 			dragging = false;
 			drag_accum = 0.0f;
-			drag_last_x = mb->get_position().x;
+			drag_last_x = mb->get_global_position().x;
 			scroll_remainder = 0.0f;
 		} else {
 			if (dragging) {
@@ -791,9 +841,7 @@ void EditorScrollableToolbar::gui_input(const Ref<InputEvent> &p_event) {
 		return;
 	}
 
-	// Position deltas, not get_relative(): the relative field is not populated by
-	// synthesized events, and the toolbar itself never moves while dragging.
-	const float x = mm->get_position().x;
+	const float x = mm->get_global_position().x;
 	const float dx = x - drag_last_x;
 	drag_last_x = x;
 
@@ -803,13 +851,35 @@ void EditorScrollableToolbar::gui_input(const Ref<InputEvent> &p_event) {
 			return;
 		}
 		dragging = true;
-		// Every descendant BaseButton drops its pending press, so releasing fires no click.
+		// Every descendant BaseButton drops its pending press, so releasing fires no
+		// click. This control handles the same notification to stop an arrow hold.
 		propagate_notification(NOTIFICATION_SCROLL_BEGIN);
 	}
 
 	_scroll_by(-dx);
-	accept_event();
 }
+```
+
+The event is never marked handled. The click is already cancelled by
+`NOTIFICATION_SCROLL_BEGIN`, and swallowing the release would leave the viewport's
+`gui.mouse_focus` pointing at a button that never saw its mouse-up.
+
+Add a `NOTIFICATION_SCROLL_BEGIN` case to `_notification()`, alongside the other cases:
+
+```cpp
+		case NOTIFICATION_SCROLL_BEGIN: {
+			// propagate_notification() delivers to this node before its children, and
+			// BaseButton clears a pending press on this notification without emitting
+			// button_up — so an arrow held when a drag starts would otherwise keep
+			// repeating for the rest of the gesture.
+			_arrow_up();
+		} break;
+```
+
+Enable the input hook in the constructor, next to the other setup calls:
+
+```cpp
+	set_process_input(true);
 ```
 
 - [ ] **Step 5: Run the tests to verify they pass**
@@ -819,7 +889,7 @@ void EditorScrollableToolbar::gui_input(const Ref<InputEvent> &p_event) {
 .\bin\godot.windows.editor.dev.x86_64.mono.console.exe --headless --test --test-case="*EditorScrollableToolbar*"
 ```
 
-Expected: `test cases: 10 | 10 passed | 0 failed`.
+Expected: `test cases: 11 | 11 passed | 0 failed`.
 
 - [ ] **Step 6: Commit**
 
