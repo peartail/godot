@@ -60,10 +60,37 @@ void EditorScrollableToolbar::_update_arrows() {
 	// Half a pixel of slack so a rounding remainder does not keep an arrow alive.
 	left_arrow->set_visible(offset > 0.5);
 	right_arrow->set_visible(offset < max_offset - 0.5);
+
+	// An arrow hides the moment its end is reached, which is exactly how a hold is
+	// meant to finish. BaseButton clears the pending press when it hides without
+	// emitting button_up (base_button.cpp:195), so _arrow_up() would never run and
+	// the repeat would keep going with a stale direction.
+	if ((hold_dir < 0 && !left_arrow->is_visible()) || (hold_dir > 0 && !right_arrow->is_visible())) {
+		_arrow_up();
+	}
 }
 
 void EditorScrollableToolbar::_scroll_value_changed(double p_value) {
 	_update_arrows();
+}
+
+void EditorScrollableToolbar::_arrow_down(int p_dir) {
+	hold_dir = p_dir;
+	hold_time = 0.0f;
+	scroll_remainder = 0.0f;
+	// Arm the repeat before stepping, not after. _scroll_by() runs the whole
+	// value_changed -> _update_arrows() -> _arrow_up() chain synchronously, so if
+	// this single step already reaches the end, arming afterwards would switch
+	// internal processing back on right after the hold-stop turned it off.
+	set_process_internal(true);
+	// A quick click nudges one step; holding starts a slow continuous scroll
+	// once HOLD_DELAY has elapsed.
+	_scroll_by(p_dir * CLICK_STEP * EDSCALE);
+}
+
+void EditorScrollableToolbar::_arrow_up() {
+	hold_dir = 0;
+	set_process_internal(false);
 }
 
 Size2 EditorScrollableToolbar::get_minimum_size() const {
@@ -112,6 +139,18 @@ void EditorScrollableToolbar::_notification(int p_what) {
 
 			_update_arrows();
 		} break;
+
+		case NOTIFICATION_INTERNAL_PROCESS: {
+			if (hold_dir == 0) {
+				break;
+			}
+			const float delta = get_process_delta_time();
+			hold_time += delta;
+			if (hold_time < HOLD_DELAY) {
+				break;
+			}
+			_scroll_by(hold_dir * HOLD_SPEED * EDSCALE * delta);
+		} break;
 	}
 }
 
@@ -143,6 +182,8 @@ EditorScrollableToolbar::EditorScrollableToolbar() {
 	left_arrow->set_tooltip_text(TTRC("Scroll the toolbar left."));
 	left_arrow->set_accessibility_name(TTRC("Scroll Left"));
 	left_arrow->set_visible(false);
+	left_arrow->connect(SNAME("button_down"), callable_mp(this, &EditorScrollableToolbar::_arrow_down).bind(-1));
+	left_arrow->connect(SNAME("button_up"), callable_mp(this, &EditorScrollableToolbar::_arrow_up));
 	add_child(left_arrow, false, INTERNAL_MODE_BACK);
 
 	right_arrow = memnew(Button);
@@ -150,6 +191,8 @@ EditorScrollableToolbar::EditorScrollableToolbar() {
 	right_arrow->set_tooltip_text(TTRC("Scroll the toolbar right."));
 	right_arrow->set_accessibility_name(TTRC("Scroll Right"));
 	right_arrow->set_visible(false);
+	right_arrow->connect(SNAME("button_down"), callable_mp(this, &EditorScrollableToolbar::_arrow_down).bind(1));
+	right_arrow->connect(SNAME("button_up"), callable_mp(this, &EditorScrollableToolbar::_arrow_up));
 	add_child(right_arrow, false, INTERNAL_MODE_BACK);
 
 	scroll->get_h_scroll_bar()->connect(SceneStringName(value_changed), callable_mp(this, &EditorScrollableToolbar::_scroll_value_changed));

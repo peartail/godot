@@ -145,6 +145,57 @@ TEST_CASE("[SceneTree][EditorScrollableToolbar] arrows do not shrink the scroll 
 	memdelete(toolbar);
 }
 
+TEST_CASE("[SceneTree][EditorScrollableToolbar] pressing an arrow steps and starts repeating") {
+	EditorScrollableToolbar *toolbar = make_toolbar(3);
+
+	// The right arrow is anchored to the right edge; 3px in from it is inside the
+	// arrow whatever width the theme gives the button.
+	const Point2i arrow_pos = Point2i(97, 20);
+
+	SEND_GUI_MOUSE_BUTTON_EVENT(arrow_pos, MouseButton::LEFT, MouseButtonMask::LEFT, Key::NONE);
+
+	// One press scrolls a fixed step immediately and arms the repeat.
+	CHECK(toolbar->get_scroll_offset() == 40);
+	CHECK(toolbar->is_processing_internal());
+
+	SEND_GUI_MOUSE_BUTTON_RELEASED_EVENT(arrow_pos, MouseButton::LEFT, MouseButtonMask::NONE, Key::NONE);
+
+	CHECK_FALSE(toolbar->is_processing_internal());
+	CHECK(toolbar->get_scroll_offset() == 40);
+
+	// The offset is non-zero now, so the left arrow is showing. Pressing it walks
+	// the offset back, which also exercises the left-edge layout rect.
+	const Point2i left_arrow_pos = Point2i(2, 20);
+
+	SEND_GUI_MOUSE_BUTTON_EVENT(left_arrow_pos, MouseButton::LEFT, MouseButtonMask::LEFT, Key::NONE);
+
+	CHECK(toolbar->get_scroll_offset() == 0);
+
+	SEND_GUI_MOUSE_BUTTON_RELEASED_EVENT(left_arrow_pos, MouseButton::LEFT, MouseButtonMask::NONE, Key::NONE);
+
+	memdelete(toolbar);
+}
+
+TEST_CASE("[SceneTree][EditorScrollableToolbar] a hold stops when its arrow reaches the end") {
+	EditorScrollableToolbar *toolbar = make_toolbar(3);
+	toolbar->set_scroll_offset(120); // 20px short of the 140 maximum.
+	MessageQueue::get_singleton()->flush();
+
+	const Point2i arrow_pos = Point2i(97, 20);
+	SEND_GUI_MOUSE_BUTTON_EVENT(arrow_pos, MouseButton::LEFT, MouseButtonMask::LEFT, Key::NONE);
+
+	// The step runs into the end, so the arrow hides. BaseButton clears the pending
+	// press on hide without emitting button_up, so the repeat has to stop here or it
+	// would run forever with a stale direction.
+	CHECK(toolbar->get_scroll_offset() == 140);
+	CHECK_FALSE(toolbar->is_right_arrow_visible());
+	CHECK_FALSE(toolbar->is_processing_internal());
+
+	SEND_GUI_MOUSE_BUTTON_RELEASED_EVENT(arrow_pos, MouseButton::LEFT, MouseButtonMask::NONE, Key::NONE);
+
+	memdelete(toolbar);
+}
+
 } // namespace TestEditorScrollableToolbar
 
 #endif // TOOLS_ENABLED

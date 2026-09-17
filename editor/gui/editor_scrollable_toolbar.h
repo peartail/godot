@@ -57,9 +57,14 @@ private:
 	// so a slow continuous scroll does not lose speed to truncation.
 	float scroll_remainder = 0.0f;
 
+	int hold_dir = 0;
+	float hold_time = 0.0f;
+
 	void _scroll_by(float p_amount);
 	void _update_arrows();
 	void _scroll_value_changed(double p_value);
+	void _arrow_down(int p_dir);
+	void _arrow_up();
 
 protected:
 	void _notification(int p_what);
