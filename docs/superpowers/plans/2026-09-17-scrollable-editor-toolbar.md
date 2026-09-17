@@ -225,11 +225,14 @@ the filename on its second line to `editor_scrollable_toolbar.cpp`. Then:
 ```cpp
 #include "editor_scrollable_toolbar.h"
 
+#include "core/core_string_names.h"
+#include "core/object/callable_mp.h"
 #include "editor/themes/editor_scale.h"
 #include "scene/gui/box_container.h"
 #include "scene/gui/button.h"
 #include "scene/gui/scroll_bar.h"
 #include "scene/gui/scroll_container.h"
+#include "scene/scene_string_names.h"
 
 void EditorScrollableToolbar::_scroll_by(float p_amount) {
 	// set_h_scroll() takes an int, so carry the fraction across calls. Without this a
@@ -305,7 +308,9 @@ EditorScrollableToolbar::EditorScrollableToolbar() {
 	scroll = memnew(ScrollContainer);
 	scroll->set_horizontal_scroll_mode(ScrollContainer::SCROLL_MODE_SHOW_NEVER);
 	scroll->set_vertical_scroll_mode(ScrollContainer::SCROLL_MODE_DISABLED);
-	add_child(scroll, false, INTERNAL_MODE_FRONT);
+	// All three are internal children, added in draw order: the arrows are added
+	// after the scroll container so they paint on top of the toolbar contents.
+	add_child(scroll, false, INTERNAL_MODE_BACK);
 
 	content = memnew(HBoxContainer);
 	// Lets the row stretch to the viewport when items fit, and fall back to its
@@ -323,10 +328,14 @@ EditorScrollableToolbar::EditorScrollableToolbar() {
 	right_arrow->set_visible(false);
 	add_child(right_arrow, false, INTERNAL_MODE_BACK);
 
-	scroll->get_h_scroll_bar()->connect("value_changed", callable_mp(this, &EditorScrollableToolbar::_scroll_value_changed));
-	scroll->get_h_scroll_bar()->connect("changed", callable_mp(this, &EditorScrollableToolbar::_update_arrows));
+	scroll->get_h_scroll_bar()->connect(SceneStringName(value_changed), callable_mp(this, &EditorScrollableToolbar::_scroll_value_changed));
+	scroll->get_h_scroll_bar()->connect(CoreStringName(changed), callable_mp(this, &EditorScrollableToolbar::_update_arrows));
 }
 ```
+
+Use the `StringName` constants, not raw strings: `ScrollContainer` connects to this same
+`HScrollBar` signal with `SceneStringName(value_changed)` at `scroll_container.cpp:1085`, and
+`CoreStringName(changed)` is the established idiom for the `Range` "changed" signal.
 
 - [ ] **Step 5: Run the tests to verify they pass**
 
@@ -505,9 +514,23 @@ TEST_CASE("[SceneTree][EditorScrollableToolbar] pressing an arrow steps and star
 	CHECK_FALSE(toolbar->is_processing_internal());
 	CHECK(toolbar->get_scroll_offset() == 40);
 
+	// The offset is non-zero now, so the left arrow is showing. Pressing it walks
+	// the offset back, which also exercises the left-edge layout rect.
+	const Point2i left_arrow_pos = Point2i(2, 20);
+
+	SEND_GUI_MOUSE_BUTTON_EVENT(left_arrow_pos, MouseButton::LEFT, MouseButtonMask::LEFT, Key::NONE);
+
+	CHECK(toolbar->get_scroll_offset() == 0);
+
+	SEND_GUI_MOUSE_BUTTON_RELEASED_EVENT(left_arrow_pos, MouseButton::LEFT, MouseButtonMask::NONE, Key::NONE);
+
 	memdelete(toolbar);
 }
 ```
+
+Hitting both arrows by screen position is what covers the rects computed in
+`NOTIFICATION_SORT_CHILDREN`. Nothing in Tasks 1-2 exercises that geometry, so a sign error in
+`size.width - arrow_width` would otherwise go unnoticed until someone ran the editor.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
