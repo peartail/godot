@@ -1,5 +1,5 @@
 /**************************************************************************/
-/*  test_editor_scrollable_toolbar.cpp                                   */
+/*  test_editor_scrollable_toolbar.cpp                                    */
 /**************************************************************************/
 /*                         This file is part of:                          */
 /*                             GODOT ENGINE                               */
