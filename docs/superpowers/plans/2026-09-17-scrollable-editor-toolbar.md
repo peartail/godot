@@ -594,10 +594,14 @@ void EditorScrollableToolbar::_arrow_down(int p_dir) {
 	hold_dir = p_dir;
 	hold_time = 0.0f;
 	scroll_remainder = 0.0f;
+	// Arm the repeat before stepping, not after. _scroll_by() runs the whole
+	// value_changed -> _update_arrows() -> _arrow_up() chain synchronously, so if
+	// this single step already reaches the end, arming afterwards would switch
+	// internal processing back on right after the hold-stop turned it off.
+	set_process_internal(true);
 	// A quick click nudges one step; holding starts a slow continuous scroll
 	// once HOLD_DELAY has elapsed.
 	_scroll_by(p_dir * CLICK_STEP * EDSCALE);
-	set_process_internal(true);
 }
 
 void EditorScrollableToolbar::_arrow_up() {
