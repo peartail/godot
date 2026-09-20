@@ -1,10 +1,11 @@
 # Agent Tools
 
-Agent-facing helpers for querying or generating engine documentation.
+Agent-facing helpers for engine documentation and editor automation.
 
 ## Subtopics
 
 - [Agent Docs CLI](agent_docs_cli.md)
+- [Editor Automation Specification](editor_automation_spec.md): CLI/RPC 제어와 복잡한 GDScript 작업 실행 설계 초안.
 
 ## Code Links
 
