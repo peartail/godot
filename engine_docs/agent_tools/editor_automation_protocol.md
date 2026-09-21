@@ -14,7 +14,8 @@
 - 일반 로그는 프로토콜 스트림에 섞지 않는다. CLI stdout은 JSON, stderr는 진단용이다.
 - 세션 발견 파일은 **사용자 전용 경로**에 둔다. 프로젝트 디렉터리에는 두지 않는다.
   Windows에서는 `user://`가 해석되는 사용자 프로필 아래이며, 프로젝트별로 파일을 구분한다.
-  `.godot/agent/`는 사용하지 않는다. [검증 근거](editor_automation_stage0_findings.md)
+  `.godot/agent/`에는 세션 파일을 두지 않는다. 같은 디렉터리의 `outputs/`는 비밀이 아닌
+  프로젝트 산출물이므로 그대로 둔다. [검증 근거](editor_automation_stage0_findings.md)
 - 정보: protocol_version, session_id, project_path, pid, port, 시작 시각 및 인증 연결 정보.
 - token은 세션마다 새로 만들고 Git·일반 로그에 남기지 않는다. 생성은 `Crypto.generate_random_bytes`를 쓴다.
 - 발견 파일 전체가 보안 자산이다. token만 분리하고 나머지를 프로젝트에 두는 절충은 쓰지 않는다.
@@ -115,6 +116,8 @@ queued → running → succeeded / failed / cancelled
 - 초기 도메인 code: AUTH_FAILED, SESSION_MISMATCH, UNSUPPORTED_VERSION, UNSUPPORTED_CAPABILITY,
   INVALID_TARGET, STALE_TARGET, INVALID_PARAMS, UNSUPPORTED_VALUE_TYPE, SCENE_DIRTY, SAVE_FAILED,
   SCRIPT_PARSE_ERROR, SCRIPT_RUNTIME_ERROR, RESULT_ENCODING_ERROR, RENDERING_UNAVAILABLE, OUTPUT_EXISTS.
+- `SCRIPT_PARSE_ERROR`는 **문법 오류를 첫 하나만** 보고한다. 엔진이 파싱 단계에서 첫 오류만 출력하기 때문이다.
+  타입 오류 등 분석 단계 오류는 전부 보고한다. 이 비대칭을 응답과 사용자 문서에 드러낸다.
 - 취소는 cancelled 상태, 서버의 협력적 deadline 종료는 failed와 DEADLINE_EXCEEDED로 구분한다.
 - 실행 전 오류와 일부 변경 후 오류를 구분한다. effects.partial_changes는 true/false/unknown이다.
 - effects.tracking은 managed 또는 incomplete다. 임의 코드 직접 부작용은 incomplete일 수 있다.

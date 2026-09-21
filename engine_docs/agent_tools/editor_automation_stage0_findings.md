@@ -55,7 +55,9 @@ A returned value = { "count": 42, "kind": "sync" }
 출력만 하고 호출부에 전달하지 않는다(`modules/gdscript/gdscript.cpp:843`). GDScript 쪽에는 `get_errors` 같은 조회 API가 없다
 (실행으로 확인: `has_method("get_errors") = false`).
 
-추가로 소스에 `// TODO: Show all error messages.` 주석이 있고 실제로 **첫 번째 오류만** 출력된다.
+오류 개수는 단계에 따라 다르다. **파싱 단계는 첫 오류 하나만** 출력하며 `// TODO: Show all error messages.`
+주석이 붙어 있다(`gdscript.cpp:827`). **분석 단계는 오류 목록을 순회해 전부** 출력한다(`gdscript.cpp:848`).
+즉 잘리는 것은 문법 오류뿐이고, 타입 오류처럼 서로 독립적인 분석 오류는 모두 보고된다.
 
 → 프로토콜이 `COMPILE_ERROR`에 줄 번호와 메시지를 담으려면 **C++에서 `add_error_handler()`로 오류를 수집해야 한다.**
 `reload()` 반환값만으로는 "컴파일 실패" 이상을 말할 수 없다.
