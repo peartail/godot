@@ -4,8 +4,9 @@
 
 ## 범위와 상태
 
-- 작성일: 2026-09-21. 대상: 스펙 "기능 범위와 순서" 표의 **단계 0 (GDScript 동적 실행 기술 검증)**.
-- 검증 항목: 컴파일 오류, return, await, 실행 오류, 객체 수명.
+- 작성일: 2026-09-21. 대상: 스펙 "기능 범위와 순서" 표의 **단계 0 (GDScript 동적 실행 기술 검증)**,
+  그리고 스펙 미결정 **4번 (세션 파일 접근 제어와 token 저장)**.
+- 검증 항목: 컴파일 오류, return, await, 실행 오류, 객체 수명, 그리고 세션 파일 권한과 token 생성.
 - 구현·빌드·배포는 수행하지 않았다. 이 문서는 단계 1 이후 설계를 확정하기 위한 근거다.
 - 소스 읽기와 **실제 실행**을 함께 수행했다. 결론마다 근거 유형을 표시한다.
 
@@ -157,9 +158,10 @@ F after = { "v": 1 }
 | --- | --- |
 | 1. C++ 작업 관리와 GDScript async 연결 | `GDScriptFunctionState::completed`로 충분하다. 보조 실행기는 await 수신 목적으로는 불필요 |
 | 2. 실행 오류의 job 귀속과 종료 판정 | `add_error_handler` + `gdscript://<instance_id>.gd` 대조로 가능. 타 스크립트 오류는 누락 |
-| 5. generation·수정 상태 추적 한계 | 미검증. 단계 1에서 실제 씬 편집과 함께 확인 필요 |
+| 4. 세션 파일 접근 제어와 token 저장 | `.godot/agent/`는 불가. 사용자 전용 경로로 옮긴다. 아래 절 참조 |
+| 5. generation·수정 상태 추적 한계 | 범위 결정으로 대체. generation·dirty는 유지, 완전 추적은 포기 |
 
-3(CLI 구현 언어), 4(세션 파일 접근 제어), 6(동시 편집·프레임 응답성)은 이번 범위 밖이며 미검증이다.
+3(CLI 구현 언어)과 6(동시 편집·프레임 응답성)은 검증이 아닌 결정으로 닫혔다. 스펙 해당 절을 참조한다.
 
 ## 구현에 넘기는 제약
 
@@ -177,3 +179,59 @@ F after = { "v": 1 }
 - 렌더링 모드 촬영과 headless에서의 `RENDERING_UNAVAILABLE` (9항).
 - 에디터 안에서의 동작. 이번 검증은 **에디터가 아닌 일반 실행**에서 수행했다.
   `@tool`, `EditorInterface`, `EditorUndoRedoManager`가 얽힌 경로는 별도 확인이 필요하다.
+
+---
+
+# 미결정 4번 — 세션 파일 위치와 token
+
+## 결론
+
+프로토콜이 제안했던 `.godot/agent/`는 **사용자 전용이 아니다.** 발견 파일 전체를 사용자 전용 경로로 옮긴다.
+
+## 실측 권한
+
+두 후보 위치에 실제로 파일을 만들고 ACL을 읽었다.
+
+| 위치 | 소유자 외 접근 |
+| --- | --- |
+| `user://` → `%APPDATA%\Godot\app_userdata\<project>\` | `CodexSandboxUsers` 읽기만 |
+| `C:\GithubProjects\shipAdventure\.godot` | **`BUILTIN\Users` 읽기 + `Authenticated Users` 수정** |
+
+모두 상위 디렉터리에서 상속된 권한이다(`IsInherited = True`).
+프로토콜 원안대로 `.godot/agent/`에 token을 두면 이 머신의 모든 로컬 사용자가 읽을 수 있고,
+인증된 사용자는 고칠 수도 있다.
+
+이는 `.godot/` 자체의 성질이 아니라 **프로젝트를 어디에 두었는가의 결과다.**
+`%USERPROFILE%` 아래 프로젝트였다면 안전했다. 사용자가 프로젝트 위치를 자유롭게 정하므로
+프로젝트 디렉터리에 기대는 설계는 보장을 만들 수 없다.
+
+## 엔진은 권한을 고치지 못한다
+
+`FileAccessWindows::_set_unix_permissions()`는 `ERR_UNAVAILABLE`을 반환한다
+(`drivers/windows/file_access_windows.cpp:533`). 실행으로도 `2 (Unavailable)`을 확인했다.
+Godot에는 Windows ACL API가 없다.
+
+`FileAccess.set_hidden_attribute()`는 `OK`를 반환하지만 숨김 속성은 보안 통제가 아니다.
+
+→ 보호 수단은 **경로 선택뿐이다.**
+
+## 쓰기 권한이 더 위험하다
+
+읽기보다 `Authenticated Users`의 `Modify`가 문제다. 발견 파일의 `port`를 공격자 서버로 바꿔 두면
+CLI가 그쪽에 접속해 token을 그대로 넘긴다.
+
+프로토콜의 *"발견 파일의 존재만 신뢰하지 않는다"* 방어는 여기서 무력하다.
+검증에 쓰는 `session_id`·`project_path`도 같은 파일에서 읽으므로, 위조 파일과 위조 서버가 짝을 맞추면 통과한다.
+
+→ token만 다른 곳에 두고 나머지를 프로젝트에 남기는 절충은 쓸 수 없다. **발견 파일 전체가 보안 자산이다.**
+
+## token 생성은 문제없다
+
+`Crypto.generate_random_bytes()`는 mbedTLS PSA의 `psa_generate_random()`을 호출한다
+(`modules/mbedtls/crypto_mbedtls.cpp:528`). 32바이트를 생성해 호출마다 다른 값임을 확인했다.
+
+## 남은 한계
+
+이 머신에서는 `user://`도 완전한 사용자 전용이 아니다. `CodexSandboxUsers` 그룹에 읽기 권한이 있다.
+머신 정책으로 보이며, 이 환경에 "완전한 사용자 전용 경로"는 없다는 뜻이다.
+더 강한 격리가 필요하면 네이티브 Win32 ACL 설정을 C++로 구현해야 한다.
