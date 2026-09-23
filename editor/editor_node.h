@@ -75,6 +75,7 @@ class DependencyErrorDialog;
 class DockSplitContainer;
 class DynamicFontImportSettingsDialog;
 class EditorAbout;
+class EditorAgentServer;
 class EditorBuildProfileManager;
 class EditorBottomPanel;
 class EditorCommandPalette;
@@ -502,6 +503,9 @@ private:
 	bool was_window_windowed_last = false;
 
 	bool unfocused_low_processor_usage_mode_enabled = true;
+
+	// Local editor automation server. Only instantiated when --agent-server is passed.
+	Ref<EditorAgentServer> agent_server;
 
 #ifndef ANDROID_ENABLED
 	AndroidSDKManager *android_sdk_manager = nullptr;

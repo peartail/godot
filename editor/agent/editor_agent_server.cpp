@@ -32,6 +32,7 @@
 
 #include "core/config/project_settings.h"
 #include "core/io/json.h"
+#include "core/math/math_funcs.h"
 #include "core/os/os.h"
 #include "core/version.h"
 
@@ -215,7 +216,16 @@ String EditorAgentServer::_handle_line(const String &p_line) {
 		return String();
 	}
 
-	const Variant id = req["id"];
+	// Godot's JSON reads every number as a double, so an id of 1 would echo back as
+	// 1.0 and a strict client would not match it to its request. Narrow an integral
+	// float back to an int; anything else (string, null, fractional) passes through.
+	Variant id = req["id"];
+	if (id.get_type() == Variant::FLOAT) {
+		const double raw = id;
+		if (raw == Math::floor(raw) && Math::abs(raw) < 9007199254740992.0) {
+			id = (int64_t)raw;
+		}
+	}
 	const String method = req.get("method", "");
 	const Dictionary params = req.get("params", Dictionary());
 

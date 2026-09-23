@@ -53,6 +53,7 @@
 #include "editor/asset_library/asset_library_editor_plugin.h"
 #include "editor/audio/audio_stream_editor_plugin.h"
 #include "editor/audio/audio_stream_preview.h"
+#include "editor/agent/editor_agent_server.h"
 #include "editor/audio/editor_audio_buses.h"
 #include "editor/debugger/debugger_editor_plugin.h"
 #include "editor/debugger/editor_debugger_node.h"
@@ -936,6 +937,10 @@ void EditorNode::_notification(int p_what) {
 		} break;
 
 		case NOTIFICATION_PROCESS: {
+			if (agent_server.is_valid()) {
+				agent_server->poll();
+			}
+
 			if (editor_data.is_scene_changed(-1)) {
 				scene_tabs->update_scene_tabs();
 			}
@@ -10065,9 +10070,24 @@ EditorNode::EditorNode() {
 	}
 
 	_update_layouts_menu();
+
+	// Read off the command line the same way --run-upgrade-tool is, so that nothing
+	// is inherited by child processes.
+	const List<String> cmdline_args = OS::get_singleton()->get_cmdline_args();
+	if (cmdline_args.find("--agent-server") != nullptr) {
+		agent_server.instantiate();
+		if (agent_server->start() != OK) {
+			agent_server.unref();
+		}
+	}
 }
 
 EditorNode::~EditorNode() {
+	if (agent_server.is_valid()) {
+		agent_server->stop();
+		agent_server.unref();
+	}
+
 	EditorInspector::cleanup_plugins();
 	EditorTranslationParser::get_singleton()->clean_parsers();
 	ResourceImporterScene::clean_up_importer_plugins();

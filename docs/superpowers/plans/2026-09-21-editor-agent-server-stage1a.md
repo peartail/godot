@@ -741,11 +741,12 @@ git commit -m "Add editor agent JSON-RPC server with token authentication"
 
 - [ ] **Step 1: Add the CLI flag**
 
-In `main/main.cpp`, find the help output near line 944 where `--agent-docs-list` is printed and add
-this line immediately after the `--agent-docs-dump` entry:
+In `main/main.cpp`, add the help entry to the **Run options** section, right after the `--lsp-port`
+line. It belongs with the other long-running servers, not with the one-shot `--agent-docs-*` dumps
+under **Standalone tools**:
 
 ```cpp
-	print_help_option("--agent-server", "Start the local editor automation server (editor only).\n", CLI_OPTION_AVAILABILITY_EDITOR);
+	print_help_option("--agent-server", "Start the local editor automation server. Only has an effect together with --editor.\n", CLI_OPTION_AVAILABILITY_EDITOR);
 ```
 
 Find the argument parsing near line 1894 where `--agent-docs-list` is matched, and add this branch
@@ -753,26 +754,36 @@ next to it:
 
 ```cpp
 		} else if (arg == "--agent-server") {
-			OS::get_singleton()->set_environment("GODOT_AGENT_SERVER", "1");
+			// Forwarded rather than stored: the editor reads it back off the command
+			// line. An environment variable would be inherited by every child process,
+			// so a spawned editor would start an agent server nobody asked for.
 			main_args.push_back(arg);
 ```
 
-Using an environment variable keeps `main.cpp` from having to reach into editor-only headers. The
-editor reads it during startup in the next step.
+`main_args.push_back(arg)` leaves the flag in `OS::get_cmdline_args()`, which is how the editor picks
+it up in the next step. This mirrors `--run-upgrade-tool` (`editor/editor_node.cpp:1560`), the
+existing precedent for a flag the editor reads for itself.
 
 - [ ] **Step 2: Hold the server on EditorNode**
 
 In `editor/editor_node.h`, add near the other member declarations:
 
 ```cpp
+	// Local editor automation server. Only instantiated when --agent-server is passed.
 	Ref<EditorAgentServer> agent_server;
 ```
 
-and add the include alongside the other `editor/` includes:
+Forward declare it with the other `class Editor*;` lines rather than including the header. An include
+would drag `core/io/tcp_server.h` and `core/io/stream_peer_tcp.h` into every translation unit that
+pulls in `editor_node.h`, which is most of the editor. `Ref<T>` over an incomplete type is fine here
+because `~EditorNode` is defined out of line:
 
 ```cpp
-#include "editor/agent/editor_agent_server.h"
+class EditorAgentServer;
 ```
+
+The header itself is included in `editor/editor_node.cpp`, alphabetically before
+`editor/audio/editor_audio_buses.h`.
 
 - [ ] **Step 3: Start it, poll it, stop it**
 
@@ -780,7 +791,10 @@ In `editor/editor_node.cpp`, inside `EditorNode::EditorNode(...)`, near the end 
 where other subsystems are brought up, add:
 
 ```cpp
-	if (OS::get_singleton()->get_environment("GODOT_AGENT_SERVER") == "1") {
+	// Read off the command line the same way --run-upgrade-tool is, so that nothing
+	// is inherited by child processes.
+	const List<String> cmdline_args = OS::get_singleton()->get_cmdline_args();
+	if (cmdline_args.find("--agent-server") != nullptr) {
 		agent_server.instantiate();
 		if (agent_server->start() != OK) {
 			agent_server.unref();
@@ -822,23 +836,25 @@ Then start the editor headless with the flag and confirm the session file appear
 $probe = Join-Path $env:TEMP "agent_smoke"
 New-Item -ItemType Directory -Force $probe | Out-Null
 Set-Content -Encoding utf8 (Join-Path $probe "project.godot") "config_version=5`n`n[application]`n`nconfig/name=`"agent_smoke`"`n"
-Start-Process -FilePath ".\bin\godot.windows.editor.dev.x86_64.mono.console.exe" -ArgumentList "--headless","--editor","--agent-server","--path",$probe
+$editor = Start-Process -PassThru -FilePath ".\bin\godot.windows.editor.dev.x86_64.mono.console.exe" -ArgumentList "--headless","--editor","--agent-server","--path",$probe
 Start-Sleep -Seconds 15
 Get-ChildItem "$env:APPDATA\Godot\app_userdata\agent_smoke\agent\" -ErrorAction SilentlyContinue
 ```
 
-Expected: one `session-*.json` file containing `port`, `token`, `session_id`. Then stop the editor and
-confirm the file is gone:
+Expected: one `session-*.json` file containing `port`, `token`, `session_id`. Then stop the editor
+you started — only that one, by pid — and clean up:
 
 ```powershell
-Get-Process | Where-Object { $_.Name -like "godot*" } | Stop-Process -Force
+Stop-Process -Id $editor.Id -Force
 Start-Sleep -Seconds 2
 Get-ChildItem "$env:APPDATA\Godot\app_userdata\agent_smoke\agent\" -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force $probe
+Remove-Item -Recurse -Force $probe, "$env:APPDATA\Godot\app_userdata\agent_smoke"
 ```
 
-Expected: the second listing is empty. Note this kills every Godot process, so do not run it while
-another editor holds work you care about.
+Expected: the session file is **still there**. `Stop-Process -Force` is `TerminateProcess` on Windows,
+which runs no destructors, so `~EditorNode` never calls `stop()`. That is the documented stage 1A
+behaviour, not a bug — reaping a dead session's file is 1B's job. Graceful removal is already covered
+by the `remove_discovery_file` unit test in Task 1.
 
 - [ ] **Step 5: Commit**
 
@@ -1078,8 +1094,11 @@ def main():
             proc.terminate()
             proc.wait(timeout=30)
         time.sleep(1)
-        if find_sessions(discovery_dir()):
-            failures.append("session file survived editor shutdown")
+        # terminate() is TerminateProcess on Windows, so no destructor runs and the
+        # session file is expected to survive. This asserts that documented stage 1A
+        # behaviour; when 1B adds stale-file reaping, this assertion should flip.
+        if not find_sessions(discovery_dir()):
+            failures.append("session file vanished after a forced kill; stale-file handling changed")
         shutil.rmtree(root, ignore_errors=True)
         shutil.rmtree(discovery_dir(), ignore_errors=True)
     return failures

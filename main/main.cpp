@@ -779,6 +779,7 @@ void Main::print_help(const char *p_binary) {
 	print_help_option("--dap-port <port>", "Use the specified port for the GDScript Debug Adapter Protocol. Recommended port range [1024, 49151].\n", CLI_OPTION_AVAILABILITY_EDITOR);
 #if defined(MODULE_GDSCRIPT_ENABLED) && !defined(GDSCRIPT_NO_LSP)
 	print_help_option("--lsp-port <port>", "Use the specified port for the GDScript Language Server Protocol. Recommended port range [1024, 49151].\n", CLI_OPTION_AVAILABILITY_EDITOR);
+	print_help_option("--agent-server", "Start the local editor automation server. Only has an effect together with --editor.\n", CLI_OPTION_AVAILABILITY_EDITOR);
 #endif // MODULE_GDSCRIPT_ENABLED && !GDSCRIPT_NO_LSP
 #endif
 	print_help_option("--quit", "Quit after the first iteration.\n");
@@ -1935,6 +1936,11 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 				OS::get_singleton()->print("Missing output path argument after --agent-docs-dump, aborting.");
 				goto error;
 			}
+		} else if (arg == "--agent-server") {
+			// Forwarded rather than stored: the editor reads it back off the command
+			// line. An environment variable would be inherited by every child process,
+			// so a spawned editor would start an agent server nobody asked for.
+			main_args.push_back(arg);
 		} else if (arg == "--validate-extension-api") {
 			// Register as an editor instance to use low-end fallback if relevant.
 			editor = true;
