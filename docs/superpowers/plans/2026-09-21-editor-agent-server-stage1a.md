@@ -4,7 +4,9 @@
 
 **Goal:** Prove the whole automation pipe end to end with one trivial command: `--agent-server` starts a localhost server in the editor, writes a user-private session file, and a Python client authenticates and reads `status`.
 
-**Architecture:** An editor-only `EditorAgentServer` polls a `TCPServer` from the main thread each frame — no worker thread, so no locking and no cross-thread access to the SceneTree. Requests are newline-framed JSON dispatched through the existing `JSONRPC` class. `EditorAgentSession` owns the session id, token, and the discovery file, which lives under the user data directory rather than the project.
+**Architecture:** An editor-only `EditorAgentServer` polls a `TCPServer` from the main thread each frame — no worker thread, so no locking and no cross-thread access to the SceneTree. Requests are newline-framed JSON with a hand-rolled JSON-RPC 2.0 envelope. The `JSONRPC` class is
+deliberately not used: it lives in `modules/jsonrpc`, which `module_jsonrpc_enabled=no` can switch
+off, and an unguarded include from `editor/` would break that build. `EditorAgentSession` owns the session id, token, and the discovery file, which lives under the user data directory rather than the project.
 
 **Tech Stack:** Godot Engine C++ (fork at `C:\GithubProjects\godot`), `core/io/tcp_server.h`, `modules/jsonrpc`, SCons via `scripts/build.ps1`, doctest unit tests, Python 3 client.
 
@@ -397,6 +399,7 @@ Create `editor/agent/editor_agent_server.h` with the standard copyright header b
 #include "core/io/stream_peer_tcp.h"
 #include "core/io/tcp_server.h"
 #include "core/object/ref_counted.h"
+#include "core/templates/vector.h"
 #include "editor/agent/editor_agent_session.h"
 
 // Localhost JSON-RPC server for editor automation. Polled from the main thread so
@@ -404,15 +407,25 @@ Create `editor/agent/editor_agent_server.h` with the standard copyright header b
 class EditorAgentServer : public RefCounted {
 	GDCLASS(EditorAgentServer, RefCounted);
 
+public:
+	// The protocol forbids accumulating an unbounded message. A line longer than this
+	// is answered with an error and the connection is dropped.
+	static constexpr int MAX_MESSAGE_BYTES = 1 << 20;
+
+private:
 	Ref<TCPServer> server;
 	Ref<StreamPeerTCP> client;
 	Ref<EditorAgentSession> session;
 
 	String discovery_dir;
-	String read_buffer;
+	// Raw bytes, not a String: a multi-byte UTF-8 character can be split across two
+	// socket reads, and decoding each read on its own would corrupt it.
+	Vector<uint8_t> read_buffer;
 	bool authenticated = false;
 
 	void _drop_client();
+	void _send_line(const String &p_line);
+	static String _error_line(const Variant &p_id, int p_rpc_code, const String &p_message, const String &p_domain_code);
 	String _handle_line(const String &p_line);
 	Dictionary _dispatch(const String &p_method, const Dictionary &p_params, bool &r_ok, String &r_code, String &r_message);
 	Dictionary _cmd_status() const;
@@ -449,6 +462,12 @@ Create `editor/agent/editor_agent_server.cpp` with the standard copyright header
 Error EditorAgentServer::start() {
 	ERR_FAIL_COND_V_MSG(is_running(), ERR_ALREADY_IN_USE, "Agent server is already running.");
 
+	// Resolved here, not inside the session: this is the one place that knows which
+	// project the editor has open. It is empty in the project manager, where there is
+	// nothing to automate. Checked before listen() so that case never opens a port.
+	const String project_path = ProjectSettings::get_singleton()->globalize_path("res://");
+	ERR_FAIL_COND_V_MSG(project_path.is_empty(), ERR_UNCONFIGURED, "Agent server needs an open project; not starting.");
+
 	session.instantiate();
 	server.instantiate();
 
@@ -459,15 +478,6 @@ Error EditorAgentServer::start() {
 		server.unref();
 		session.unref();
 		ERR_FAIL_V_MSG(err, "Agent server could not listen on loopback.");
-	}
-
-	// Resolved here, not inside the session: this is the one place that knows which
-	// project the editor has open. It is empty in the project manager, where there
-	// is nothing to automate, so refuse to start rather than advertise a blank path.
-	const String project_path = ProjectSettings::get_singleton()->globalize_path("res://");
-	if (project_path.is_empty()) {
-		stop();
-		ERR_FAIL_V_MSG(ERR_UNCONFIGURED, "Agent server needs an open project; not starting.");
 	}
 
 	discovery_dir = EditorAgentSession::default_discovery_dir();
@@ -507,8 +517,16 @@ void EditorAgentServer::_drop_client() {
 		client->disconnect_from_host();
 		client.unref();
 	}
-	read_buffer = String();
+	read_buffer.clear();
 	authenticated = false;
+}
+
+void EditorAgentServer::_send_line(const String &p_line) {
+	if (client.is_null()) {
+		return;
+	}
+	const CharString utf8 = (p_line + "\n").utf8();
+	client->put_data((const uint8_t *)utf8.get_data(), utf8.length());
 }
 
 void EditorAgentServer::poll() {
@@ -519,7 +537,7 @@ void EditorAgentServer::poll() {
 	// One client at a time keeps session state unambiguous for now.
 	if (client.is_null() && server->is_connection_available()) {
 		client = server->take_connection();
-		read_buffer = String();
+		read_buffer.clear();
 		authenticated = false;
 	}
 
@@ -535,30 +553,63 @@ void EditorAgentServer::poll() {
 
 	const int available = client->get_available_bytes();
 	if (available > 0) {
-		Vector<uint8_t> chunk;
-		chunk.resize(available);
+		const int start = read_buffer.size();
+		read_buffer.resize(start + available);
 		int received = 0;
-		if (client->get_partial_data(chunk.ptrw(), available, received) != OK) {
+		if (client->get_partial_data(read_buffer.ptrw() + start, available, received) != OK) {
 			_drop_client();
 			return;
 		}
-		chunk.resize(received);
-		read_buffer += String::utf8((const char *)chunk.ptr(), chunk.size());
+		read_buffer.resize(start + received);
 	}
 
-	// Newline framing: TCP packet boundaries are not message boundaries.
-	int nl = read_buffer.find("\n");
-	while (nl != -1) {
-		const String line = read_buffer.substr(0, nl);
-		read_buffer = read_buffer.substr(nl + 1);
+	// Newline framing: TCP packet boundaries are not message boundaries. Scanning for
+	// the delimiter in bytes is safe because no continuation byte of a multi-byte
+	// UTF-8 sequence can be 0x0A.
+	while (true) {
+		const uint8_t *bytes = read_buffer.ptr();
+		int nl = -1;
+		for (int i = 0; i < read_buffer.size(); i++) {
+			if (bytes[i] == '\n') {
+				nl = i;
+				break;
+			}
+		}
+
+		if (nl == -1) {
+			// No complete line yet. The protocol forbids growing without bound.
+			if (read_buffer.size() > MAX_MESSAGE_BYTES) {
+				_send_line(_error_line(Variant(), -32600, "Message exceeds the maximum size.", "MESSAGE_TOO_LARGE"));
+				_drop_client();
+			}
+			return;
+		}
+
+		const String line = String::utf8((const char *)bytes, nl);
+		read_buffer = read_buffer.slice(nl + 1);
 
 		const String reply = _handle_line(line.strip_edges());
 		if (!reply.is_empty()) {
-			const CharString utf8 = (reply + "\n").utf8();
-			client->put_data((const uint8_t *)utf8.get_data(), utf8.length());
+			_send_line(reply);
 		}
-		nl = read_buffer.find("\n");
 	}
+}
+
+String EditorAgentServer::_error_line(const Variant &p_id, int p_rpc_code, const String &p_message, const String &p_domain_code) {
+	Dictionary err;
+	err["code"] = p_rpc_code;
+	err["message"] = p_message;
+	if (!p_domain_code.is_empty()) {
+		Dictionary data;
+		data["code"] = p_domain_code;
+		err["data"] = data;
+	}
+
+	Dictionary out;
+	out["jsonrpc"] = "2.0";
+	out["id"] = p_id;
+	out["error"] = err;
+	return JSON::stringify(out);
 }
 
 String EditorAgentServer::_handle_line(const String &p_line) {
@@ -566,22 +617,29 @@ String EditorAgentServer::_handle_line(const String &p_line) {
 		return String();
 	}
 
-	Variant parsed;
-	String parse_err;
-	int parse_line = 0;
-	if (JSON::parse_string_full(p_line, parsed, parse_err, parse_line) != OK) {
-		Dictionary err;
-		err["code"] = -32700;
-		err["message"] = "Parse error";
-		Dictionary out;
-		out["jsonrpc"] = "2.0";
-		out["id"] = Variant();
-		out["error"] = err;
-		return JSON::stringify(out);
+	// Parsed through a JSON instance rather than the static JSON::parse_string() so a
+	// malformed line answers with a protocol error instead of printing an engine error.
+	Ref<JSON> json;
+	json.instantiate();
+	if (json->parse(p_line) != OK) {
+		return _error_line(Variant(), -32700, "Parse error", String());
 	}
 
-	const Dictionary req = parsed;
-	const Variant id = req.get("id", Variant());
+	// A bare scalar parses fine but is not a request. Variant's Dictionary conversion
+	// would quietly hand back an empty one, so check the type rather than the content.
+	if (json->get_data().get_type() != Variant::DICTIONARY) {
+		return _error_line(Variant(), -32600, "Invalid Request", String());
+	}
+
+	const Dictionary req = json->get_data();
+
+	// JSON-RPC 2.0: a request with no id is a notification and gets no reply. The spec
+	// also forbids running side effects that way, so there is nothing to answer.
+	if (!req.has("id")) {
+		return String();
+	}
+
+	const Variant id = req["id"];
 	const String method = req.get("method", "");
 	const Dictionary params = req.get("params", Dictionary());
 
@@ -593,17 +651,11 @@ String EditorAgentServer::_handle_line(const String &p_line) {
 	Dictionary out;
 	out["jsonrpc"] = "2.0";
 	out["id"] = id;
-	if (ok) {
-		out["result"] = result;
-	} else {
-		Dictionary data;
-		data["code"] = code;
-		Dictionary err;
-		err["code"] = -32000;
-		err["message"] = message;
-		err["data"] = data;
-		out["error"] = err;
+	if (!ok) {
+		return _error_line(id, -32000, message, code);
 	}
+
+	out["result"] = result;
 	return JSON::stringify(out);
 }
 
@@ -647,7 +699,7 @@ Dictionary EditorAgentServer::_cmd_status() const {
 	Dictionary d;
 	d["session_id"] = session->get_session_id();
 	d["protocol_version"] = EditorAgentSession::PROTOCOL_VERSION;
-	d["engine_version"] = VERSION_FULL_BUILD;
+	d["engine_version"] = GODOT_VERSION_FULL_BUILD;
 	d["pid"] = OS::get_singleton()->get_process_id();
 	d["port"] = get_port();
 	d["started_at"] = session->get_started_at();
@@ -1068,6 +1120,9 @@ git commit -m "Add godotctl client and stage 1A end-to-end test"
 State these in the handoff rather than discovering them later.
 
 - One client connection at a time. A second connection is not accepted until the first drops.
+- A single message is capped at `EditorAgentServer::MAX_MESSAGE_BYTES` (1 MiB). A line that grows past
+  it without a newline is answered with `MESSAGE_TOO_LARGE` and the connection is dropped. 1B should
+  publish this number through `capabilities` rather than leaving clients to discover it.
 - No job queue. `status` answers synchronously inside `poll()`. Anything slower belongs in 1B.
 - The discovery directory is derived from `user://`, which resolves per project. A client looking
   across projects globs `app_userdata/*/agent/`.
