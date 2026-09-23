@@ -111,6 +111,7 @@ TEST_FORCE_LINK(test_editor_agent_session)
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
 #include "core/io/json.h"
+#include "core/os/os.h"
 #include "editor/agent/editor_agent_session.h"
 
 namespace TestEditorAgentSession {
@@ -140,7 +141,11 @@ TEST_CASE("[EditorAgent] discovery file round-trips every field") {
 	const String dir = OS::get_singleton()->get_cache_path().path_join("godot_agent_test");
 	DirAccess::make_dir_recursive_absolute(dir);
 
-	const Error err = session.write_discovery_file(dir, 54321);
+	// A concrete value rather than ProjectSettings: the test runner has no project
+	// open, so globalize_path("res://") would yield an empty string here.
+	const String project_path = OS::get_singleton()->get_cache_path().path_join("godot_agent_test_project");
+
+	const Error err = session.write_discovery_file(dir, 54321, project_path);
 	CHECK(err == OK);
 
 	const String path = session.get_discovery_file_path(dir);
@@ -152,8 +157,8 @@ TEST_CASE("[EditorAgent] discovery file round-trips every field") {
 	CHECK(String(d["token"]) == session.get_token());
 	CHECK(int(d["port"]) == 54321);
 	CHECK(int(d["pid"]) == OS::get_singleton()->get_process_id());
-	CHECK_FALSE(String(d["project_path"]).is_empty());
-	CHECK(int(d["started_at"]) > 0);
+	CHECK(String(d["project_path"]) == project_path);
+	CHECK(int64_t(d["started_at"]) > 0);
 
 	// Removing is idempotent so editor shutdown never errors on a missing file.
 	CHECK(session.remove_discovery_file(dir) == OK);
@@ -161,6 +166,20 @@ TEST_CASE("[EditorAgent] discovery file round-trips every field") {
 	CHECK(session.remove_discovery_file(dir) == OK);
 
 	DirAccess::remove_absolute(dir);
+}
+
+TEST_CASE("[EditorAgent] a session file is never written without a project path") {
+	EditorAgentSession session;
+	const String dir = OS::get_singleton()->get_cache_path().path_join("godot_agent_test_noproject");
+
+	// A client validates the session against project_path. Writing an empty one
+	// would leave that check comparing nothing, so the write must fail outright.
+	ERR_PRINT_OFF;
+	const Error err = session.write_discovery_file(dir, 54321, String());
+	ERR_PRINT_ON;
+
+	CHECK(err == ERR_UNCONFIGURED);
+	CHECK_FALSE(FileAccess::exists(session.get_discovery_file_path(dir)));
 }
 
 TEST_CASE("[EditorAgent] the default discovery directory is not inside the project") {
@@ -224,9 +243,15 @@ public:
 	int64_t get_started_at() const { return started_at; }
 
 	String get_discovery_file_path(const String &p_dir) const;
-	Dictionary to_discovery_dict(int p_port) const;
 
-	Error write_discovery_file(const String &p_dir, int p_port);
+	// The project path is passed in rather than read from ProjectSettings so this
+	// class has no hidden global dependency and stays unit-testable. The caller is
+	// the only place that knows which project this session belongs to.
+	Dictionary to_discovery_dict(int p_port, const String &p_project_path) const;
+
+	// Fails with ERR_UNCONFIGURED on an empty project path: a client validates the
+	// session against it, so an empty value would silently defeat that check.
+	Error write_discovery_file(const String &p_dir, int p_port, const String &p_project_path);
 	// Succeeds when the file is already gone, so shutdown never reports an error.
 	Error remove_discovery_file(const String &p_dir);
 
@@ -270,19 +295,21 @@ String EditorAgentSession::get_discovery_file_path(const String &p_dir) const {
 	return p_dir.path_join(vformat("session-%s.json", session_id));
 }
 
-Dictionary EditorAgentSession::to_discovery_dict(int p_port) const {
+Dictionary EditorAgentSession::to_discovery_dict(int p_port, const String &p_project_path) const {
 	Dictionary d;
 	d["protocol_version"] = PROTOCOL_VERSION;
 	d["session_id"] = session_id;
 	d["token"] = token;
-	d["project_path"] = ProjectSettings::get_singleton()->globalize_path("res://");
+	d["project_path"] = p_project_path;
 	d["pid"] = OS::get_singleton()->get_process_id();
 	d["port"] = p_port;
 	d["started_at"] = started_at;
 	return d;
 }
 
-Error EditorAgentSession::write_discovery_file(const String &p_dir, int p_port) {
+Error EditorAgentSession::write_discovery_file(const String &p_dir, int p_port, const String &p_project_path) {
+	ERR_FAIL_COND_V_MSG(p_project_path.is_empty(), ERR_UNCONFIGURED, "Refusing to write an agent session file without a project path.");
+
 	Error err = DirAccess::make_dir_recursive_absolute(p_dir);
 	if (err != OK && err != ERR_ALREADY_EXISTS) {
 		return err;
@@ -291,7 +318,7 @@ Error EditorAgentSession::write_discovery_file(const String &p_dir, int p_port) 
 	Ref<FileAccess> f = FileAccess::open(get_discovery_file_path(p_dir), FileAccess::WRITE, &err);
 	ERR_FAIL_COND_V_MSG(f.is_null(), err, "Cannot write the agent session file.");
 
-	f->store_string(JSON::stringify(to_discovery_dict(p_port), "  "));
+	f->store_string(JSON::stringify(to_discovery_dict(p_port, p_project_path), "  "));
 	f->close();
 	return OK;
 }
@@ -307,12 +334,13 @@ Error EditorAgentSession::remove_discovery_file(const String &p_dir) {
 EditorAgentSession::EditorAgentSession() {
 	session_id = generate_token().substr(0, 16);
 	token = generate_token();
-	started_at = Time::get_singleton()->get_unix_time_from_system();
+	// get_unix_time_from_system() returns a double; the protocol carries whole seconds.
+	started_at = (int64_t)Time::get_singleton()->get_unix_time_from_system();
 }
 ```
 
-Add `#include "core/config/project_settings.h"` alongside the other includes — `to_discovery_dict`
-uses `ProjectSettings`.
+`to_discovery_dict` takes the project path as an argument, so this file does **not** include
+`core/config/project_settings.h`. The editor resolves the path once, in `EditorAgentServer::start()`.
 
 - [ ] **Step 5: Register the new directory with the build**
 
@@ -341,7 +369,7 @@ before `SConscript("animation/SCsub")`:
 .\bin\godot.windows.editor.dev.x86_64.mono.console.exe --headless --test "--test-case=*EditorAgent*"
 ```
 
-Expected: `test cases: 4 | 4 passed | 0 failed`.
+Expected: `test cases: 5 | 5 passed | 0 failed`.
 
 - [ ] **Step 7: Commit**
 
@@ -413,6 +441,7 @@ Create `editor/agent/editor_agent_server.cpp` with the standard copyright header
 ```cpp
 #include "editor_agent_server.h"
 
+#include "core/config/project_settings.h"
 #include "core/io/json.h"
 #include "core/os/os.h"
 #include "core/version.h"
@@ -432,8 +461,17 @@ Error EditorAgentServer::start() {
 		ERR_FAIL_V_MSG(err, "Agent server could not listen on loopback.");
 	}
 
+	// Resolved here, not inside the session: this is the one place that knows which
+	// project the editor has open. It is empty in the project manager, where there
+	// is nothing to automate, so refuse to start rather than advertise a blank path.
+	const String project_path = ProjectSettings::get_singleton()->globalize_path("res://");
+	if (project_path.is_empty()) {
+		stop();
+		ERR_FAIL_V_MSG(ERR_UNCONFIGURED, "Agent server needs an open project; not starting.");
+	}
+
 	discovery_dir = EditorAgentSession::default_discovery_dir();
-	const Error werr = session->write_discovery_file(discovery_dir, server->get_local_port());
+	const Error werr = session->write_discovery_file(discovery_dir, server->get_local_port(), project_path);
 	if (werr != OK) {
 		stop();
 		ERR_FAIL_V_MSG(werr, "Agent server could not write its session file.");
