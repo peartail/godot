@@ -2,7 +2,7 @@
 
 [상위 스펙](editor_automation_spec.md) · [스크립트 계약](editor_automation_scripts.md)
 
-이 문서의 명령·필드는 구현을 위한 제안 계약이며 현재 사용 가능한 CLI가 아니다.
+이 문서의 명령·필드는 대부분 구현을 위한 제안 계약이다. 단계 1A로 실제 동작하는 것은 `--agent-server` 기동, 세션 발견 파일, `session.authenticate`, `status`, 그리고 `godotctl` 클라이언트뿐이다. job 큐·scene 명령·batch·script.run은 아직 없다. [구현 계획](../../docs/superpowers/plans/2026-09-21-editor-agent-server-stage1a.md)
 
 ## 연결과 발견
 
